@@ -7,7 +7,8 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "dev": "turbo dev",
+    "dev": "pnpm build:packages && turbo dev",
+    "build:packages": "turbo build --filter @wemo/contracts --filter @wemo/database --filter @wemo/ui",
     "build": "turbo build",
     "check:architecture": "tsx scripts/check-architecture.ts",
     "check:database": "tsx scripts/check-no-physical-foreign-keys.ts",
@@ -16,7 +17,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:requirements": "tsx scripts/check-requirements-coverage.ts",
-    "check": "pnpm check:requirements && pnpm check:architecture && pnpm check:database && pnpm typecheck && pnpm test && pnpm build"
+    "check:runtime": "tsx scripts/check-package-runtime.ts",
+    "check": "pnpm check:requirements && pnpm check:architecture && pnpm check:database && pnpm typecheck && pnpm test && pnpm build && pnpm check:runtime"
   },
   "devDependencies": {
     "@types/node": "24.3.0",

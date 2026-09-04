@@ -4,6 +4,8 @@
 
 系统采用 pnpm + Turborepo 管理的 TypeScript monorepo。运行时保持前后端分离：唯一 React 应用只通过版本化 HTTP API 与单体 Node.js 后端通信，数据库不暴露给前端。
 
+`packages/*` 统一生成 JavaScript 与类型声明到 `dist/`，应用只消费包的生产入口；开发命令在启动应用前完成首次构建，并持续监听共享包源码。CI 使用原生 Node 验证每条允许的应用到共享包导入链。
+
 | 层 | 选型 | 说明 |
 | --- | --- | --- |
 | Web 前端 | Next.js + React | 一个应用承载公开官网、用户中心、经销商中心和管理后台；公开页 SSR，登录区按路由分壳 |

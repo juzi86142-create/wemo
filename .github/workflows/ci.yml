@@ -53,3 +53,6 @@ jobs:
 
       - name: 构建全部工作区
         run: pnpm build
+
+      - name: 验证共享包生产入口
+        run: pnpm check:runtime

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsup --watch --onSuccess \"node dist/main.js\"",
     "build": "tsup",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
@@ -24,7 +24,6 @@
     "@swc/core": "1.16.1",
     "@types/node": "24.3.0",
     "tsup": "8.5.1",
-    "tsx": "4.23.13",
     "typescript": "7.0.2",
     "vitest": "5.0.0"
   }

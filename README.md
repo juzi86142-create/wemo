@@ -25,6 +25,8 @@ pnpm dev
 
 Docker 只启动 PostgreSQL、Redis、MinIO 与 Mailpit 等本地中间件。唯一 React 前端和单体 Node.js API 均由 pnpm 在宿主机运行，不构建应用容器。
 
+内部共享包统一编译到各自的 `dist/` 后再由应用加载。`pnpm dev` 会先构建共享包，再并行启动共享包监听器、前端和 API，保证开发与生产使用相同的包入口。
+
 ## 验收入口
 
 ```powershell
@@ -32,6 +34,7 @@ pnpm check:requirements
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm check:runtime
 ```
 
 需求拆解见 `docs/task-breakdown.md`，逐项追踪见 `docs/requirements-traceability.md`。当前提交是可运行的工程基架，不代表需求功能已经实现；后续功能完成必须同步更新追踪矩阵中的状态和证据。全部可执行源码、配置代码与自动化脚本使用 TypeScript，不新增 JavaScript 源文件。
