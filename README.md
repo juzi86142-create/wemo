@@ -37,7 +37,9 @@ pnpm build
 pnpm check:runtime
 ```
 
-需求拆解见 `docs/task-breakdown.md`，逐项追踪见 `docs/requirements-traceability.md`。当前提交是可运行的工程基架，不代表需求功能已经实现；后续功能完成必须同步更新追踪矩阵中的状态和证据。全部可执行源码、配置代码与自动化脚本使用 TypeScript，不新增 JavaScript 源文件。
+需求拆解见 `docs/task-breakdown.md`，四人并行边界见 `docs/workstreams/README.md`，逐项追踪见 `docs/requirements-traceability.md`。当前提交是可运行的工程基架，不代表需求功能已经实现；后续功能完成必须同步更新追踪矩阵中的状态和证据。全部可执行源码、配置代码与自动化脚本使用 TypeScript，不新增 JavaScript 源文件。
+
+仓库内提供 `.agents/skills/wemo-module-implementation` 项目 skill。使用 `$wemo-module-implementation` 时传入 `docs/workstreams` 下的一条工作流目录；AI 会先读取该目录的 `README.md`、`AGENTS.md` 与代码路径上继承的工程约束，再从现有基架完成真实代码、测试和追踪证据。该 skill 仅保存在本仓库，不需要安装到全局目录。
 
 ## 数据库硬约束
 
