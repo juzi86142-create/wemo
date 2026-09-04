@@ -13,7 +13,7 @@ const port = Number(process.env.API_PORT ?? 4000);
 
 const app = await NestFactory.create<NestFastifyApplication>(
   AppModule,
-  new FastifyAdapter({ logger: true }),
+  new FastifyAdapter({ logger: true, requestIdHeader: "x-request-id" }),
 );
 
 configureApplication(app);

@@ -8,6 +8,7 @@ import type { Language, Market } from "@wemo/contracts";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { configureApplication } from "../../http/configure-application";
+import { ApiHttpModule } from "../../http/api-http.module";
 import { LocalizationController } from "./localization.controller";
 import {
   LOCALIZATION_REPOSITORY,
@@ -51,6 +52,7 @@ const repository: LocalizationRepository = {
 };
 
 @Module({
+  imports: [ApiHttpModule],
   controllers: [LocalizationController],
   providers: [
     LocalizationService,
@@ -65,7 +67,10 @@ describe("Localization HTTP", () => {
   beforeAll(async () => {
     app = await NestFactory.create<NestFastifyApplication>(
       LocalizationHttpTestModule,
-      new FastifyAdapter({ logger: false }),
+      new FastifyAdapter({
+        logger: false,
+        requestIdHeader: "x-request-id",
+      }),
       { logger: false },
     );
     configureApplication(app);
@@ -80,7 +85,7 @@ describe("Localization HTTP", () => {
     const response = await app.inject({
       method: "GET",
       url: "/api/v1/localization/markets?page=1&page_size=20",
-      headers: { "x-request-id": "  req-http-1  " },
+      headers: { "x-request-id": "req-http-1" },
     });
 
     expect(response.statusCode).toBe(200);

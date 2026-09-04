@@ -9,7 +9,6 @@ import {
   SaveMarketSchema,
   SessionActorSchema,
   UpsertLanguageSchema,
-  type Pagination,
   type SaveMarketInput,
   type SessionActor,
   type UpsertLanguageInput,
@@ -35,19 +34,19 @@ export class LocalizationService {
     private readonly repository: LocalizationRepository,
   ) {}
 
-  async listLanguages(input: Pagination) {
+  async listLanguages(input: unknown) {
     const pagination = PaginationSchema.parse(input);
     const result = await this.repository.listPublicLanguages(pagination);
     return LanguageListResponseSchema.parse({ ...pagination, ...result });
   }
 
-  async listMarkets(input: Pagination) {
+  async listMarkets(input: unknown) {
     const pagination = PaginationSchema.parse(input);
     const result = await this.repository.listPublicMarkets(pagination);
     return MarketListResponseSchema.parse({ ...pagination, ...result });
   }
 
-  async resolveMarketContext(input: { market: string; locale: string }) {
+  async resolveMarketContext(input: unknown) {
     const query = ResolveMarketContextQuerySchema.parse(input);
     const market = await this.repository.findPublicMarket(query.market);
     if (!market) {

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import {
   LanguageSchema,
+  MarketSettingsSchema,
   MarketSchema,
   type Language,
   type Market,
@@ -8,7 +9,12 @@ import {
   type SaveMarketInput,
   type UpsertLanguageInput,
 } from "@wemo/contracts";
-import type { DatabaseClient } from "@wemo/database";
+import type {
+  DatabaseClient,
+  LanguageRecord,
+  MarketLocaleRecord,
+  MarketRecord,
+} from "@wemo/database";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import { ApiHttpException } from "../../http/api-http.exception";
@@ -16,46 +22,6 @@ import type {
   LocalizationRepository,
   PageResult,
 } from "./localization.repository";
-
-type LanguageRecord = {
-  id: number;
-  code: string;
-  label: string;
-  nativeLabel: string;
-  status: string;
-};
-
-type MarketRecord = {
-  id: number;
-  code: string;
-  currency: string;
-  timezone: string;
-  settings: unknown;
-  status: string;
-};
-
-type MarketLocaleRecord = {
-  id: number;
-  marketId: number;
-  languageId: number;
-  locale: string;
-  pathPrefix: string;
-  isDefault: boolean;
-  sortOrder: number;
-};
-
-function parseFallbackPolicy(settings: unknown) {
-  if (
-    typeof settings !== "object" ||
-    settings === null ||
-    !("fallback_policy" in settings) ||
-    (settings.fallback_policy !== "default_locale" &&
-      settings.fallback_policy !== "hide_untranslated")
-  ) {
-    return null;
-  }
-  return settings.fallback_policy;
-}
 
 @Injectable()
 export class LocalizationPrismaRepository implements LocalizationRepository {
@@ -156,14 +122,7 @@ export class LocalizationPrismaRepository implements LocalizationRepository {
         );
       }
 
-      const defaultLocale = input.locales.find((locale) => locale.is_default);
-      if (!defaultLocale) {
-        throw new ApiHttpException(
-          "LOCALIZATION_DEFAULT_REQUIRED",
-          "市场必须配置默认 locale",
-          400,
-        );
-      }
+      const defaultLocale = input.locales.find((locale) => locale.is_default)!;
 
       const market = await transaction.market.upsert({
         where: { code: input.code },
@@ -236,8 +195,8 @@ export class LocalizationPrismaRepository implements LocalizationRepository {
     );
 
     return rows.map((row) => {
-      const fallbackPolicy = parseFallbackPolicy(row.settings);
-      if (!fallbackPolicy) {
+      const settings = MarketSettingsSchema.safeParse(row.settings);
+      if (!settings.success) {
         throw new ApiHttpException(
           "LOCALIZATION_DATA_INVALID",
           `市场 ${row.code} 的回退配置无效`,
@@ -253,7 +212,7 @@ export class LocalizationPrismaRepository implements LocalizationRepository {
         code: row.code,
         currency: row.currency,
         timezone: row.timezone,
-        fallback_policy: fallbackPolicy,
+        fallback_policy: settings.data.fallback_policy,
         locales,
         status: row.status,
       });

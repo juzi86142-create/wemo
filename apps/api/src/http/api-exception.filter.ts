@@ -8,25 +8,13 @@ import {
 } from "@nestjs/common";
 import { ApiErrorSchema, type ApiError } from "@wemo/contracts";
 import type { FastifyReply, FastifyRequest } from "fastify";
-
-import { getOrCreateRequestId } from "./request-id.interceptor";
+import { ZodError } from "zod";
 
 type HttpErrorBody = {
   code?: unknown;
   message?: unknown;
   field_errors?: unknown;
 };
-
-type ValidationIssue = { path: PropertyKey[]; message: string };
-
-function isValidationError(
-  error: unknown,
-): error is { issues: ValidationIssue[] } {
-  if (typeof error !== "object" || error === null || !("issues" in error)) {
-    return false;
-  }
-  return Array.isArray(error.issues);
-}
 
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
@@ -36,7 +24,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const context = host.switchToHttp();
     const request = context.getRequest<FastifyRequest>();
     const reply = context.getResponse<FastifyReply>();
-    const requestId = getOrCreateRequestId(request);
+    const requestId = request.id;
     const { error, status } = this.toApiError(exception, requestId);
 
     reply.header("x-request-id", requestId).status(status).send(error);
@@ -46,7 +34,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     exception: unknown,
     requestId: string,
   ): { error: ApiError; status: number } {
-    if (isValidationError(exception)) {
+    if (exception instanceof ZodError) {
       return {
         status: HttpStatus.BAD_REQUEST,
         error: ApiErrorSchema.parse({

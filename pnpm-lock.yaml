@@ -53,6 +53,9 @@ importers:
       rxjs:
         specifier: 7.8.2
         version: 7.8.2
+      zod:
+        specifier: 4.5.4
+        version: 4.5.4
     devDependencies:
       '@swc/core':
         specifier: 1.16.1

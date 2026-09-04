@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 
 import { HealthModule } from "./health/health.module";
+import { ApiHttpModule } from "./http/api-http.module";
 import { AnalyticsModule } from "./modules/analytics/analytics.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { AuthModule } from "./modules/auth/auth.module";
@@ -28,6 +29,7 @@ import { SettingsModule } from "./modules/settings/settings.module";
 
 @Module({
   imports: [
+    ApiHttpModule,
     HealthModule,
     AuthModule,
     IdentityModule,

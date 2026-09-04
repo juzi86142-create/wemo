@@ -22,6 +22,39 @@ export const TranslationFallbackPolicySchema = z.enum([
   "default_locale",
   "hide_untranslated",
 ]);
+export const MarketSettingsSchema = z
+  .object({ fallback_policy: TranslationFallbackPolicySchema })
+  .strict();
+
+type MarketLocaleIdentity = {
+  locale: string;
+  path_prefix: string;
+  is_default: boolean;
+};
+
+function validateMarketLocales(
+  locales: MarketLocaleIdentity[],
+  context: Pick<z.core.$RefinementCtx, "addIssue">,
+) {
+  if (locales.filter((locale) => locale.is_default).length !== 1) {
+    context.addIssue({
+      code: "custom",
+      message: "必须且只能配置一个默认 locale",
+      path: ["locales"],
+    });
+  }
+
+  for (const key of ["locale", "path_prefix"] as const) {
+    const values = locales.map((locale) => locale[key]);
+    if (new Set(values).size !== values.length) {
+      context.addIssue({
+        code: "custom",
+        message: `${key} 不得重复`,
+        path: ["locales"],
+      });
+    }
+  }
+}
 
 export const LanguageSchema = z
   .object({
@@ -55,23 +88,7 @@ export const MarketSchema = z
   })
   .strict()
   .superRefine((value, context) => {
-    if (value.locales.filter((locale) => locale.is_default).length !== 1) {
-      context.addIssue({
-        code: "custom",
-        message: "市场必须且只能包含一个默认 locale",
-        path: ["locales"],
-      });
-    }
-    for (const key of ["locale", "path_prefix"] as const) {
-      const values = value.locales.map((locale) => locale[key]);
-      if (new Set(values).size !== values.length) {
-        context.addIssue({
-          code: "custom",
-          message: `${key} 不得重复`,
-          path: ["locales"],
-        });
-      }
-    }
+    validateMarketLocales(value.locales, context);
   });
 
 export const MarketListResponseSchema =
@@ -122,24 +139,7 @@ export const SaveMarketSchema = z
   })
   .strict()
   .superRefine((value, context) => {
-    if (value.locales.filter((locale) => locale.is_default).length !== 1) {
-      context.addIssue({
-        code: "custom",
-        message: "必须且只能配置一个默认 locale",
-        path: ["locales"],
-      });
-    }
-
-    for (const key of ["locale", "path_prefix"] as const) {
-      const values = value.locales.map((locale) => locale[key]);
-      if (new Set(values).size !== values.length) {
-        context.addIssue({
-          code: "custom",
-          message: `${key} 不得重复`,
-          path: ["locales"],
-        });
-      }
-    }
+    validateMarketLocales(value.locales, context);
   });
 
 export const FeatureFlagsSchema = z.record(

@@ -1,8 +1,4 @@
 import { Controller, Get, Query } from "@nestjs/common";
-import {
-  PaginationSchema,
-  ResolveMarketContextQuerySchema,
-} from "@wemo/contracts";
 
 import { LocalizationService } from "./localization.service";
 
@@ -12,20 +8,16 @@ export class LocalizationController {
 
   @Get("languages")
   listLanguages(@Query() query: unknown) {
-    return this.localizationService.listLanguages(
-      PaginationSchema.parse(query),
-    );
+    return this.localizationService.listLanguages(query);
   }
 
   @Get("markets")
   listMarkets(@Query() query: unknown) {
-    return this.localizationService.listMarkets(PaginationSchema.parse(query));
+    return this.localizationService.listMarkets(query);
   }
 
   @Get("market-context")
   resolveMarketContext(@Query() query: unknown) {
-    return this.localizationService.resolveMarketContext(
-      ResolveMarketContextQuerySchema.parse(query),
-    );
+    return this.localizationService.resolveMarketContext(query);
   }
 }
