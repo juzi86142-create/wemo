@@ -1,51 +1,60 @@
 ---
 name: wemo-module-implementation
-description: 在 WEMOVE SPORTS 仓库中，根据指定工作流或代码模块的 README.md 与适用 AGENTS.md，把现有 TypeScript 基架补成可运行、可验证并有需求追踪证据的真实功能。用于实现模块，不用于只做方案评审或创建空脚手架。
+description: 在 WEMOVE SPORTS 仓库中，把已有小模块或包的 TypeScript 基架补成可运行、可验证的真实代码。用于模块已有 README 或 AGENTS 指引，需要继续定位需求、契约、数据、调用链和验收证据的实现任务；不用于纯架构规划或创建空脚手架。
 ---
 
-# WEMO 模块真实实现
+# WEMO 小模块落地
 
-## 输入与范围
+## 确定目标
 
-要求用户指定一个模块目录；四人并行开发默认从 `docs/workstreams/01-experience-content` 至 `04-platform-operations` 中选择一个。若给出具体代码模块，则以该目录的 `README.md` 为功能范围，并读取从仓库根到目标路径上全部适用的 `AGENTS.md`。
+从用户指定的模块名、文件路径、当前工作目录或任务涉及的现有代码识别目标模块。目标明确时直接开始，不要求用户重复提供目录。目标通常是 API 领域模块、前端 feature 子模块、contracts/database 的领域目录或 UI 组件域。
 
-未指定目录时，先从请求中可明确对应的工作流推断；只有多个工作流同样合理且选择会显著改变修改范围时才询问。不要同时认领两条工作流，不要创建第二个前端应用或微服务。
+以用户要求和目标模块职责为修改范围。为贯通真实调用链，可以修改该功能必需的契约、数据、API、前端、测试与追踪文档；不要顺手补齐相邻模块或扩大成整条业务线重构。
 
-## 建立真实基线
+## 资料读取顺序
 
-在写代码前完成以下检查：
+按以下顺序渐进读取，前一层足以确定实现时不加载无关资料：
 
-1. 读取根 `AGENTS.md`、所选模块的 `README.md` 与 `AGENTS.md`，以及目标源码路径沿途的全部 `AGENTS.md`。项目约束优先于本 skill。
-2. 从模块 README 列出的章节和需求 ID 回读 `网站重构需求.md`，再定位 `docs/requirements-traceability.md` 中对应条目。README 是范围摘要，需求文档才是业务基准。
-3. 检查 `git status`、现有源码、测试、schema/migration、公开导出和真实应用装配。把已有能力、占位基架、缺口和其他工作流依赖分开；不得把目录、空模块或类型声明当成功能完成。
-4. 沿生产入口追踪参数来源、actor/`company_id`、状态不变量、事务和 adapter 生命周期。只有真实入口可达的现象才可认定为缺陷或验收证据。
+1. 始终读取仓库根 `AGENTS.md`。
+2. 读取目标目录的 `README.md`，并从仓库根到目标目录依次读取沿途所有 `AGENTS.md`。若目标目录没有 README，读取最近一级能够覆盖它的模块或包 README。
+3. 检查目标模块现有源码、公开入口、测试和应用装配，确认它目前是空基架、部分实现还是已有真实调用方。读取一至两个同层已实现模块只用于复用工程惯例，不能从中臆造业务规则。
+4. 在 `docs/requirements-traceability.md` 中按模块路径、领域名和 README 中出现的需求 ID 定位责任条目，再只读取 `网站重构需求.md` 中对应 ID、章节、状态机、字段字典或 API 清单。
+5. 仅在实现跨层边界时读取相关资料：
+   - API 输入输出：`packages/contracts/AGENTS.md`、对应领域 README 和公开 schema。
+   - 持久化：`packages/database/AGENTS.md`、对应 `prisma/domains` README 与 `schema.prisma`。
+   - 后端：`apps/api/AGENTS.md`、`apps/api/src/AGENTS.md` 和目标 API 模块 README。
+   - 前端：`apps/storefront/AGENTS.md`、`apps/storefront/src/AGENTS.md`、目标 feature README；需要跨区域复用组件时再读 `packages/ui/AGENTS.md` 和对应组件域 README。
+6. 只有依赖方向、部署形态或实施阶段仍不清楚时，才读取 `docs/architecture.md` 或 `docs/task-breakdown.md`；这些文档用于解释工程边界，不替代模块业务需求。
 
-## 实现方式
+业务含义以 `网站重构需求.md` 为准，模块 README 是该需求的就近摘要；`AGENTS.md` 约束实现方式和目录边界；现有代码、schema 与测试只代表当前事实，不能把尚未实现的行为解释成需求取消。
 
-把模块拆成可独立验收的端到端切片，并持续完成所选 README 的范围。每个切片按实际需要贯通：
+## 信息缺失时
 
-`Zod 契约与枚举 -> 数据模型/迁移 -> repository/adapter -> domain/application service -> HTTP -> 前端真实路由 -> 自动化测试 -> 追踪证据`
+README 缺项、过时或只有目标描述时，按以下次序补足信息：
 
-- 优先完成模块 README 的“实施顺序”和协作 port，再实现依赖这些 port 的页面或流程。依赖尚未合并时使用遵守同一契约的确定性 fake，不深层导入其他模块 repository。
-- 简单用例使用最短清晰结构；只有复杂规则确实需要时才拆 controllers/application/domain/infrastructure，不创建空层或占位类。
-- 全部源代码、配置和脚本使用 TypeScript。前端只调用 `/api/v1` 契约，不依赖数据库，不复制价格、权限或状态机规则。
-- 数据库使用自增整数主键和整数逻辑 ID，不声明 Prisma 关系字段或物理外键；application service 在事务中校验存在性、状态、删除限制和企业边界。
-- 价格、订单、报价、付款、退款、审核和审计保留快照或只追加历史。经销商私有数据始终从服务端 actor 限定 `company_id`。
-- 外部服务通过 adapter；密钥不入库。除非用户当前请求明确授权，不向互联网或外部服务写入、上传、发送、部署或发布。
-- 遵守工作流文件所有权。共享热点默认交给 04；若当前请求包含最终集成，只做最小追加并保留其他人的改动。
+1. 沿真实入口检查 controller/route、application service、公开 port、repository/adapter、schema、调用方和测试，明确数据从哪里来、由谁授权、何时持久化。
+2. 用领域名、实体名、路由、API 路径和需求 ID 搜索追踪矩阵与需求原文，确认输入输出、角色、状态、边界和验收条件。
+3. 查看相关 contracts、database 和 UI 领域 README，确认跨层已有约定；查看相邻模块只提取结构、错误处理和测试模式。
+4. 若业务选择会改变公开 API、数据模型、状态机、金额、权限、安全或合规结果，且上述资料仍无法确定，停止该选择并向用户询问。其他局部细节采用满足当前需求的最小假设，在代码或交付说明中明确记录并用测试固定。
 
-不要停在 mock 页面、内存数组、恒定返回值、空 controller/service、未执行 migration 或只验证独立 helper 的“完成”状态。fake 只用于隔离尚未合并的协作端口和自动化测试，生产入口必须连接真实持久化或明确的 adapter。
+不得用常量返回、随手编造的种子数据、前端硬编码、未声明的供应商行为或破坏现有状态不变量来填补信息空白。
 
-## 验证与证据
+## 补齐真实代码
 
-验证强度随风险增加，但至少包含：
+先追踪目标模块的生产调用链和依赖，再拆成最小可验收的端到端切片。按适用范围贯通：
 
-1. 模块契约的解析成功与拒绝测试。
-2. HTTP、公开 application service 或实际 Next.js 路由的正常与拒绝路径；权限、`company_id`、状态机、金额、库存、文件或 Webhook 涉及时覆盖并发/幂等/越权。
-3. 受影响工作区的 typecheck、test、build，以及数据库约束检查。最终集成运行根目录 `pnpm check`；若环境依赖阻止某项，记录准确命令、错误和未验证风险。
-4. 对照 README 和需求 ID 复核加载、空、错误、权限、移动端、键盘、SEO、分析、日志或指标等适用状态。
-5. 只有代码、必要迁移、真实入口测试、权限验证、可观测性和文档全部完成时，才在 `docs/requirements-traceability.md` 将条目标为 `done`，并登记代码入口、测试命令/用例、执行日期与人工验收状态。部分完成保持 `in-progress`，不得伪造截图、UAT、性能或安全结果。
+`Zod 契约与枚举 -> 数据模型/迁移 -> repository/adapter -> domain/application service -> HTTP 或前端路由 -> 自动化测试 -> 追踪证据`
 
-## 交付
+- 简单模块使用最短清晰结构；只有复杂规则需要时才增加 controller/application/domain/infrastructure 分层，不创建空层。
+- 运行时输入通过共享 Zod schema 解析，前端只经 `/api/v1` 访问业务数据，不复制服务端价格、权限或状态机规则。
+- 数据库使用自增整数主键和整数逻辑 ID，不声明物理外键；application service 在事务内检查关联存在性、状态、删除限制和企业边界。
+- `company_id` 从服务端认证上下文解析。订单、报价、价格、付款、审核和审计使用快照或只追加历史。
+- 外部能力通过 adapter；测试可使用遵守相同失败、幂等和授权语义的 fake，生产入口必须连接真实持久化或明确配置的 adapter。
 
-完成后报告实现的需求 ID、关键代码入口、迁移、自动化验证、仍需人工验收的事项和跨工作流接入点。除非用户明确要求，不提交、推送或创建外部 PR；用户要求提交时先检查 diff，只提交本任务文件并使用约定式提交消息。
+不要停在空 controller/service、mock 页面、内存数组、恒定返回值、未执行 migration 或只覆盖独立 helper。实现必须接入现有应用入口，并证明 README 描述的正常流程和拒绝流程真实可达。
+
+## 验证与完成
+
+优先运行目标工作区的 typecheck、test 和 build，并执行适用的架构、数据库与需求检查。修改共享契约、装配、schema 或完成整个模块时运行根目录 `pnpm check`。权限、`company_id`、状态机、金额、库存、文件或 Webhook 涉及时，测试真实 HTTP、公开 application service 或 Next.js 路由，并覆盖越权、并发或幂等路径。
+
+只有代码、必要迁移、真实入口测试、权限验证、可观测性和文档证据齐全时，才把 `docs/requirements-traceability.md` 的对应条目标为 `done`；部分完成保持 `in-progress`。完成后报告实现范围、关键入口、验证命令、未完成的人工验收与仍存在的最小假设。除非用户明确要求，不提交、推送或执行外部写入。
