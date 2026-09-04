@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: TypeScript 检查、测试与构建
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://wemove:wemove@localhost:5432/wemove
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 生成 Prisma Client
+        run: pnpm --filter @wemo/database db:generate
+
+      - name: 检查需求覆盖
+        run: pnpm check:requirements
+
+      - name: 检查工程架构
+        run: pnpm check:architecture
+
+      - name: 检查数据库约束
+        run: pnpm check:database
+
+      - name: TypeScript 类型检查
+        run: pnpm typecheck
+
+      - name: 运行测试
+        run: pnpm test
+
+      - name: 构建全部工作区
+        run: pnpm build
