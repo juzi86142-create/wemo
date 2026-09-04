@@ -513,6 +513,19 @@ model AnalyticsEvent {
   @@map("analytics_events")
 }
 
+model Language {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique
+  label       String
+  nativeLabel String   @map("native_label")
+  status      String   @default("active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("languages")
+}
+
 model Market {
   id            Int    @id @default(autoincrement())
   code          String @unique
@@ -523,6 +536,23 @@ model Market {
   status        String @default("active")
 
   @@map("markets")
+}
+
+model MarketLocale {
+  id         Int     @id @default(autoincrement())
+  marketId   Int     @map("market_id")
+  languageId Int     @map("language_id")
+  locale     String
+  pathPrefix String  @map("path_prefix")
+  isDefault  Boolean @default(false) @map("is_default")
+  sortOrder  Int     @default(0) @map("sort_order")
+  status     String  @default("active")
+
+  @@unique([marketId, locale])
+  @@unique([marketId, pathPrefix])
+  @@index([marketId, status, sortOrder])
+  @@index([languageId])
+  @@map("market_locales")
 }
 
 model SystemSetting {

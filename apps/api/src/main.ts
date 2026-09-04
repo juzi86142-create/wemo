@@ -7,6 +7,7 @@ import {
 } from "@nestjs/platform-fastify";
 
 import { AppModule } from "./app.module";
+import { configureApplication } from "./http/configure-application";
 
 const port = Number(process.env.API_PORT ?? 4000);
 
@@ -15,10 +16,6 @@ const app = await NestFactory.create<NestFastifyApplication>(
   new FastifyAdapter({ logger: true }),
 );
 
-app.setGlobalPrefix("api/v1");
-app.enableCors({
-  credentials: true,
-  origin: [process.env.STOREFRONT_URL ?? "http://localhost:3000"],
-});
+configureApplication(app);
 
 await app.listen(port, "0.0.0.0");
