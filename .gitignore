@@ -10,3 +10,26 @@
 /dataSources.local.xml
 Web开发技术现状.docx
 .idea
+
+# Node / TypeScript
+node_modules/
+.pnpm-store/
+.turbo/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Framework outputs
+.next/
+.vite/
+
+# Local environment and runtime data
+.env
+.env.*
+!.env.example
+data/
+uploads/
+
+# Logs
+*.log
+pnpm-debug.log*
