@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createApiApp } from "../bootstrap";
+import { createApiApp } from "../../src/bootstrap";
 
 const staffPermissions = [
   "catalog:read",

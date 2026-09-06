@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { RequestContext } from "../../runtime/request-context.store";
-import type { CommerceStateStore } from "../../runtime/commerce.state";
-import type { AuthorizationService } from "../../runtime/authorization.service";
+import type { RequestContext } from "../../../runtime/request-context.store";
+import type { CommerceStateStore } from "../../../runtime/commerce.state";
+import type { AuthorizationService } from "../../../runtime/authorization.service";
 import { CartService } from "./cart.service";
 
 describe("CartService", () => {

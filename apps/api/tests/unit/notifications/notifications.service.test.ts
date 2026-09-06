@@ -1,8 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { RequestContext } from "../../runtime/request-context.store";
-import type { ExperienceStateStore } from "../../runtime/experience.state";
-import type { PlatformStateStore } from "../../runtime/platform-state.store";
-import type { AuthorizationService } from "../../runtime/authorization.service";
+import type { RequestContext } from "../../../runtime/request-context.store";
+import type { ExperienceStateStore } from "../../../runtime/experience.state";
+import type { PlatformStateStore } from "../../../runtime/platform-state.store";
+import type { AuthorizationService } from "../../../runtime/authorization.service";
 import { NotificationsService } from "./notifications.service";
 
 describe("NotificationsService", () => {

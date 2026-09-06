@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 
-import { createApiApp } from "../bootstrap";
+import { createApiApp } from "../../src/bootstrap";
 
 function staffHeaders() {
   return {

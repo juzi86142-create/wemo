@@ -1,9 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { RequestContext } from "../../src/runtime/request-context.store";
-import type { IdentityStateStore } from "../identity/identity.state";
-import type { PlatformStateStore } from "../../src/runtime/platform-state.store";
-import type { AuthorizationService } from "../../src/runtime/authorization.service";
-import { AuthService } from "../../src/modules/auth/auth.service";
+import type { RequestContext } from "../../../src/runtime/request-context.store";
+import type { IdentityStateStore } from "../../identity/identity.state";
+import type { PlatformStateStore } from "../../../src/runtime/platform-state.store";
+import type { AuthorizationService } from "../../../src/runtime/authorization.service";
+import { AuthService } from "../../../src/modules/auth/auth.service";
 
 describe("AuthService", () => {
   let service: AuthService;
