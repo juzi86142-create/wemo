@@ -1,12 +1,21 @@
 import { Module } from "@nestjs/common";
 
-import { CommerceStateModule } from "../../runtime/commerce-state.module";
+import { DatabaseModule } from "../../database/database.module";
 import { PricingController } from "./pricing.controller";
+import { PricingPrismaRepository } from "./pricing.prisma-repository";
+import { PRICING_REPOSITORY } from "./pricing.repository";
 import { PricingService } from "./pricing.service";
 
 @Module({
-  imports: [CommerceStateModule],
+  imports: [DatabaseModule],
   controllers: [PricingController],
-  providers: [PricingService],
+  providers: [
+    PricingService,
+    {
+      provide: PRICING_REPOSITORY,
+      useClass: PricingPrismaRepository,
+    },
+  ],
+  exports: [PricingService],
 })
 export class PricingModule {}

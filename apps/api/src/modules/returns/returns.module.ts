@@ -1,12 +1,20 @@
 import { Module } from "@nestjs/common";
 
-import { CommerceStateModule } from "../../runtime/commerce-state.module";
+import { DatabaseModule } from "../../database/database.module";
 import { ReturnsController } from "./returns.controller";
+import { ReturnsPrismaRepository } from "./returns.prisma-repository";
+import { RETURNS_REPOSITORY } from "./returns.repository";
 import { ReturnsService } from "./returns.service";
 
 @Module({
-  imports: [CommerceStateModule],
+  imports: [DatabaseModule],
   controllers: [ReturnsController],
-  providers: [ReturnsService],
+  providers: [
+    ReturnsService,
+    {
+      provide: RETURNS_REPOSITORY,
+      useClass: ReturnsPrismaRepository,
+    },
+  ],
 })
 export class ReturnsModule {}

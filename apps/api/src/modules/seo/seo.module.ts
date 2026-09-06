@@ -1,12 +1,20 @@
 import { Module } from "@nestjs/common";
 
-import { ExperienceStateModule } from "../../runtime/experience-state.module";
+import { DatabaseModule } from "../../database/database.module";
 import { SeoController } from "./seo.controller";
+import { SeoPrismaRepository } from "./seo.prisma-repository";
+import { SEO_REPOSITORY } from "./seo.repository";
 import { SeoService } from "./seo.service";
 
 @Module({
-  imports: [ExperienceStateModule],
+  imports: [DatabaseModule],
   controllers: [SeoController],
-  providers: [SeoService],
+  providers: [
+    SeoService,
+    {
+      provide: SEO_REPOSITORY,
+      useClass: SeoPrismaRepository,
+    },
+  ],
 })
 export class SeoModule {}

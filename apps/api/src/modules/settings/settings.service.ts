@@ -45,8 +45,8 @@ export class SettingsService {
       key: input.key,
       value: input.value,
       type: "string",
-      market_id: 0,
-      locale_id: 0,
+      market_id: context.market || "global",
+      locale_id: context.locale || "en-US",
       is_public: false,
     });
 
