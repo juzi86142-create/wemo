@@ -27,9 +27,6 @@ import { SearchModule } from "./modules/search/search.module";
 import { SeoModule } from "./modules/seo/seo.module";
 import { SettingsModule } from "./modules/settings/settings.module";
 import { RuntimeModule } from "./runtime/runtime.module";
-import { CommerceStateModule } from "./runtime/commerce-state.module";
-import { ExperienceStateModule } from "./runtime/experience-state.module";
-import { IdentityStateModule } from "./modules/identity/identity-state.module";
 
 @Module({
   imports: [
@@ -58,9 +55,6 @@ import { IdentityStateModule } from "./modules/identity/identity-state.module";
     IntegrationsModule,
     JobsModule,
     RuntimeModule,
-    ExperienceStateModule,
-    CommerceStateModule,
-    IdentityStateModule,
     AuditModule,
     SettingsModule,
   ],
