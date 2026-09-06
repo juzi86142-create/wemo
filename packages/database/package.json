@@ -19,7 +19,8 @@
     "test": "vitest run --passWithNoTests",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:seed": "prisma db execute --stdin --schema prisma/schema.prisma < prisma/seed.sql || true"
   },
   "dependencies": {
     "@prisma/client": "6.15.0"
