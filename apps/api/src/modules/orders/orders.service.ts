@@ -1,6 +1,5 @@
-import { ConflictException, ForbiddenException, Inject, Injectable } from "@nestjs/common";
+import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import {
-  CommerceChannelSchema,
   OrderCreateSchema,
   OrderListQuerySchema,
   OrderListResponseSchema,
@@ -41,24 +40,31 @@ export class OrdersService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  listOrders(query: unknown) {
+  async listOrders(query: unknown) {
     const parsed = parseInput(OrderListQuerySchema, query);
     const actor = this.requestContext.getActor();
-    const scope =
-      actor?.audience === "staff"
-        ? parsed
-        : actor?.audience === "dealer"
-          ? { ...parsed, company_id: actor.company_id ?? undefined }
-          : actor
-            ? { ...parsed, user_id: actor.user_id }
-            : parsed;
-    return OrderListResponseSchema.parse(this.repository.listOrders(scope));
+    let scope = parsed;
+    if (actor) {
+      if (actor.audience === "dealer") {
+        // exactOptionalPropertyTypes：避免把 undefined 写进可选字段
+        if (actor.company_id !== undefined) {
+          scope = { ...scope, company_id: actor.company_id };
+        }
+      } else if (actor.audience !== "staff") {
+        scope = { ...scope, user_id: actor.user_id };
+      }
+    }
+    const list = await this.repository.listOrders(scope);
+    return OrderListResponseSchema.parse(list);
   }
 
-  getOrder(id: unknown) {
+  async getOrder(id: unknown) {
     const parsedId = parseInput(OrderIdParamSchema, { id });
-    const item = this.repository.getOrderById(parsedId.id);
     const actor = this.authorization.requireActor();
+    const item = await this.repository.getOrderById(parsedId.id);
+    if (!item) {
+      throw new NotFoundException("订单不存在");
+    }
     if (
       actor.audience !== "staff" &&
       item.user_id !== actor.user_id &&
@@ -72,9 +78,9 @@ export class OrdersService {
     });
   }
 
-  createOrder(body: unknown) {
+  async createOrder(body: unknown) {
     const context = this.requestContext.requireContext();
-    const existing = this.repository.findOrderByRequestId(context.request_id);
+    const existing = await this.repository.findOrderByRequestId(context.request_id);
     if (existing) {
       return OrderMutationResponseSchema.parse({
         request_id: context.request_id,
@@ -94,12 +100,21 @@ export class OrdersService {
         : actor?.company_id ?? null;
     const userId =
       actor?.audience === "staff" ? null : actor?.user_id ?? null;
-    const pricing = this.pricingRepository.previewPricing?.({
+    const preview = await this.pricingRepository.previewPricing?.({
       items: input.items,
       market: context.market,
       currency: context.currency,
-      dealer_company_id: channel === "b2b" ? companyId ?? undefined : undefined,
-    }) ?? { items: [], subtotal_minor: 0, tax_minor: 0, shipping_minor: 0, total_minor: 0, currency: context.currency };
+      ...(channel === "b2b" && companyId !== null ? { dealer_company_id: companyId } : {}),
+    });
+    const pricing =
+      preview ?? {
+        items: [],
+        subtotal_minor: 0,
+        tax_minor: 0,
+        shipping_minor: 0,
+        total_minor: 0,
+        currency: context.currency,
+      };
     const orderItems = pricing.items?.map((item: any, index: number) => ({
       id: index + 1,
       variant_id: item.variant_id,
@@ -120,7 +135,7 @@ export class OrdersService {
     const status =
       channel === "b2b" ? "pending_review" : "pending_payment";
 
-    const item = this.repository.createOrder({
+    const item = await this.repository.createOrder({
       channel,
       user_id: userId,
       company_id: companyId,
@@ -136,7 +151,7 @@ export class OrdersService {
         cart_id: input.cart_id ?? null,
         quote_id: input.quote_id ?? null,
         note: input.note ?? null,
-      } as JsonValue,
+      } as unknown as JsonValue,
       items: orderItems,
       request_id: context.request_id,
       note: input.note ?? null,
@@ -148,12 +163,12 @@ export class OrdersService {
     });
   }
 
-  updateStatus(id: unknown, body: unknown) {
+  async updateStatus(id: unknown, body: unknown) {
     const parsedId = parseInput(OrderIdParamSchema, { id });
     const input = parseInput(OrderStatusUpdateSchema, body);
     const context = this.requestContext.requireContext();
-    const actor = this.authorization.requireActor();
-    const item = this.repository.transitionOrder(
+    this.authorization.requireActor();
+    const item = await this.repository.transitionOrder(
       parsedId.id,
       input.status,
       context.request_id,

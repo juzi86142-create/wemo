@@ -23,10 +23,10 @@ export class AnalyticsService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  recordEvents(body: unknown) {
+  async recordEvents(body: unknown) {
     const context = this.requestContext.requireContext();
     const parsed = parseInput(AnalyticsEventBatchSchema, body);
-    const result = this.repository.recordEvents?.(parsed.events, context) ?? { accepted: parsed.events, deduplicated: 0 };
+    const result = await this.repository.recordEvents(parsed.events, context);
 
     return AnalyticsEventIngestResponseSchema.parse({
       request_id: context.request_id,
@@ -36,11 +36,11 @@ export class AnalyticsService {
     });
   }
 
-  listEvents(query: unknown) {
+  async listEvents(query: unknown) {
     this.authorization.requireStaffPermission("analytics:read");
     const parsed = parseInput(AnalyticsEventListQuerySchema, query);
     return AnalyticsEventListResponseSchema.parse(
-      this.repository.queryAnalytics(parsed),
+      await this.repository.queryAnalytics(parsed),
     );
   }
 }

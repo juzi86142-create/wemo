@@ -1,8 +1,45 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { DatabaseClient } from "@wemo/database";
+import type {
+  AccountAudience,
+  AccountStatus,
+  DealerContext,
+  IdentityAddress,
+  IdentityAddressCreateInput,
+  IdentityDataRequest,
+  IdentityNotification,
+  IdentityNotificationListQuery,
+  IdentityProfileUpdate,
+  IdentityRole,
+  IdentitySubscription,
+  IdentitySubscriptionUpsertInput,
+  IdentityUser,
+} from "@wemo/contracts";
 
-import { IDENTITY_REPOSITORY, type IdentityRepository } from "./identity.repository";
-import type { IdentityUser, IdentityAddress, IdentitySubscription, IdentityRole, IdentityDataRequest } from "@wemo/contracts";
+import { DATABASE_CLIENT } from "../../database/database.constants";
+import {
+  type CreateDataRequestInput,
+  type CreateRoleInput,
+  type IdentityNotificationListResult,
+  type IdentityRepository,
+  type IdentityUserListQuery,
+  type IdentityUserListResult,
+  type UpdateRoleInput,
+} from "./identity.repository";
+
+/** users 表行的最小形状（无 relation，纯标量字段） */
+interface UserRow {
+  id: number;
+  email: string;
+  name: string;
+  phone: string | null;
+  locale: string;
+  audience: string;
+  status: string;
+  verifiedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 @Injectable()
 export class IdentityPrismaRepository implements IdentityRepository {
@@ -11,121 +48,56 @@ export class IdentityPrismaRepository implements IdentityRepository {
   async getUserById(id: number): Promise<IdentityUser | null> {
     const user = await this.database.user.findUnique({
       where: { id },
-      include: {
-        roles: { include: { role: true } },
-        addresses: true,
-        subscriptions: true,
-      },
     });
 
     return user ? this.mapUser(user) : null;
   }
 
-  async updateProfile(userId: number, input: any): Promise<IdentityUser> {
+  async updateProfile(userId: number, input: IdentityProfileUpdate): Promise<IdentityUser> {
     const user = await this.database.user.update({
       where: { id: userId },
       data: {
-        name: input.name,
-        phone: input.phone,
-        locale: input.locale,
-      },
-      include: {
-        roles: { include: { role: true } },
-        addresses: true,
-        subscriptions: true,
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.phone !== undefined ? { phone: input.phone } : {}),
+        ...(input.locale !== undefined ? { locale: input.locale } : {}),
       },
     });
 
     return this.mapUser(user);
   }
 
-  async listAddresses(userId: number): Promise<IdentityAddress[]> {
-    const addresses = await this.database.address.findMany({
-      where: { userId },
-    });
-
-    return addresses.map(a => ({
-      id: a.id,
-      user_id: a.userId,
-      label: a.kind,
-      address: a.payload,
-      city: a.payload?.city,
-      created_at: a.createdAt.toISOString(),
-    }));
+  // addresses 表已删除：Demo 模式返回空列表
+  async listAddresses(_userId: number): Promise<IdentityAddress[]> {
+    return [];
   }
 
-  async upsertAddress(userId: number, input: any): Promise<IdentityAddress> {
-    const address = await this.database.address.upsert({
-      where: { id: input.id ?? 0 },
-      create: {
-        userId,
-        kind: input.label,
-        payload: input,
-      },
-      update: {
-        kind: input.label,
-        payload: input,
-      },
-    });
-
-    return {
-      id: address.id,
-      user_id: address.userId,
-      label: address.kind,
-      address: address.payload,
-      city: address.payload?.city,
-      created_at: address.createdAt.toISOString(),
-    };
+  async upsertAddress(_userId: number, _input: IdentityAddressCreateInput): Promise<IdentityAddress> {
+    throw new Error("Demo模式：暂不支持地址本");
   }
 
-  async deleteAddress(userId: number, addressId: number): Promise<void> {
-    await this.database.address.deleteMany({
-      where: { id: addressId, userId },
-    });
+  async createAddress(_userId: number, _input: IdentityAddressCreateInput): Promise<IdentityAddress> {
+    throw new Error("Demo模式：暂不支持地址本");
   }
 
-  async listSubscriptions(userId: number): Promise<IdentitySubscription[]> {
-    const subscriptions = await this.database.subscription.findMany({
-      where: { userId },
-    });
-
-    return subscriptions.map(s => ({
-      id: s.id,
-      user_id: s.userId,
-      channel: s.channel,
-      status: s.status,
-      consent_at: s.consentAt?.toISOString() || null,
-      created_at: s.createdAt.toISOString(),
-    }));
+  // addresses 表已删除：Demo 模式空实现
+  async deleteAddress(_userId: number, _addressId: number): Promise<void> {
+    // 无 DB 写入
   }
 
-  async upsertSubscription(userId: number, input: any): Promise<IdentitySubscription> {
-    const subscription = await this.database.subscription.upsert({
-      where: { userId_channel: { userId, channel: input.channel } },
-      create: {
-        userId,
-        channel: input.channel,
-        status: input.status,
-        consentAt: input.consent_at ? new Date(input.consent_at) : null,
-      },
-      update: {
-        status: input.status,
-        consentAt: input.consent_at ? new Date(input.consent_at) : undefined,
-      },
-    });
-
-    return {
-      id: subscription.id,
-      user_id: subscription.userId,
-      channel: subscription.channel,
-      status: subscription.status,
-      consent_at: subscription.consentAt?.toISOString() || null,
-      created_at: subscription.createdAt.toISOString(),
-    };
+  // subscriptions 表已删除：Demo 模式返回空列表
+  async listSubscriptions(_userId: number): Promise<IdentitySubscription[]> {
+    return [];
   }
 
-  async listUsers(query: any): Promise<{ items: IdentityUser[]; total: number; page: number; page_size: number }> {
-    const where: any = {};
+  async upsertSubscription(
+    _userId: number,
+    _input: IdentitySubscriptionUpsertInput,
+  ): Promise<IdentitySubscription> {
+    throw new Error("Demo模式：暂不支持订阅偏好");
+  }
+
+  async listUsers(query: IdentityUserListQuery): Promise<IdentityUserListResult> {
+    const where: Record<string, unknown> = {};
     if (query.email) where.email = { contains: query.email };
     if (query.status) where.status = query.status;
     if (query.audience) where.audience = query.audience;
@@ -135,9 +107,6 @@ export class IdentityPrismaRepository implements IdentityRepository {
         where,
         skip: (query.page - 1) * query.page_size,
         take: query.page_size,
-        include: {
-          roles: { include: { role: true } },
-        },
         orderBy: { createdAt: "desc" },
       }),
       this.database.user.count({ where }),
@@ -154,23 +123,15 @@ export class IdentityPrismaRepository implements IdentityRepository {
   async getUserByEmail(email: string): Promise<IdentityUser | null> {
     const user = await this.database.user.findUnique({
       where: { email },
-      include: {
-        roles: { include: { role: true } },
-        addresses: true,
-        subscriptions: true,
-      },
     });
 
     return user ? this.mapUser(user) : null;
   }
 
-  async updateUserStatus(userId: number, status: string): Promise<IdentityUser> {
+  async updateUserStatus(userId: number, status: AccountStatus): Promise<IdentityUser> {
     const user = await this.database.user.update({
       where: { id: userId },
       data: { status },
-      include: {
-        roles: { include: { role: true } },
-      },
     });
 
     return this.mapUser(user);
@@ -186,16 +147,11 @@ export class IdentityPrismaRepository implements IdentityRepository {
 
   async listRoles(): Promise<IdentityRole[]> {
     const roles = await this.database.role.findMany();
-    return roles.map(r => ({
-      id: r.id,
-      code: r.code,
-      name: r.name,
-      audience: r.audience,
-      permissions: [],
-    }));
+    return roles.map(r => this.mapRole(r));
   }
 
-  async createRole(input: any): Promise<IdentityRole> {
+  async createRole(input: CreateRoleInput): Promise<IdentityRole> {
+    // roles 表无 permissions 列，权限写入走 user_roles.overrides（见 setUserPermissions）
     const role = await this.database.role.create({
       data: {
         code: input.code,
@@ -204,30 +160,16 @@ export class IdentityPrismaRepository implements IdentityRepository {
       },
     });
 
-    return {
-      id: role.id,
-      code: role.code,
-      name: role.name,
-      audience: role.audience,
-      permissions: [],
-    };
+    return this.mapRole(role);
   }
 
-  async updateRole(roleId: number, input: any): Promise<IdentityRole> {
+  async updateRole(roleId: number, input: UpdateRoleInput): Promise<IdentityRole> {
     const role = await this.database.role.update({
       where: { id: roleId },
-      data: {
-        name: input.name,
-      },
+      data: input.name !== undefined ? { name: input.name } : {},
     });
 
-    return {
-      id: role.id,
-      code: role.code,
-      name: role.name,
-      audience: role.audience,
-      permissions: [],
-    };
+    return this.mapRole(role);
   }
 
   async deleteRole(roleId: number): Promise<void> {
@@ -243,80 +185,107 @@ export class IdentityPrismaRepository implements IdentityRepository {
     ];
   }
 
-  async createDataRequest(userId: number, input: any): Promise<IdentityDataRequest> {
-    const request = await this.database.dataRequest.create({
-      data: {
-        userId,
-        type: input.type,
-        status: "pending",
-      },
+  // data_requests 表已删除：Demo 模式不支持导出请求
+  async createDataRequest(_userId: number, _input: CreateDataRequestInput): Promise<IdentityDataRequest> {
+    throw new Error("Demo模式：暂不支持数据导出请求");
+  }
+
+  async listDataRequests(_userId: number): Promise<IdentityDataRequest[]> {
+    return [];
+  }
+
+  // Demo：用户权限以 user_roles.overrides.permissions 持久化（无成员记录时仅返回权限视图）
+  async setUserPermissions(userId: number, permissions: string[]): Promise<IdentityRole> {
+    const user = await this.database.user.findUnique({
+      where: { id: userId },
     });
 
+    if (!user) {
+      throw new NotFoundException("用户不存在");
+    }
+
+    const membership = await this.database.userRole.findFirst({
+      where: { userId },
+      orderBy: { id: "asc" },
+    });
+
+    if (membership) {
+      await this.database.userRole.update({
+        where: { id: membership.id },
+        data: { overrides: { permissions } },
+      });
+    }
+
     return {
-      id: request.id,
-      user_id: request.userId,
-      type: request.type,
-      status: request.status,
-      created_at: request.createdAt.toISOString(),
+      id: user.id,
+      code: "user_permissions",
+      name: user.name,
+      audience: user.audience as AccountAudience,
+      permissions,
     };
   }
 
-  async listDataRequests(userId: number): Promise<IdentityDataRequest[]> {
-    const requests = await this.database.dataRequest.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-    });
-
-    return requests.map(r => ({
-      id: r.id,
-      user_id: r.userId,
-      type: r.type,
-      status: r.status,
-      created_at: r.createdAt.toISOString(),
-    }));
-  }
-
-  async getDealerContextForUser(userId: number): Promise<{ company_id: number } | null> {
+  async getDealerContextForUser(userId: number): Promise<DealerContext | null> {
     const member = await this.database.dealerMember.findFirst({
       where: { userId, status: "active" },
     });
+    if (!member) {
+      return null;
+    }
 
-    return member ? { company_id: member.companyId } : null;
-  }
-
-  async listNotifications(query: { user_id: number; page: number; page_size: number }): Promise<{ items: IdentityNotification[]; total: number }> {
-    const [notifications, total] = await Promise.all([
-      this.database.notificationDelivery.findMany({
-        where: { userId: query.user_id },
-        skip: (query.page - 1) * query.page_size,
-        take: query.page_size,
-        orderBy: { createdAt: "desc" },
-      }),
-      this.database.notificationDelivery.count({ where: { userId: query.user_id } }),
-    ]);
+    const company = await this.database.dealerCompany.findUnique({
+      where: { id: member.companyId },
+    });
+    if (!company) {
+      return null;
+    }
 
     return {
-      items: notifications.map(n => ({
-        id: n.id,
-        user_id: n.userId,
-        kind: n.templateKey,
-        status: n.status,
-        sent_at: n.sentAt?.toISOString() || null,
-        created_at: n.createdAt.toISOString(),
-      })),
-      total,
+      company_id: company.id,
+      display_name: company.displayName,
+      status: company.status as DealerContext["status"],
+      currency: company.currency,
+      permissions: Array.isArray(member.permissions)
+        ? (member.permissions as string[])
+        : [],
     };
   }
 
-  private mapUser(user: any): IdentityUser {
+  // notification_deliveries 表已删除：Demo 模式返回空分页
+  async listNotifications(
+    query: IdentityNotificationListQuery,
+  ): Promise<IdentityNotificationListResult> {
+    return {
+      items: [],
+      total: 0,
+      page: query.page,
+      page_size: query.page_size,
+    };
+  }
+
+  private mapUser(user: UserRow): IdentityUser {
     return {
       id: user.id,
       email: user.email,
       name: user.name,
-      audience: user.audience,
-      status: user.status,
-      verified: !!user.verifiedAt,
+      phone: user.phone,
+      locale: user.locale,
+      audience: user.audience as AccountAudience,
+      status: user.status as AccountStatus,
+      verified_at: user.verifiedAt ? user.verifiedAt.toISOString() : null,
       created_at: user.createdAt.toISOString(),
+      updated_at: user.updatedAt.toISOString(),
+    };
+  }
+
+  private mapRole(role: { id: number; code: string; name: string; audience: string }): IdentityRole {
+    return {
+      id: role.id,
+      code: role.code,
+      name: role.name,
+      audience: role.audience as AccountAudience,
+      // roles 表无 permissions 列，角色权限列表暂固定为空
+      permissions: [],
     };
   }
 }

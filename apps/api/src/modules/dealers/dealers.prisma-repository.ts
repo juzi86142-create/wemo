@@ -1,28 +1,60 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import type {
+  DealerAddress,
+  DealerAddressCreateInput,
+  DealerApplication,
+  DealerApplicationCreateInput,
+  DealerApplicationReviewInput,
+  DealerApplicationStatus,
+  DealerCompany,
+  DealerCompanyStatus,
+  DealerCompanyUpdateInput,
+  DealerMember,
+  DealerMemberCreateInput,
+  DealerMemberStatus,
+  DealerPublicListing,
+  JsonValue,
+} from "@wemo/contracts";
 import type { DatabaseClient } from "@wemo/database";
 
-import { DEALERS_REPOSITORY, type DealersRepository } from "./dealers.repository";
-import type { DealerApplication, DealerCompany, DealerPublicListing } from "@wemo/contracts";
+import { DATABASE_CLIENT } from "../../database/database.constants";
+import type {
+  DealersRepository,
+  DealerApplicationListQuery,
+  DealerCompanyListQuery,
+  DealerMemberListQuery,
+  DealerPublicListingListQuery,
+  ListResult,
+} from "./dealers.repository";
 
 @Injectable()
 export class DealersPrismaRepository implements DealersRepository {
-  constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
+  constructor(
+    @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
+  ) {}
 
-  async listPublicListings(query: any): Promise<{ items: DealerPublicListing[]; total: number; page: number; page_size: number }> {
+  async listPublicListings(
+    query: DealerPublicListingListQuery,
+  ): Promise<ListResult<DealerPublicListing>> {
+    const where = {
+      status: "active" as const,
+      publicListing: true,
+      ...(query.country !== undefined ? { country: query.country } : {}),
+    };
     const [companies, total] = await Promise.all([
       this.database.dealerCompany.findMany({
-        where: { status: "active", publicListing: true },
+        where,
+        orderBy: { createdAt: "desc" },
         skip: (query.page - 1) * query.page_size,
         take: query.page_size,
       }),
-      this.database.dealerCompany.count({ where: { status: "active", publicListing: true } }),
+      this.database.dealerCompany.count({ where }),
     ]);
 
     return {
-      items: companies.map(c => ({
-        id: c.id,
-        company_name: c.displayName,
-        status: c.status,
+      items: companies.map((company) => ({
+        company: this.mapCompany(company),
+        addresses: [],
       })),
       total,
       page: query.page,
@@ -30,16 +62,30 @@ export class DealersPrismaRepository implements DealersRepository {
     };
   }
 
-  async createApplication(input: any): Promise<DealerApplication> {
-    const applicationNo = `APP-${Date.now()}`;
+  async createApplication(
+    input: DealerApplicationCreateInput & {
+      applicant_user_id: number | null;
+      request_id: string;
+    },
+  ): Promise<DealerApplication> {
+    const payload = this.readRecord(input.payload);
     const application = await this.database.dealerApplication.create({
       data: {
-        applicationNo,
+        applicationNo: `APP-${Date.now()}`,
         applicantUserId: input.applicant_user_id,
-        legalName: input.company_name,
-        country: input.country || "US",
+        legalName: input.legal_name,
+        country: input.country,
         contactEmail: input.contact_email,
-        payload: input.payload ?? {},
+        payload: {
+          ...payload,
+          display_name: input.display_name,
+          website: input.website ?? null,
+          business_type: input.business_type,
+          tax_id: input.tax_id ?? null,
+          contact_name: input.contact_name,
+          contact_phone: input.contact_phone ?? null,
+          currency: input.currency,
+        },
         status: "draft",
       },
     });
@@ -47,14 +93,20 @@ export class DealersPrismaRepository implements DealersRepository {
     return this.mapApplication(application);
   }
 
-  async listDealerApplications(query: any): Promise<{ items: DealerApplication[]; total: number; page: number; page_size: number }> {
-    const where: any = {};
-    if (query.applicant_user_id) where.applicantUserId = query.applicant_user_id;
-    if (query.status) where.status = query.status;
-
+  async listDealerApplications(
+    query: DealerApplicationListQuery,
+  ): Promise<ListResult<DealerApplication>> {
+    const where = {
+      ...(query.applicant_user_id !== undefined
+        ? { applicantUserId: query.applicant_user_id }
+        : {}),
+      ...(query.status !== undefined ? { status: query.status } : {}),
+      ...(query.country !== undefined ? { country: query.country } : {}),
+    };
     const [applications, total] = await Promise.all([
       this.database.dealerApplication.findMany({
         where,
+        orderBy: { createdAt: "desc" },
         skip: (query.page - 1) * query.page_size,
         take: query.page_size,
       }),
@@ -62,7 +114,7 @@ export class DealersPrismaRepository implements DealersRepository {
     ]);
 
     return {
-      items: applications.map(this.mapApplication),
+      items: applications.map((application) => this.mapApplication(application)),
       total,
       page: query.page,
       page_size: query.page_size,
@@ -77,49 +129,89 @@ export class DealersPrismaRepository implements DealersRepository {
     return application ? this.mapApplication(application) : null;
   }
 
-  async submitDealerApplication(id: number, requestId: string, userId: number | null, note?: string): Promise<DealerApplication> {
+  async submitDealerApplication(
+    id: number,
+    requestId: string,
+    userId: number | null,
+    note?: string,
+  ): Promise<DealerApplication> {
+    const existing = await this.database.dealerApplication.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException("经销商申请不存在");
+    }
+
+    const payload = this.readRecord(existing.payload);
     const application = await this.database.dealerApplication.update({
       where: { id },
       data: {
         status: "submitted",
         submittedAt: new Date(),
-        payload: { note },
+        payload: { ...payload, note: note ?? null },
       },
     });
 
     return this.mapApplication(application);
   }
 
-  async reviewDealerApplication(id: number, input: any, reviewerId: number, requestId: string): Promise<{ application: DealerApplication; company?: DealerCompany; member?: any }> {
+  async reviewDealerApplication(
+    id: number,
+    input: DealerApplicationReviewInput,
+    reviewerId: number,
+    requestId: string,
+  ): Promise<{
+    application: DealerApplication;
+    company: DealerCompany | null;
+    member: DealerMember | null;
+  }> {
     return this.database.$transaction(async (tx) => {
+      const existing = await tx.dealerApplication.findUnique({ where: { id } });
+      if (!existing) {
+        throw new NotFoundException("经销商申请不存在");
+      }
+
       const application = await tx.dealerApplication.update({
         where: { id },
         data: {
           status: input.decision,
           reviewedAt: new Date(),
-          reviewNote: input.note,
+          reviewNote: input.reason ?? null,
         },
       });
 
-      let company;
-      let member;
-
+      let companyRow: unknown = null;
+      let memberRow: unknown = null;
       if (input.decision === "approved") {
-        company = await tx.dealerCompany.create({
+        const payload = this.readRecord(existing.payload);
+        companyRow = await tx.dealerCompany.create({
           data: {
-            legalName: application.legalName,
-            displayName: application.legalName,
-            country: application.country,
-            currency: "USD",
+            legalName: existing.legalName,
+            displayName: this.stringFrom(
+              payload,
+              "display_name",
+              existing.legalName,
+            ),
+            country: existing.country,
+            currency: this.currencyFrom(payload),
+            tierId: input.tier_id ?? null,
+            priceListId: input.price_list_id ?? null,
+            publicListing: input.public_listing ?? false,
             status: "active",
+            terms: {
+              ...payload,
+              payment_terms: input.payment_terms ?? "net30",
+              sales_territories: input.sales_territories ?? [],
+              authorized_categories: input.authorized_categories ?? [],
+              sales_rep: input.sales_rep ?? null,
+            },
           },
         });
-
-        if (application.applicantUserId) {
-          member = await tx.dealerMember.create({
+        if (existing.applicantUserId !== null) {
+          memberRow = await tx.dealerMember.create({
             data: {
-              companyId: company.id,
-              userId: application.applicantUserId,
+              companyId: (companyRow as { id: number }).id,
+              userId: existing.applicantUserId,
               role: "admin",
               permissions: ["dealer:read", "dealer:write"],
               status: "active",
@@ -130,8 +222,8 @@ export class DealersPrismaRepository implements DealersRepository {
 
       return {
         application: this.mapApplication(application),
-        company: company ? this.mapCompany(company) : undefined,
-        member,
+        company: companyRow ? this.mapCompany(companyRow) : null,
+        member: memberRow ? this.mapMember(memberRow) : null,
       };
     });
   }
@@ -139,34 +231,75 @@ export class DealersPrismaRepository implements DealersRepository {
   async getDealerCompany(companyId: number): Promise<DealerCompany | null> {
     const company = await this.database.dealerCompany.findUnique({
       where: { id: companyId },
-      include: {
-        members: { include: { user: true } },
-        addresses: true,
-      },
     });
 
     return company ? this.mapCompany(company) : null;
   }
 
-  async updateDealerCompany(companyId: number, input: any): Promise<DealerCompany> {
+  async updateDealerCompany(
+    companyId: number,
+    input: DealerCompanyUpdateInput,
+  ): Promise<DealerCompany> {
+    const existing = await this.database.dealerCompany.findUnique({
+      where: { id: companyId },
+    });
+    if (!existing) {
+      throw new NotFoundException("经销商企业不存在");
+    }
+
+    const terms = this.readRecord(existing.terms);
     const company = await this.database.dealerCompany.update({
       where: { id: companyId },
       data: {
-        displayName: input.name,
-        address: input.address,
+        ...(input.legal_name !== undefined ? { legalName: input.legal_name } : {}),
+        ...(input.display_name !== undefined
+          ? { displayName: input.display_name }
+          : {}),
+        ...(input.country !== undefined ? { country: input.country } : {}),
+        ...(input.tier_id !== undefined ? { tierId: input.tier_id } : {}),
+        ...(input.price_list_id !== undefined
+          ? { priceListId: input.price_list_id }
+          : {}),
+        ...(input.currency !== undefined ? { currency: input.currency } : {}),
+        ...(input.public_listing !== undefined
+          ? { publicListing: input.public_listing }
+          : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        terms: {
+          ...terms,
+          ...(input.website !== undefined ? { website: input.website } : {}),
+          ...(input.business_type !== undefined
+            ? { business_type: input.business_type }
+            : {}),
+          ...(input.tax_id !== undefined ? { tax_id: input.tax_id } : {}),
+          ...(input.payment_terms !== undefined
+            ? { payment_terms: input.payment_terms }
+            : {}),
+          ...(input.sales_territories !== undefined
+            ? { sales_territories: input.sales_territories }
+            : {}),
+          ...(input.authorized_categories !== undefined
+            ? { authorized_categories: input.authorized_categories }
+            : {}),
+          ...(input.sales_rep !== undefined ? { sales_rep: input.sales_rep } : {}),
+        },
       },
     });
 
     return this.mapCompany(company);
   }
 
-  async listDealerCompanies(query: any): Promise<{ items: DealerCompany[]; total: number; page: number; page_size: number }> {
-    const where: any = {};
-    if (query.status) where.status = query.status;
-
+  async listDealerCompanies(
+    query: DealerCompanyListQuery,
+  ): Promise<ListResult<DealerCompany>> {
+    const where = {
+      ...(query.status !== undefined ? { status: query.status } : {}),
+      ...(query.country !== undefined ? { country: query.country } : {}),
+    };
     const [companies, total] = await Promise.all([
       this.database.dealerCompany.findMany({
         where,
+        orderBy: { createdAt: "desc" },
         skip: (query.page - 1) * query.page_size,
         take: query.page_size,
       }),
@@ -174,14 +307,16 @@ export class DealersPrismaRepository implements DealersRepository {
     ]);
 
     return {
-      items: companies.map(this.mapCompany),
+      items: companies.map((company) => this.mapCompany(company)),
       total,
       page: query.page,
       page_size: query.page_size,
     };
   }
 
-  async createDealerMember(input: { company_id: number; user_id: number; role: string; permissions: string[] }): Promise<any> {
+  async createDealerMember(
+    input: DealerMemberCreateInput & { company_id: number },
+  ): Promise<DealerMember> {
     const member = await this.database.dealerMember.create({
       data: {
         companyId: input.company_id,
@@ -192,33 +327,45 @@ export class DealersPrismaRepository implements DealersRepository {
       },
     });
 
-    return {
-      id: member.id,
-      company_id: member.companyId,
-      user_id: member.userId,
-      role: member.role,
-    };
+    return this.mapMember(member);
   }
 
-  async listDealerMembers(query: any): Promise<{ items: any[]; total: number; page: number; page_size: number }> {
+  async listDealerMembers(
+    query: DealerMemberListQuery,
+  ): Promise<ListResult<DealerMember>> {
+    const where = {
+      ...(query.company_id !== undefined
+        ? { companyId: query.company_id }
+        : {}),
+      ...(query.status !== undefined ? { status: query.status } : {}),
+    };
     const [members, total] = await Promise.all([
       this.database.dealerMember.findMany({
-        where: { companyId: query.company_id },
-        include: { user: { select: { id: true, email: true, name: true } } },
+        where,
+        orderBy: { id: "asc" },
         skip: (query.page - 1) * query.page_size,
         take: query.page_size,
       }),
-      this.database.dealerMember.count({ where: { companyId: query.company_id } }),
+      this.database.dealerMember.count({ where }),
     ]);
 
+    const userIds = members.map((member) => member.userId);
+    const users =
+      userIds.length > 0
+        ? await this.database.user.findMany({
+            where: { id: { in: userIds } },
+          })
+        : [];
+    const userById = new Map(users.map((user) => [user.id, user]));
+
     return {
-      items: members.map(m => ({
-        id: m.id,
-        company_id: m.companyId,
-        user_id: m.userId,
-        role: m.role,
-        user: m.user,
-      })),
+      items: members.map((member) => {
+        const user = userById.get(member.userId);
+        return {
+          ...this.mapMember(member),
+          user: user ? { id: user.id, email: user.email, name: user.name } : null,
+        };
+      }),
       total,
       page: query.page,
       page_size: query.page_size,
@@ -226,60 +373,120 @@ export class DealersPrismaRepository implements DealersRepository {
   }
 
   async listDealerAddresses(companyId: number): Promise<DealerAddress[]> {
-    const addresses = await this.database.dealerAddress.findMany({
-      where: { companyId },
-    });
-
-    return addresses.map(a => ({
-      id: a.id,
-      company_id: a.companyId,
-      label: a.kind,
-      address: a.payload,
-      city: a.payload?.city,
-      public_listing: a.publicListing,
-    }));
+    // demo 模式：dealer_addresses 表已下线，公开地址列表恒为空
+    return [];
   }
 
-  async createDealerAddress(input: { company_id: number; label: string; address: string; city: string; public_listing?: boolean }): Promise<DealerAddress> {
-    const address = await this.database.dealerAddress.create({
-      data: {
-        companyId: input.company_id,
-        kind: input.label,
-        payload: input,
-        publicListing: input.public_listing ?? false,
-      },
-    });
-
-    return {
-      id: address.id,
-      company_id: address.companyId,
-      label: address.kind,
-      address: address.payload,
-      city: address.payload?.city,
-      public_listing: address.publicListing,
-    };
+  async createDealerAddress(
+    companyId: number,
+    input: DealerAddressCreateInput,
+  ): Promise<DealerAddress> {
+    throw new Error("Demo模式：暂不支持经销商地址管理");
   }
+
+  // === 映射 ===
 
   private mapApplication(application: any): DealerApplication {
+    const payload = this.readRecord(application.payload);
     return {
       id: application.id,
-      applicant_user_id: application.applicantUserId,
-      company_name: application.legalName,
-      status: application.status,
-      submitted_at: application.submittedAt?.toISOString() || null,
+      application_no: application.applicationNo,
+      applicant_user_id: application.applicantUserId ?? null,
+      company_id: null,
+      legal_name: application.legalName,
+      display_name: this.stringFrom(payload, "display_name", application.legalName),
+      country: application.country,
+      website: this.nullableStringFrom(payload, "website"),
+      business_type: this.stringFrom(payload, "business_type", "general"),
+      tax_id: this.nullableStringFrom(payload, "tax_id"),
+      contact_name: this.stringFrom(payload, "contact_name", application.legalName),
+      contact_email: application.contactEmail,
+      contact_phone: this.nullableStringFrom(payload, "contact_phone"),
+      currency: this.currencyFrom(payload),
+      payload: application.payload,
+      status: application.status as DealerApplicationStatus,
+      submitted_at: application.submittedAt
+        ? application.submittedAt.toISOString()
+        : null,
+      reviewed_at: application.reviewedAt
+        ? application.reviewedAt.toISOString()
+        : null,
+      review_note: application.reviewNote ?? null,
       created_at: application.createdAt.toISOString(),
+      updated_at: application.updatedAt.toISOString(),
     };
   }
 
   private mapCompany(company: any): DealerCompany {
+    const terms = this.readRecord(company.terms);
     return {
       id: company.id,
       legal_name: company.legalName,
       display_name: company.displayName,
       country: company.country,
+      website: this.nullableStringFrom(terms, "website"),
+      business_type: this.stringFrom(terms, "business_type", "general"),
+      tax_id: this.nullableStringFrom(terms, "tax_id"),
+      tier_id: company.tierId ?? null,
+      price_list_id: company.priceListId ?? null,
       currency: company.currency,
-      status: company.status,
+      payment_terms: this.stringFrom(terms, "payment_terms", "net30"),
+      sales_territories: this.jsonArrayFrom(terms, "sales_territories"),
+      authorized_categories: this.jsonArrayFrom(terms, "authorized_categories"),
+      sales_rep: this.nullableStringFrom(terms, "sales_rep"),
+      public_listing: company.publicListing,
+      status: company.status as DealerCompanyStatus,
       created_at: company.createdAt.toISOString(),
+      archived_at: company.archivedAt ? company.archivedAt.toISOString() : null,
     };
+  }
+
+  private mapMember(member: any): DealerMember {
+    return {
+      id: member.id,
+      company_id: member.companyId,
+      user_id: member.userId,
+      role: member.role,
+      permissions: Array.isArray(member.permissions)
+        ? (member.permissions as string[])
+        : [],
+      status: member.status as DealerMemberStatus,
+      invited_at: null,
+      joined_at: new Date().toISOString(),
+    };
+  }
+
+  private readRecord(value: unknown): Record<string, JsonValue> {
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      return value as Record<string, JsonValue>;
+    }
+    return {};
+  }
+
+  private stringFrom(
+    payload: Record<string, JsonValue>,
+    key: string,
+    fallback: string,
+  ): string {
+    const value = payload[key];
+    return typeof value === "string" && value.length > 0 ? value : fallback;
+  }
+
+  private nullableStringFrom(
+    payload: Record<string, JsonValue>,
+    key: string,
+  ): string | null {
+    const value = payload[key];
+    return typeof value === "string" && value.length > 0 ? value : null;
+  }
+
+  private currencyFrom(payload: Record<string, JsonValue>): string {
+    const value = payload["currency"];
+    return typeof value === "string" && value.length === 3 ? value : "USD";
+  }
+
+  private jsonArrayFrom(payload: Record<string, JsonValue>, key: string): JsonValue {
+    const value = payload[key];
+    return Array.isArray(value) ? value : [];
   }
 }

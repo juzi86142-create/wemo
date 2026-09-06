@@ -44,35 +44,40 @@ export class JobsService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  listJobs(query: unknown) {
+  async listJobs(query: unknown) {
     this.authorization.requireStaffPermission("jobs:read");
     const parsed = parseInput(JobListQuerySchema, query);
-    return JobListResponseSchema.parse(this.repository.listExecutions(parsed));
-  }
-
-  listOutbox(query: unknown) {
-    this.authorization.requireStaffPermission("jobs:read");
-    const parsed = parseInput(OutboxEventQuerySchema, query);
-    return OutboxEventListResponseSchema.parse(
-      [],
+    return JobListResponseSchema.parse(
+      await this.repository.listExecutions(parsed),
     );
   }
 
-  getJob(id: unknown) {
+  async listOutbox(query: unknown) {
+    this.authorization.requireStaffPermission("jobs:read");
+    const parsed = parseInput(OutboxEventQuerySchema, query);
+    return OutboxEventListResponseSchema.parse({
+      items: [],
+      total: 0,
+      page: parsed.page,
+      page_size: parsed.page_size,
+    });
+  }
+
+  async getJob(id: unknown) {
     this.authorization.requireStaffPermission("jobs:read");
     const parsed = parseInput(JobIdParamSchema, { id });
-    const job = this.repository.getDefinition(parsed.id);
+    const job = await this.repository.getDefinition(parsed.id);
     return JobMutationResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,
       item: job,
     });
   }
 
-  createJob(body: unknown) {
+  async createJob(body: unknown) {
     this.authorization.requireStaffPermission("jobs:write");
     const parsed = parseInput(JobCreateSchema, body);
     const context = this.requestContext.requireContext();
-    const item = this.repository.triggerExecution(parsed.id);
+    const item = await this.repository.createDefinition(parsed);
 
     return JobMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -80,12 +85,12 @@ export class JobsService {
     });
   }
 
-  retryJob(id: unknown, body: unknown) {
+  async retryJob(id: unknown, body: unknown) {
     this.authorization.requireStaffPermission("jobs:write");
     const parsedId = parseInput(JobIdParamSchema, { id });
-    const parsedBody = parseInput(JobRetrySchema, body);
+    parseInput(JobRetrySchema, body);
     const context = this.requestContext.requireContext();
-    const item = this.repository.updateExecutionStatus(parsedId.id, "running");
+    const item = await this.repository.updateExecutionStatus(parsedId.id, "running");
 
     return JobMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -93,12 +98,16 @@ export class JobsService {
     });
   }
 
-  completeJob(id: unknown, body: unknown) {
+  async completeJob(id: unknown, body: unknown) {
     this.authorization.requireStaffPermission("jobs:write");
     const parsedId = parseInput(JobIdParamSchema, { id });
     const parsedBody = parseInput(JobCompletionSchema, body);
     const context = this.requestContext.requireContext();
-    const item = this.repository.updateExecutionStatus(parsedId.id, "completed", parsedBody.result);
+    const item = await this.repository.updateExecutionStatus(
+      parsedId.id,
+      "succeeded",
+      parsedBody.result,
+    );
 
     return JobMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -106,12 +115,14 @@ export class JobsService {
     });
   }
 
-  failJob(id: unknown, body: unknown) {
+  async failJob(id: unknown, body: unknown) {
     this.authorization.requireStaffPermission("jobs:write");
     const parsedId = parseInput(JobIdParamSchema, { id });
     const parsedBody = parseInput(JobFailureSchema, body);
     const context = this.requestContext.requireContext();
-    const item = this.repository.updateExecutionStatus(parsedId.id, "failed", { error: parsedBody.reason });
+    const item = await this.repository.updateExecutionStatus(parsedId.id, "failed", {
+      error: parsedBody.reason,
+    });
 
     return JobMutationResponseSchema.parse({
       request_id: context.request_id,

@@ -28,7 +28,7 @@ export class ReportsService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  getSnapshot(kind: unknown, query: unknown) {
+  async getSnapshot(kind: unknown, query: unknown) {
     this.authorization.requireStaffPermission("reports:read");
     const parsedKind = parseInput(ReportKindParamSchema, { kind });
     const queryObject =
@@ -39,19 +39,16 @@ export class ReportsService {
       kind: parsedKind.kind,
       ...queryObject,
     });
-    const snapshot = this.repository.runReport(
-      parsedKind.kind === "sales" ? 1 : parsedKind.kind === "inventory" ? 1 : 1,
-      {
-        from: parsedQuery.from,
-        to: parsedQuery.to,
-      },
-    );
+    const snapshot = await this.repository.runReport(1, {
+      from: parsedQuery.from,
+      to: parsedQuery.to,
+    });
 
     return ReportSnapshotSchema.parse(snapshot);
   }
 
-  exportSnapshot(kind: unknown, query: unknown) {
-    const snapshot = this.getSnapshot(kind, query);
+  async exportSnapshot(kind: unknown, query: unknown) {
+    const snapshot = await this.getSnapshot(kind, query);
     const csv = this.toCsv(snapshot.kind, snapshot.metrics);
     return ReportExportResponseSchema.parse({
       request_id: snapshot.request_id,

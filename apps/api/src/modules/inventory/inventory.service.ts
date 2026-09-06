@@ -2,7 +2,6 @@ import { Inject, Injectable } from "@nestjs/common";
 import {
   InventoryBalanceListQuerySchema,
   InventoryBalanceListResponseSchema,
-  InventoryReservationActionSchema,
   InventoryReservationCreateSchema,
   InventoryReservationListQuerySchema,
   InventoryReservationListResponseSchema,
@@ -32,25 +31,23 @@ export class InventoryService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  listBalances(query: unknown) {
+  async listBalances(query: unknown) {
     const parsed = parseInput(InventoryBalanceListQuerySchema, query);
-    return InventoryBalanceListResponseSchema.parse(
-      this.repository.listBalances(parsed),
-    );
+    const list = await this.repository.listBalances(parsed);
+    return InventoryBalanceListResponseSchema.parse(list);
   }
 
-  listReservations(query: unknown) {
+  async listReservations(query: unknown) {
     this.authorization.requireStaffPermission("inventory:read");
     const parsed = parseInput(InventoryReservationListQuerySchema, query);
-    return InventoryReservationListResponseSchema.parse(
-      this.repository.listReservations(parsed),
-    );
+    const list = await this.repository.listReservations(parsed);
+    return InventoryReservationListResponseSchema.parse(list);
   }
 
-  reserve(body: unknown) {
+  async reserve(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(InventoryReservationCreateSchema, body);
-    const item = this.repository.createReservation(input);
+    const item = await this.repository.createReservation(input);
     return InventoryReservationMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
@@ -71,6 +68,7 @@ export class InventoryService {
 
   release(id: unknown, body: unknown) {
     const parsedId = parseInput(ReservationIdParamSchema, { id });
+    void body;
     this.repository.releaseReservation(parsedId.id);
     return InventoryReservationMutationResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,

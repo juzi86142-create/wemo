@@ -1,116 +1,49 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
+import type { JobRun, JobStatus } from "@wemo/contracts/platform";
 import type { DatabaseClient } from "@wemo/database";
+import { DATABASE_CLIENT } from "../../database/database.constants";
 
-import { JOBS_REPOSITORY, type JobsRepository } from "./jobs.repository";
-import type { JobDefinition, JobExecution } from "@wemo/contracts";
+import {
+  type JobExecutionPage,
+  type JobListQuery,
+  type JobsRepository,
+} from "./jobs.repository";
 
+const DEMO_JOB_NOT_SUPPORTED = "Demo模式：暂不支持任务持久化与调度";
+
+/**
+ * Demo 模式：job_definitions / job_executions 表已从数据库中移除，
+ * 定义/执行相关操作一律抛错，仅列表返回空分页。
+ */
 @Injectable()
 export class JobsPrismaRepository implements JobsRepository {
   constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
 
-  async listDefinitions(): Promise<JobDefinition[]> {
-    const jobs = await this.database.jobDefinition.findMany({
-      where: { status: "active" },
-    });
-
-    return jobs.map(j => this.mapDefinition(j));
+  async listDefinitions(): Promise<JobRun[]> {
+    return [];
   }
 
-  async getDefinition(id: number): Promise<JobDefinition | null> {
-    const job = await this.database.jobDefinition.findUnique({
-      where: { id },
-    });
-
-    return job ? this.mapDefinition(job) : null;
+  async getDefinition(id: number): Promise<JobRun | null> {
+    return null;
   }
 
-  async createDefinition(input: any): Promise<JobDefinition> {
-    const job = await this.database.jobDefinition.create({
-      data: {
-        name: input.name,
-        description: input.description,
-        schedule: input.schedule,
-        handler: input.handler,
-        status: "active",
-        config: input.config || {},
-      },
-    });
-
-    return this.mapDefinition(job);
+  async createDefinition(input: unknown): Promise<JobRun> {
+    throw new Error(DEMO_JOB_NOT_SUPPORTED);
   }
 
-  async triggerExecution(jobId: number): Promise<JobExecution> {
-    const execution = await this.database.jobExecution.create({
-      data: {
-        jobId,
-        status: "running",
-        startedAt: new Date(),
-      },
-    });
-
-    return this.mapExecution(execution);
+  async triggerExecution(jobId: number): Promise<JobRun> {
+    throw new Error(DEMO_JOB_NOT_SUPPORTED);
   }
 
-  async listExecutions(query: any): Promise<{ items: JobExecution[]; total: number; page: number; page_size: number }> {
-    const where: any = {};
-    if (query.job_id) where.jobId = query.job_id;
-    if (query.status) where.status = query.status;
-
-    const [executions, total] = await Promise.all([
-      this.database.jobExecution.findMany({
-        where,
-        skip: (query.page - 1) * query.page_size,
-        take: query.page_size,
-        orderBy: { createdAt: "desc" },
-      }),
-      this.database.jobExecution.count({ where }),
-    ]);
-
-    return {
-      items: executions.map(e => this.mapExecution(e)),
-      total,
-      page: query.page,
-      page_size: query.page_size,
-    };
+  async listExecutions(query: JobListQuery): Promise<JobExecutionPage> {
+    return { items: [], total: 0, page: query.page, page_size: query.page_size };
   }
 
-  async updateExecutionStatus(executionId: number, status: string, output?: any): Promise<JobExecution> {
-    const execution = await this.database.jobExecution.update({
-      where: { id: executionId },
-      data: {
-        status,
-        output,
-        completedAt: status === "completed" || status === "failed" ? new Date() : undefined,
-      },
-    });
-
-    return this.mapExecution(execution);
-  }
-
-  private mapDefinition(job: any): JobDefinition {
-    return {
-      id: job.id,
-      name: job.name,
-      description: job.description,
-      schedule: job.schedule,
-      handler: job.handler,
-      status: job.status,
-      config: job.config || {},
-      created_at: job.createdAt.toISOString(),
-      updated_at: job.updatedAt.toISOString(),
-    };
-  }
-
-  private mapExecution(execution: any): JobExecution {
-    return {
-      id: execution.id,
-      job_id: execution.jobId,
-      status: execution.status,
-      output: execution.output || {},
-      error: execution.error,
-      started_at: execution.startedAt?.toISOString() || null,
-      completed_at: execution.completedAt?.toISOString() || null,
-      created_at: execution.createdAt.toISOString(),
-    };
+  async updateExecutionStatus(
+    executionId: number,
+    status: JobStatus,
+    output?: unknown,
+  ): Promise<JobRun> {
+    throw new Error(DEMO_JOB_NOT_SUPPORTED);
   }
 }

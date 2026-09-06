@@ -33,30 +33,29 @@ export class AuthService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  register(body: unknown) {
+  async register(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(AuthRegisterSchema, body);
     if (input.audience !== "user") {
       throw new ForbiddenException("当前注册接口仅支持普通用户");
     }
 
-    const item = this.repository.createUser({
+    const item = await this.repository.createUser({
       email: input.email,
       password: input.password,
       name: input.name,
       audience: "user",
-      verified: false,
     });
 
     if (input.agree_marketing) {
-      this.repository.upsertSubscription(item.id, {
+      await this.repository.upsertSubscription(item.id, {
         channel: "newsletter",
         status: "active",
         consent_at: nowIso(),
       });
     }
 
-    this.repository.recordNotification({
+    await this.repository.recordNotification({
       recipient_user_id: item.id,
       company_id: null,
       audience: item.audience,
@@ -74,10 +73,10 @@ export class AuthService {
     });
   }
 
-  verifyEmail(body: unknown) {
+  async verifyEmail(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(AuthVerifyEmailSchema, body);
-    const item = this.repository.verifyEmail(input);
+    const item = await this.repository.verifyEmail(input);
 
     return IdentityUserMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -85,11 +84,11 @@ export class AuthService {
     });
   }
 
-  login(body: unknown) {
+  async login(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(AuthLoginSchema, body);
-    const user = this.repository.authenticate(input);
-    const item = this.repository.issueSession(user.id, context.request_id);
+    const user = await this.repository.authenticate(input);
+    const item = await this.repository.issueSession(user.id, context.request_id);
 
     return AuthSessionMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -97,11 +96,11 @@ export class AuthService {
     });
   }
 
-  forgotPassword(body: unknown) {
+  async forgotPassword(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(AuthForgotPasswordSchema, body);
-    const user = this.repository.getUserByEmail(input.email);
-    const item = this.repository.recordNotification({
+    const user = await this.repository.getUserByEmail(input.email);
+    const item = await this.repository.recordNotification({
       recipient_user_id: user?.id ?? null,
       company_id: null,
       audience: user?.audience ?? "user",
@@ -119,7 +118,7 @@ export class AuthService {
     });
   }
 
-  listSessions(query: unknown) {
+  async listSessions(query: unknown) {
     const actor = this.authorization.requireActor();
     const input = parseInput(AuthSessionListQuerySchema, query);
     if (input.audience && input.audience !== actor.audience) {
@@ -127,7 +126,7 @@ export class AuthService {
     }
 
     return AuthSessionListResponseSchema.parse(
-      this.repository.listSessions({
+      await this.repository.listSessions({
         user_id: actor.user_id,
         audience: input.audience ?? actor.audience,
         status: input.status,
@@ -137,11 +136,10 @@ export class AuthService {
     );
   }
 
-  logout(body: unknown) {
-    const actor = this.authorization.requireActor();
+  async logout(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(AuthSessionRevokeSchema, body);
-    const item = this.repository.revokeSession(input.token);
+    const item = await this.repository.revokeSession(input.token);
 
     return AuthSessionMutationResponseSchema.parse({
       request_id: context.request_id,

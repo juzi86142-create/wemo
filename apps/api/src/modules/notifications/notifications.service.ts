@@ -5,7 +5,6 @@ import {
   NotificationDeliveryListResponseSchema,
   NotificationDeliveryMutationResponseSchema,
   NotificationDeliveryRetrySchema,
-  NotificationTemplateCreateSchema,
   NotificationTemplateListResponseSchema,
   NotificationTemplateMutationResponseSchema,
   NotificationTemplateUpdateSchema,
@@ -37,22 +36,22 @@ export class NotificationsService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  listTemplates() {
+  async listTemplates() {
     this.authorization.requireStaffPermission("notifications:read");
     return NotificationTemplateListResponseSchema.parse(
-      this.repository.listTemplates({ page: 1, page_size: 20 }),
+      await this.repository.listTemplates({ page: 1, page_size: 20 }),
     );
   }
 
-  upsertTemplate(id: unknown, body: unknown) {
-    const actor = this.authorization.requireStaffPermission("notifications:write");
+  async upsertTemplate(id: unknown, body: unknown) {
+    this.authorization.requireStaffPermission("notifications:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(NotificationTemplateUpdateSchema, body);
     const payload =
       id === undefined
         ? input
         : { ...(input as any), id: parseInput(NotificationTemplateIdParamSchema, { id }).id };
-    const item = this.repository.upsertTemplate(payload as any);
+    const item = await this.repository.upsertTemplate(payload as any);
 
     return NotificationTemplateMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -60,19 +59,19 @@ export class NotificationsService {
     });
   }
 
-  listDeliveries(query: unknown) {
+  async listDeliveries(query: unknown) {
     this.authorization.requireStaffPermission("notifications:read");
     const parsed = parseInput(NotificationDeliveryListQuerySchema, query);
     return NotificationDeliveryListResponseSchema.parse(
-      this.repository.listDeliveries(parsed),
+      await this.repository.listDeliveries(parsed),
     );
   }
 
-  createDelivery(body: unknown) {
-    const actor = this.authorization.requireStaffPermission("notifications:write");
+  async createDelivery(body: unknown) {
+    this.authorization.requireStaffPermission("notifications:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(NotificationDeliveryCreateSchema, body);
-    const item = this.repository.recordDelivery({
+    const item = await this.repository.recordDelivery({
       ...input,
       request_id: input.request_id ?? context.request_id,
     });
@@ -83,12 +82,12 @@ export class NotificationsService {
     });
   }
 
-  retryDelivery(id: unknown, body: unknown) {
-    const actor = this.authorization.requireStaffPermission("notifications:write");
+  async retryDelivery(id: unknown, body: unknown) {
+    this.authorization.requireStaffPermission("notifications:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(NotificationDeliveryIdParamSchema, { id });
     const input = parseInput(NotificationDeliveryRetrySchema, body);
-    const item = this.repository.retryDelivery(parsedId.id, input.reason);
+    const item = await this.repository.retryDelivery(parsedId.id, input.reason);
 
     return NotificationDeliveryMutationResponseSchema.parse({
       request_id: context.request_id,

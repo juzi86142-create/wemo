@@ -5,7 +5,6 @@ import {
   CartListResponseSchema,
   CartMergeSchema,
   CartMutationResponseSchema,
-  PricingPreviewRequestSchema,
 } from "@wemo/contracts/commerce";
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
@@ -72,33 +71,35 @@ export class CartService {
     };
   }
 
-  getCurrent(query: unknown) {
+  async getCurrent(query: unknown) {
     const ctx = this.resolveContext(query);
-    const item = this.cartRepository.getOrCreateCart(ctx);
+    const item = await this.cartRepository.getOrCreateCart(ctx);
     return CartMutationResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,
       item,
     });
   }
 
-  listCarts(query: unknown) {
+  async listCarts(query: unknown) {
     const parsed = parseInput(CartListQuerySchema, query);
     this.authorization.requireStaffPermission("cart:read");
-    return CartListResponseSchema.parse(this.cartRepository.listCarts(parsed));
+    return CartListResponseSchema.parse(
+      await this.cartRepository.listCarts(parsed),
+    );
   }
 
-  addItem(body: unknown) {
+  async addItem(body: unknown) {
     const context = this.requestContext.requireContext();
     const ctx = this.resolveContext({});
     const input = parseInput(CartItemUpsertSchema, body);
-    const price = this.pricingRepository.previewPricing?.({
+    const price = (await this.pricingRepository.previewPricing?.({
       items: [{ variant_id: input.variant_id, quantity: input.quantity }],
       market: ctx.market,
       currency: ctx.currency,
       dealer_company_id: ctx.dealer_company_id,
-    }) ?? { items: [{ unit_price_minor: 0, line_total_minor: input.quantity * 0 }] };
-    const cart = this.cartRepository.getOrCreateCart(ctx);
-    const item = this.cartRepository.upsertCartItem(cart.id, {
+    })) ?? { items: [{ unit_price_minor: 0, line_total_minor: 0 }] };
+    const cart = await this.cartRepository.getOrCreateCart(ctx);
+    const item = await this.cartRepository.upsertCartItem(cart.id, {
       variant_id: input.variant_id,
       quantity: input.quantity,
       unit_price_minor: price?.items?.[0]?.unit_price_minor ?? 0,
@@ -111,10 +112,10 @@ export class CartService {
     });
   }
 
-  merge(body: unknown) {
+  async merge(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(CartMergeSchema, body);
-    const item = this.cartRepository.mergeCarts?.(input) ?? this.cartRepository.getOrCreateCart({} as any);
+    const item = await this.cartRepository.mergeCarts(input);
 
     return CartMutationResponseSchema.parse({
       request_id: context.request_id,

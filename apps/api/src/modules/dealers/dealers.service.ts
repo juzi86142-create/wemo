@@ -2,6 +2,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  NotFoundException,
 } from "@nestjs/common";
 import {
   DealerAddressCreateSchema,
@@ -31,8 +32,7 @@ import { z } from "zod";
 import { AuthorizationService } from "../../runtime/authorization.service";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
-import { DealersPrismaRepository } from "./dealers.prisma-repository";
-import { DEALERS_REPOSITORY } from "./dealers.repository";
+import { DEALERS_REPOSITORY, type DealersRepository } from "./dealers.repository";
 
 const ApplicationIdParamSchema = z.object({
   id: EntityIdSchema,
@@ -60,7 +60,7 @@ function listResponse<T>(items: T[]): {
 export class DealersService {
   constructor(
     @Inject(DEALERS_REPOSITORY)
-    private readonly repository: DealersPrismaRepository,
+    private readonly repository: DealersRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -72,22 +72,22 @@ export class DealersService {
     return actor.company_id ?? 0;
   }
 
-  listPublicListings(query: unknown) {
+  async listPublicListings(query: unknown) {
     const parsed = parseInput(DealerPublicListingListQuerySchema, query);
     return DealerPublicListingListResponseSchema.parse(
-      this.repository.listPublicListings(parsed),
+      await this.repository.listPublicListings(parsed),
     );
   }
 
-  createApplication(body: unknown) {
+  async createApplication(body: unknown) {
     const context = this.requestContext.requireContext();
     const actor = this.requestContext.getActor();
     const input = parseInput(DealerApplicationCreateSchema, body);
-    const item = this.repository.createApplication({
+    const item = await this.repository.createApplication({
       ...input,
-      applicant_user_id: actor?.audience === "staff" ? null : actor?.user_id ?? null,
+      applicant_user_id:
+        actor?.audience === "staff" ? null : actor?.user_id ?? null,
       request_id: context.request_id,
-      payload: input.payload ?? {},
     });
 
     return DealerApplicationMutationResponseSchema.parse({
@@ -96,7 +96,7 @@ export class DealersService {
     });
   }
 
-  listApplications(query: unknown) {
+  async listApplications(query: unknown) {
     const actor = this.authorization.requireActor();
     const parsed = parseInput(DealerApplicationListQuerySchema, query);
     const result =
@@ -107,21 +107,24 @@ export class DealersService {
             applicant_user_id: actor.user_id,
           });
 
-    return DealerApplicationListResponseSchema.parse(result);
+    return DealerApplicationListResponseSchema.parse(await result);
   }
 
-  listAdminApplications(query: unknown) {
+  async listAdminApplications(query: unknown) {
     this.authorization.requireStaffPermission("dealers:read");
     const parsed = parseInput(DealerApplicationListQuerySchema, query);
     return DealerApplicationListResponseSchema.parse(
-      this.repository.listDealerApplications(parsed),
+      await this.repository.listDealerApplications(parsed),
     );
   }
 
-  getApplication(id: unknown) {
+  async getApplication(id: unknown) {
     const actor = this.authorization.requireActor();
     const parsedId = parseInput(ApplicationIdParamSchema, { id });
-    const item = this.repository.getDealerApplication(parsedId.id);
+    const item = await this.repository.getDealerApplication(parsedId.id);
+    if (!item) {
+      throw new NotFoundException("经销商申请不存在");
+    }
     if (actor.audience !== "staff" && item.applicant_user_id !== actor.user_id) {
       throw new ForbiddenException("不能查看其他申请");
     }
@@ -132,17 +135,25 @@ export class DealersService {
     });
   }
 
-  submitApplication(id: unknown, body: unknown) {
+  async submitApplication(id: unknown, body: unknown) {
     const actor = this.requestContext.getActor();
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ApplicationIdParamSchema, { id });
     const input = parseInput(DealerApplicationSubmitSchema, body);
-    const existing = this.repository.getDealerApplication(parsedId.id);
-    if (actor && actor.audience !== "staff" && existing.applicant_user_id !== null && existing.applicant_user_id !== actor.user_id) {
+    const existing = await this.repository.getDealerApplication(parsedId.id);
+    if (!existing) {
+      throw new NotFoundException("经销商申请不存在");
+    }
+    if (
+      actor &&
+      actor.audience !== "staff" &&
+      existing.applicant_user_id !== null &&
+      existing.applicant_user_id !== actor.user_id
+    ) {
       throw new ForbiddenException("不能提交其他申请");
     }
 
-    const item = this.repository.submitDealerApplication(
+    const item = await this.repository.submitDealerApplication(
       parsedId.id,
       context.request_id,
       actor?.user_id ?? null,
@@ -155,12 +166,12 @@ export class DealersService {
     });
   }
 
-  reviewApplication(id: unknown, body: unknown) {
+  async reviewApplication(id: unknown, body: unknown) {
     const actor = this.authorization.requireStaffPermission("dealers:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ApplicationIdParamSchema, { id });
     const input = parseInput(DealerApplicationReviewSchema, body);
-    const result = this.repository.reviewDealerApplication(
+    const result = await this.repository.reviewDealerApplication(
       parsedId.id,
       input,
       actor.user_id,
@@ -173,16 +184,19 @@ export class DealersService {
     });
   }
 
-  getCompany() {
+  async getCompany() {
     const companyId = this.requireDealerCompanyId();
-    const item = this.repository.getDealerCompany(companyId);
+    const item = await this.repository.getDealerCompany(companyId);
+    if (!item) {
+      throw new NotFoundException("经销商企业不存在");
+    }
     return DealerCompanyMutationResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,
       item,
     });
   }
 
-  updateCompany(body: unknown) {
+  async updateCompany(body: unknown) {
     const actor = this.authorization.requireActor();
     const context = this.requestContext.requireContext();
     const companyId = this.requireDealerCompanyId();
@@ -191,7 +205,7 @@ export class DealersService {
       throw new ForbiddenException("企业成员不能修改企业状态");
     }
 
-    const item = this.repository.updateDealerCompany(companyId, input);
+    const item = await this.repository.updateDealerCompany(companyId, input);
 
     return DealerCompanyMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -199,12 +213,12 @@ export class DealersService {
     });
   }
 
-  updateCompanyById(id: unknown, body: unknown) {
+  async updateCompanyById(id: unknown, body: unknown) {
     const actor = this.authorization.requireStaffPermission("dealers:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(CompanyIdParamSchema, { id });
     const input = parseInput(DealerCompanyUpdateSchema, body);
-    const item = this.repository.updateDealerCompany(parsedId.id, input);
+    const item = await this.repository.updateDealerCompany(parsedId.id, input);
 
     return DealerCompanyMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -212,19 +226,18 @@ export class DealersService {
     });
   }
 
-  listAddresses() {
+  async listAddresses() {
     const companyId = this.requireDealerCompanyId();
-    return DealerAddressListResponseSchema.parse(
-      listResponse(this.repository.listDealerAddresses(companyId)),
-    );
+    const addresses = await this.repository.listDealerAddresses(companyId);
+    return DealerAddressListResponseSchema.parse(listResponse(addresses));
   }
 
-  createAddress(body: unknown) {
+  async createAddress(body: unknown) {
     const actor = this.authorization.requireActor();
     const context = this.requestContext.requireContext();
     const companyId = this.requireDealerCompanyId();
     const input = parseInput(DealerAddressCreateSchema, body);
-    const item = this.repository.createDealerAddress(companyId, input);
+    const item = await this.repository.createDealerAddress(companyId, input);
 
     return DealerAddressMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -232,7 +245,7 @@ export class DealersService {
     });
   }
 
-  listMembers(query: unknown) {
+  async listMembers(query: unknown) {
     const actor = this.authorization.requireActor();
     const parsed = parseInput(DealerMemberListQuerySchema, query);
     const companyId =
@@ -248,7 +261,7 @@ export class DealersService {
     }
 
     return DealerMemberListResponseSchema.parse(
-      this.repository.listDealerMembers({
+      await this.repository.listDealerMembers({
         company_id: companyId,
         status: parsed.status,
         page: parsed.page,
@@ -257,12 +270,12 @@ export class DealersService {
     );
   }
 
-  inviteMember(body: unknown) {
+  async inviteMember(body: unknown) {
     const actor = this.authorization.requireActor();
     const context = this.requestContext.requireContext();
     const companyId = this.requireDealerCompanyId();
     const input = parseInput(DealerMemberCreateSchema, body);
-    const item = this.repository.createDealerMember({
+    const item = await this.repository.createDealerMember({
       company_id: companyId,
       user_id: input.user_id,
       role: input.role,
@@ -275,19 +288,19 @@ export class DealersService {
     });
   }
 
-  listCompanies(query: unknown) {
+  async listCompanies(query: unknown) {
     this.authorization.requireStaffPermission("dealers:read");
     const parsed = parseInput(DealerCompanyListQuerySchema, query);
     return DealerCompanyListResponseSchema.parse(
-      this.repository.listDealerCompanies(parsed),
+      await this.repository.listDealerCompanies(parsed),
     );
   }
 
-  listAdminMembers(query: unknown) {
+  async listAdminMembers(query: unknown) {
     this.authorization.requireStaffPermission("dealers:read");
     const parsed = parseInput(DealerMemberListQuerySchema, query);
     return DealerMemberListResponseSchema.parse(
-      this.repository.listDealerMembers(parsed),
+      await this.repository.listDealerMembers(parsed),
     );
   }
 }

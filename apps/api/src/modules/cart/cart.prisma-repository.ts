@@ -1,193 +1,85 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
+import type { Cart, CartListQuery } from "@wemo/contracts";
 import type { DatabaseClient } from "@wemo/database";
+import { DATABASE_CLIENT } from "../../database/database.constants";
 
-import { CART_REPOSITORY, type CartRepository } from "./cart.repository";
-import type { Cart, CartItemUpsertInput, CartListQuery, CartMergeInput, CartMutationResponse } from "@wemo/contracts";
+import {
+  type CartContext,
+  type CartItemPricingInput,
+  type CartMergeInput,
+  type CartPage,
+  type CartPreviewPricingInput,
+  type CartPreviewPricingResult,
+  type CartRepository,
+} from "./cart.repository";
 
+const DEMO_CART_NOT_SUPPORTED = "Demo模式：暂不支持购物车持久化";
+
+/**
+ * Demo 模式：carts/cart_items 表已从数据库中移除，
+ * 购物车读写方法一律抛出明确错误，仅 previewPricing 基于 price 表真实计价。
+ */
 @Injectable()
 export class CartPrismaRepository implements CartRepository {
   constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
 
-  async getOrCreateCart(ctx: { channel: string; user_id: number | null; company_id: number | null; market: string; currency: string; dealer_company_id?: number }): Promise<CartMutationResponse["item"]> {
-    let cart = await this.database.cart.findFirst({
-      where: {
-        userId: ctx.user_id ?? undefined,
-        companyId: ctx.company_id ?? undefined,
-        status: "active",
-      },
-      include: { items: true },
-    });
-
-    if (!cart) {
-      cart = await this.database.cart.create({
-        data: {
-          userId: ctx.user_id,
-          companyId: ctx.company_id,
-          channel: ctx.channel,
-          market: ctx.market,
-          currency: ctx.currency,
-        },
-        include: { items: true },
-      });
-    }
-
-    return this.mapCart(cart);
+  async getOrCreateCart(ctx: CartContext): Promise<Cart> {
+    throw new Error(DEMO_CART_NOT_SUPPORTED);
   }
 
-  async listCarts(query: CartListQuery): Promise<{ items: Cart[]; total: number; page: number; page_size: number }> {
-    const where: any = {};
-    if (query.user_id) where.userId = query.user_id;
-    if (query.company_id) where.companyId = query.company_id;
-    if (query.status) where.status = query.status;
-
-    const [carts, total] = await Promise.all([
-      this.database.cart.findMany({
-        where,
-        skip: (query.page - 1) * query.page_size,
-        take: query.page_size,
-        include: { items: true },
-        orderBy: { updatedAt: "desc" },
-      }),
-      this.database.cart.count({ where }),
-    ]);
-
-    return {
-      items: carts.map(this.mapCart),
-      total,
-      page: query.page,
-      page_size: query.page_size,
-    };
+  async listCarts(query: CartListQuery): Promise<CartPage> {
+    return { items: [], total: 0, page: query.page, page_size: query.page_size };
   }
 
-  async upsertCartItem(cartId: number, input: CartItemUpsertInput): Promise<{ id: number; cart_id: number; variant_id: number; quantity: number; unit_price_minor: number; currency: string }> {
-    const item = await this.database.cartItem.upsert({
-      where: { cartId_variantId: { cartId, variantId: input.variant_id } },
-      create: {
-        cartId,
-        variantId: input.variant_id,
-        quantity: input.quantity,
-      },
-      update: {
-        quantity: input.quantity,
-      },
-      select: { id: true, cartId: true, variantId: true, quantity: true },
-    });
-
-    // Get price from variant (simplified for demo)
-    const variant = await this.database.variant.findUnique({
-      where: { id: input.variant_id },
-      select: { product: { select: { name: true } } },
-    });
-
-    return {
-      id: item.id,
-      cart_id: item.cartId,
-      variant_id: item.variantId,
-      quantity: item.quantity,
-      unit_price_minor: 0, // Would join with pricing table
-      currency: "USD",
-    };
+  async upsertCartItem(
+    cartId: number,
+    input: CartItemPricingInput,
+  ): Promise<Cart> {
+    throw new Error(DEMO_CART_NOT_SUPPORTED);
   }
 
   async removeCartItem(cartId: number, itemId: number): Promise<void> {
-    await this.database.cartItem.deleteMany({
-      where: { cartId, id: itemId },
-    });
+    // Demo：购物车无持久化，无需清理
   }
 
-  async mergeCarts(input: CartMergeInput): Promise<CartMutationResponse["item"]> {
-    const sourceItems = await this.database.cartItem.findMany({
-      where: { cartId: input.source_cart_id },
-    });
-
-    const targetCart = await this.database.cart.findUnique({
-      where: { id: input.target_cart_id },
-      include: { items: true },
-    });
-
-    if (!targetCart) {
-      throw new Error("Target cart not found");
-    }
-
-    // Merge items (simplified)
-    for (const item of sourceItems) {
-      const existingItem = targetCart.items.find(i => i.variantId === item.variantId);
-      if (existingItem) {
-        await this.database.cartItem.update({
-          where: { id: existingItem.id },
-          data: { quantity: existingItem.quantity + item.quantity },
-        });
-      } else {
-        await this.database.cartItem.create({
-          data: {
-            cartId: input.target_cart_id,
-            variantId: item.variantId,
-            quantity: item.quantity,
-          },
-        });
-      }
-    }
-
-    // Clear source cart
-    await this.database.cartItem.deleteMany({ where: { cartId: input.source_cart_id } });
-
-    const updatedCart = await this.database.cart.findUnique({
-      where: { id: input.target_cart_id },
-      include: { items: true },
-    });
-
-    return this.mapCart(updatedCart!);
+  async mergeCarts(input: CartMergeInput): Promise<Cart> {
+    throw new Error(DEMO_CART_NOT_SUPPORTED);
   }
 
   async clearCart(cartId: number): Promise<void> {
-    await this.database.cartItem.deleteMany({ where: { cartId } });
-    await this.database.cart.update({
-      where: { id: cartId },
-      data: { updatedAt: new Date() },
+    // Demo：购物车无持久化，无需清理
+  }
+
+  async previewPricing(
+    input: CartPreviewPricingInput,
+  ): Promise<CartPreviewPricingResult> {
+    const prices = await this.database.price.findMany({
+      where: {
+        variantId: { in: input.items.map(item => item.variant_id) },
+        market: input.market,
+        currency: input.currency,
+        dealerCompanyId: input.dealer_company_id ?? null,
+      },
+      orderBy: { amountMinor: "asc" },
     });
-  }
 
-  async previewPricing(input: { items: { variant_id: number; quantity: number }[]; market: string; currency: string; dealer_company_id?: number }): Promise<{ items: { variant_id: number; quantity: number; unit_price_minor: number; currency: string }[] }> {
-    const items = [];
-    for (const item of input.items) {
-      const price = await this.database.price.findFirst({
-        where: {
-          variantId: item.variant_id,
-          market: input.market,
-          currency: input.currency,
-          dealerCompanyId: input.dealer_company_id ?? undefined,
-        },
-        orderBy: { amountMinor: "asc" },
-      });
+    const priceMap = new Map(
+      prices.map(price => [price.variantId, price] as const),
+    );
 
-      items.push({
-        variant_id: item.variant_id,
-        quantity: item.quantity,
-        unit_price_minor: price?.amountMinor ?? 0,
-        currency: price?.currency ?? input.currency,
-      });
-    }
-
-    return { items };
-  }
-
-  private mapCart(cart: any): Cart {
     return {
-      id: cart.id,
-      user_id: cart.userId,
-      company_id: cart.companyId,
-      channel: cart.channel,
-      market: cart.market,
-      currency: cart.currency,
-      status: cart.status,
-      items: cart.items?.map((item: any) => ({
-        id: item.id,
-        cart_id: item.cartId,
-        variant_id: item.variantId,
-        quantity: item.quantity,
-        unit_price_minor: 0,
-        currency: cart.currency,
-      })) || [],
+      items: input.items.map(item => {
+        const price = priceMap.get(item.variant_id);
+        const unitPrice = price?.amountMinor ?? 0;
+        return {
+          variant_id: item.variant_id,
+          quantity: item.quantity,
+          unit_price_minor: unitPrice,
+          line_total_minor: unitPrice * item.quantity,
+          currency: price?.currency ?? input.currency,
+          snapshot: price?.rules ?? {},
+        };
+      }),
     };
   }
 }

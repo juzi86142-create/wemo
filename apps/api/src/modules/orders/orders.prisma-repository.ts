@@ -1,14 +1,15 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import type { DatabaseClient } from "@wemo/database";
 
-import { ORDERS_REPOSITORY, type OrdersRepository } from "./orders.repository";
-import type { Order, OrderCreateInput } from "@wemo/contracts";
+import { ORDERS_REPOSITORY, type OrderCreateCommand, type OrdersRepository } from "./orders.repository";
+import type { Order, OrderItem, OrderListQuery, OrderStatus } from "@wemo/contracts";
+import { DATABASE_CLIENT } from "../../database/database.constants";
 
 @Injectable()
 export class OrdersPrismaRepository implements OrdersRepository {
   constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
 
-  async listOrders(query: any): Promise<{ items: Order[]; total: number; page: number; page_size: number }> {
+  async listOrders(query: OrderListQuery): Promise<{ items: Order[]; total: number; page: number; page_size: number }> {
     const where: any = {};
     if (query.user_id) where.userId = query.user_id;
     if (query.company_id) where.companyId = query.company_id;
@@ -19,14 +20,13 @@ export class OrdersPrismaRepository implements OrdersRepository {
         where,
         skip: (query.page - 1) * query.page_size,
         take: query.page_size,
-        include: { items: true },
         orderBy: { createdAt: "desc" },
       }),
       this.database.order.count({ where }),
     ]);
 
     return {
-      items: orders.map(o => this.mapOrder(o)),
+      items: await Promise.all(orders.map((order) => this.toOrder(order))),
       total,
       page: query.page,
       page_size: query.page_size,
@@ -36,19 +36,19 @@ export class OrdersPrismaRepository implements OrdersRepository {
   async getOrderById(id: number): Promise<Order | null> {
     const order = await this.database.order.findUnique({
       where: { id },
-      include: { items: true },
     });
 
-    return order ? this.mapOrder(order) : null;
+    return order ? this.toOrder(order) : null;
   }
 
-  async createOrder(input: any): Promise<Order> {
+  async createOrder(input: OrderCreateCommand): Promise<Order> {
     const orderNo = `ORD-${Date.now()}`;
 
     const order = await this.database.$transaction(async (tx) => {
       const created = await tx.order.create({
         data: {
           orderNo,
+          requestId: input.request_id,
           channel: input.channel,
           userId: input.user_id,
           companyId: input.company_id,
@@ -58,16 +58,14 @@ export class OrdersPrismaRepository implements OrdersRepository {
           shippingMinor: input.shipping_minor,
           totalMinor: input.total_minor,
           status: input.status,
-          addressSnapshot: input.address_snapshot,
-          pricingSnapshot: input.pricing_snapshot,
+          addressSnapshot: input.address_snapshot as any,
+          pricingSnapshot: input.pricing_snapshot as any,
         },
-        include: { items: true },
       });
 
-      // Create order items
-      if (input.items?.length > 0) {
+      if (input.items.length > 0) {
         await tx.orderItem.createMany({
-          data: input.items.map((item: any) => ({
+          data: input.items.map((item) => ({
             orderId: created.id,
             variantId: item.variant_id,
             skuSnapshot: item.sku_snapshot,
@@ -76,7 +74,7 @@ export class OrdersPrismaRepository implements OrdersRepository {
             unitPriceMinor: item.unit_price_minor,
             taxMinor: item.tax_minor,
             totalMinor: item.total_minor,
-            detailSnapshot: item.detail_snapshot,
+            detailSnapshot: item.detail_snapshot as any,
           })),
         });
       }
@@ -84,36 +82,30 @@ export class OrdersPrismaRepository implements OrdersRepository {
       return created;
     });
 
-    return this.mapOrder(order);
+    return this.toOrder(order);
   }
 
   async findOrderByRequestId(requestId: string): Promise<Order | null> {
-    // In a real implementation, you'd have a request_id field on orders
-    // For demo, return null
-    return null;
+    const order = await this.database.order.findFirst({
+      where: { requestId },
+    });
+
+    return order ? this.toOrder(order) : null;
   }
 
-  async updateOrderStatus(id: number, status: string, note?: string): Promise<Order> {
+  async updateOrderStatus(id: number, status: OrderStatus, note?: string): Promise<Order> {
     const order = await this.database.order.update({
       where: { id },
       data: { status },
-      include: { items: true },
     });
 
-    return this.mapOrder(order);
+    await this.writeStatusAuditLog(id, status, "system", note);
+
+    return this.toOrder(order);
   }
 
   async reserveInventory(input: { variant_id: number; quantity: number; owner_type: string; owner_id: number; idempotency_key: string; market: string }): Promise<{ id: number }> {
-    // Check if reservation already exists (idempotency)
-    const existing = await this.database.inventoryReservation.findFirst({
-      where: { idempotencyKey: input.idempotency_key },
-    });
-
-    if (existing) {
-      return { id: existing.id };
-    }
-
-    // Find balance
+    // Demo 软实现：只校验库存存在性，不写库（inventory_reservations 表已下线）
     const balance = await this.database.inventoryBalance.findFirst({
       where: {
         variantId: input.variant_id,
@@ -125,81 +117,62 @@ export class OrdersPrismaRepository implements OrdersRepository {
       throw new Error("Insufficient inventory");
     }
 
-    // Create reservation and update balance in transaction
-    const result = await this.database.$transaction(async (tx) => {
-      const reservation = await tx.inventoryReservation.create({
-        data: {
-          inventoryBalanceId: balance.id,
-          ownerType: input.owner_type,
-          ownerId: input.owner_id,
-          quantity: input.quantity,
-          status: "active",
-          idempotencyKey: input.idempotency_key,
-        },
-        select: { id: true },
-      });
-
-      await tx.inventoryBalance.update({
-        where: { id: balance.id },
-        data: {
-          reserved: { increment: input.quantity },
-          available: { decrement: input.quantity },
-        },
-      });
-
-      return reservation;
+    console.log("[orders.reserveInventory][demo]", {
+      variant_id: input.variant_id,
+      quantity: input.quantity,
+      owner_type: input.owner_type,
+      owner_id: input.owner_id,
+      idempotency_key: input.idempotency_key,
+      market: input.market,
+      balance_id: balance.id,
     });
 
-    return { id: result.id };
+    return { id: 1 };
   }
 
   async releaseInventory(reservationId: number, requestId: string, reason: string): Promise<void> {
-    const reservation = await this.database.inventoryReservation.findUnique({
-      where: { id: reservationId },
-    });
-
-    if (!reservation) return;
-
-    await this.database.$transaction(async (tx) => {
-      await tx.inventoryReservation.update({
-        where: { id: reservationId },
-        data: { status: "released" },
-      });
-
-      await tx.inventoryBalance.update({
-        where: { id: reservation.inventoryBalanceId },
-        data: {
-          reserved: { decrement: reservation.quantity },
-          available: { increment: reservation.quantity },
-        },
-      });
-    });
+    // Demo 模式：预留/释放功能已下线，空实现
+    void reservationId;
+    void requestId;
+    void reason;
   }
 
-  async transitionOrder(orderId: number, status: string, requestId: string, note?: string): Promise<Order> {
+  async transitionOrder(orderId: number, status: OrderStatus, requestId: string, note?: string): Promise<Order> {
     const order = await this.database.order.update({
       where: { id: orderId },
       data: { status },
-      include: { items: true },
     });
 
-    // Create audit log
+    await this.writeStatusAuditLog(orderId, status, requestId, note);
+
+    return this.toOrder(order);
+  }
+
+  private async writeStatusAuditLog(orderId: number, status: OrderStatus, requestId: string, note?: string): Promise<void> {
     await this.database.auditLog.create({
       data: {
-        actorId: 1, // TODO: get from context
+        actorId: 1, // 演示环境：无认证态时兜底
         action: `order.status.${status}`,
         entity: "order",
         entityId: orderId,
-        after: { status },
+        after: note !== undefined ? { status, note } : { status },
         requestId,
         ip: null,
       },
     });
-
-    return this.mapOrder(order);
   }
 
-  private mapOrder(order: any): Order {
+  /** orders/order_items 无 relation 字段：订单行明细需单独查询后拼装 */
+  private async toOrder(order: any): Promise<Order> {
+    const items = await this.database.orderItem.findMany({
+      where: { orderId: order.id },
+      orderBy: { id: "asc" },
+    });
+
+    return this.mapOrder(order, items);
+  }
+
+  private mapOrder(order: any, items: any[]): Order {
     return {
       id: order.id,
       order_no: order.orderNo,
@@ -214,21 +187,27 @@ export class OrdersPrismaRepository implements OrdersRepository {
       status: order.status,
       address_snapshot: order.addressSnapshot,
       pricing_snapshot: order.pricingSnapshot,
-      items: order.items?.map((item: any) => ({
-        id: item.id,
-        order_id: item.orderId,
-        variant_id: item.variantId,
-        sku_snapshot: item.skuSnapshot,
-        name_snapshot: item.nameSnapshot,
-        quantity: item.quantity,
-        unit_price_minor: item.unitPriceMinor,
-        tax_minor: item.taxMinor,
-        total_minor: item.totalMinor,
-        detail_snapshot: item.detailSnapshot,
-      })) || [],
-      request_id: order.requestId,
+      items: items.map((item) => this.mapItem(item)),
+      status_history: [],
+      request_id: order.requestId ?? null,
       created_at: order.createdAt.toISOString(),
       updated_at: order.updatedAt.toISOString(),
+    };
+  }
+
+  private mapItem(item: any): OrderItem {
+    return {
+      id: item.id,
+      order_id: item.orderId,
+      variant_id: item.variantId,
+      sku_snapshot: item.skuSnapshot,
+      name_snapshot: item.nameSnapshot,
+      quantity: item.quantity,
+      unit_price_minor: item.unitPriceMinor,
+      tax_minor: item.taxMinor,
+      shipping_minor: 0, // order_items 表无 shipping_minor 列：订单级拆分不可得，按 0 返回
+      total_minor: item.totalMinor,
+      detail_snapshot: item.detailSnapshot ?? {},
     };
   }
 }

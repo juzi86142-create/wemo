@@ -1,7 +1,6 @@
 import { Inject, Injectable, UnauthorizedException } from "@nestjs/common";
 import {
   IntegrationListResponseSchema,
-  IntegrationMutationResponseSchema,
   WebhookDeliveryListQuerySchema,
   WebhookDeliveryListResponseSchema,
   WebhookDeliveryMutationResponseSchema,
@@ -30,20 +29,25 @@ export class IntegrationsService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  listIntegrations() {
+  async listIntegrations() {
     this.authorization.requireStaffPermission("integrations:read");
-    return IntegrationListResponseSchema.parse(this.repository.listIntegrations({ page: 1, page_size: 20 }));
-  }
-
-  listDeliveries(query: unknown) {
-    this.authorization.requireStaffPermission("integrations:read");
-    const parsed = parseInput(WebhookDeliveryListQuerySchema, query);
-    return WebhookDeliveryListResponseSchema.parse(
-      [],
+    return IntegrationListResponseSchema.parse(
+      await this.repository.listIntegrations({ page: 1, page_size: 20 }),
     );
   }
 
-  ingestWebhook(provider: unknown, body: unknown, signature: string | null) {
+  async listDeliveries(query: unknown) {
+    this.authorization.requireStaffPermission("integrations:read");
+    const parsed = parseInput(WebhookDeliveryListQuerySchema, query);
+    return WebhookDeliveryListResponseSchema.parse({
+      items: [],
+      total: 0,
+      page: parsed.page,
+      page_size: parsed.page_size,
+    });
+  }
+
+  async ingestWebhook(provider: unknown, body: unknown, signature: string | null) {
     const parsedProvider = parseInput(WebhookProviderParamSchema, { provider });
     const payload = parseInput(WebhookIngestSchema, body);
     const context = this.requestContext.requireContext();
@@ -53,23 +57,28 @@ export class IntegrationsService {
       throw new UnauthorizedException("Webhook 签名校验失败");
     }
 
+    const now = new Date().toISOString();
     return WebhookDeliveryMutationResponseSchema.parse({
       request_id: context.request_id,
       item: {
-        id: 1,
+        id: Date.now(),
+        integration_id: 1,
         provider: parsedProvider.provider,
+        event: payload.event,
+        status: "accepted",
+        idempotency_key: payload.idempotency_key,
         request_id: context.request_id,
-        actor_id: null,
-        signature,
-        signature_version: payload.signature_version,
-        ingest: payload,
-        verified,
+        attempt_count: 0,
+        failure_reason: null,
+        payload: payload.payload,
         response: {
           accepted: true,
           provider: parsedProvider.provider,
           event: payload.event,
         },
-        created_at: new Date().toISOString(),
+        created_at: now,
+        updated_at: now,
+        completed_at: null,
       },
     });
   }

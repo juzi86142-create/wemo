@@ -1,136 +1,85 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
+import type {
+  NotificationDelivery,
+  NotificationDeliveryCreateInput,
+  NotificationDeliveryListQuery,
+  NotificationTemplate,
+  NotificationTemplateUpdateInput,
+} from "@wemo/contracts";
 import type { DatabaseClient } from "@wemo/database";
+import { DATABASE_CLIENT } from "../../database/database.constants";
 
-import { NOTIFICATIONS_REPOSITORY, type NotificationsRepository } from "./notifications.repository";
-import type { NotificationTemplate, NotificationDelivery } from "@wemo/contracts";
+import {
+  type NotificationPage,
+  type NotificationsRepository,
+} from "./notifications.repository";
 
+const DEMO_NOTIFICATION_NOT_SUPPORTED = "Demo模式：暂不支持通知持久化";
+
+/**
+ * Demo 模式：notification_templates / notification_deliveries 表已从数据库中移除，
+ * 列表返回空分页，模板/重试类写操作抛错，recordDelivery 仅返回合成记录。
+ */
 @Injectable()
 export class NotificationsPrismaRepository implements NotificationsRepository {
   constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
 
-  async listNotificationTemplates(): Promise<{ items: NotificationTemplate[]; total: number; page: number; page_size: number }> {
-    const [templates, total] = await Promise.all([
-      this.database.notificationTemplate.findMany(),
-      this.database.notificationTemplate.count(),
-    ]);
-
-    return {
-      items: templates.map(t => this.mapTemplate(t)),
-      total,
-      page: 1,
-      page_size: total,
-    };
+  async listTemplates(query: {
+    page: number;
+    page_size: number;
+  }): Promise<NotificationPage<NotificationTemplate>> {
+    return { items: [], total: 0, page: query.page, page_size: query.page_size };
   }
 
-  async upsertNotificationTemplate(input: any): Promise<NotificationTemplate> {
-    const template = await this.database.notificationTemplate.upsert({
-      where: { id: input.id ?? 0 },
-      create: {
-        key: input.key,
-        name: input.name,
-        channel: input.channel,
-        subject: input.subject,
-        body: input.body,
-      },
-      update: {
-        name: input.name,
-        channel: input.channel,
-        subject: input.subject,
-        body: input.body,
-      },
-    });
-
-    return this.mapTemplate(template);
+  async upsertTemplate(
+    input: NotificationTemplateUpdateInput & { id?: number },
+  ): Promise<NotificationTemplate> {
+    throw new Error(DEMO_NOTIFICATION_NOT_SUPPORTED);
   }
 
   async getNotificationTemplateById(id: number): Promise<NotificationTemplate | null> {
-    const template = await this.database.notificationTemplate.findUnique({
-      where: { id },
-    });
-
-    return template ? this.mapTemplate(template) : null;
+    return null;
   }
 
-  async listNotificationDeliveries(query: any): Promise<{ items: NotificationDelivery[]; total: number; page: number; page_size: number }> {
-    const where: any = {};
-    if (query.recipient_user_id) where.userId = query.recipient_user_id;
-    if (query.status) where.status = query.status;
+  async listDeliveries(
+    query: NotificationDeliveryListQuery,
+  ): Promise<NotificationPage<NotificationDelivery>> {
+    return { items: [], total: 0, page: query.page, page_size: query.page_size };
+  }
 
-    const [deliveries, total] = await Promise.all([
-      this.database.notificationDelivery.findMany({
-        where,
-        skip: (query.page - 1) * query.page_size,
-        take: query.page_size,
-        orderBy: { createdAt: "desc" },
-      }),
-      this.database.notificationDelivery.count({ where }),
-    ]);
+  async recordDelivery(
+    input: NotificationDeliveryCreateInput & { request_id: string },
+  ): Promise<NotificationDelivery> {
+    console.log(`[notifications:demo] recordDelivery 忽略持久化`, {
+      template_code: input.template_code,
+      request_id: input.request_id,
+    });
 
+    const now = new Date().toISOString();
     return {
-      items: deliveries.map(d => this.mapDelivery(d)),
-      total,
-      page: query.page,
-      page_size: query.page_size,
+      id: Date.now(),
+      template_code: input.template_code,
+      recipient_user_id: input.recipient_user_id ?? null,
+      company_id: input.company_id ?? null,
+      audience: input.audience,
+      channel: input.channel,
+      status: input.status ?? "queued",
+      request_id: input.request_id,
+      payload: input.payload,
+      attempts: 0,
+      provider_message_id: input.provider_message_id ?? null,
+      failure_reason: input.failure_reason ?? null,
+      created_at: now,
+      sent_at: null,
+      updated_at: now,
     };
-  }
-
-  async recordNotificationDelivery(input: any): Promise<NotificationDelivery> {
-    const delivery = await this.database.notificationDelivery.create({
-      data: {
-        userId: input.recipient_user_id,
-        companyId: input.company_id,
-        templateKey: input.template_key || input.kind,
-        channel: input.channel,
-        status: "queued",
-        payload: input.payload || {},
-        sentAt: input.status === "sent" ? new Date() : null,
-      },
-    });
-
-    return this.mapDelivery(delivery);
   }
 
   async getNotificationDeliveryById(id: number): Promise<NotificationDelivery | null> {
-    const delivery = await this.database.notificationDelivery.findUnique({
-      where: { id },
-    });
-
-    return delivery ? this.mapDelivery(delivery) : null;
+    return null;
   }
 
-  async retryNotificationDelivery(id: number, requestId: string, reason: string): Promise<NotificationDelivery> {
-    const delivery = await this.database.notificationDelivery.update({
-      where: { id },
-      data: {
-        status: "queued",
-      },
-    });
-
-    return this.mapDelivery(delivery);
-  }
-
-  private mapTemplate(template: any): NotificationTemplate {
-    return {
-      id: template.id,
-      key: template.key,
-      name: template.name,
-      channel: template.channel,
-      subject: template.subject,
-      body: template.body,
-    };
-  }
-
-  private mapDelivery(delivery: any): NotificationDelivery {
-    return {
-      id: delivery.id,
-      recipient_user_id: delivery.userId,
-      company_id: delivery.companyId,
-      kind: delivery.templateKey,
-      channel: delivery.channel,
-      status: delivery.status,
-      payload: delivery.payload,
-      sent_at: delivery.sentAt?.toISOString() || null,
-      created_at: delivery.createdAt.toISOString(),
-    };
+  async retryDelivery(id: number, reason?: string): Promise<NotificationDelivery> {
+    throw new Error(DEMO_NOTIFICATION_NOT_SUPPORTED);
   }
 }
