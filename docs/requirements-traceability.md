@@ -21,12 +21,12 @@
 | 需求第 11 章：搜索推荐        | search/analytics 与搜索前端                                                                        | 搜索质量、授权过滤、无结果分析                          | planned     |
 | 需求第 12 章：多语言 SEO 分享 | localization/seo 与 `apps/storefront/src/features/platform`                                        | 翻译状态、URL、hreflang、Schema、Sitemap                | in-progress |
 | 需求第 13 章：UI/UX           | `packages/ui` 与 `apps/storefront`                                                                 | 组件、响应式、表单、WCAG 2.2 AA                         | planned     |
-| 需求第 14 章：数据模型        | `packages/database`、`packages/contracts`                                                          | 核心实体/字段字典；零物理外键                           | done        |
-| 需求第 15 章：接口集成        | `apps/api/src/modules/integrations`、`packages/contracts`                                          | Adapter、版本 API、错误结构、幂等任务                   | done        |
+| 需求第 14 章：数据模型        | `packages/database`、`packages/contracts`                                                          | 核心实体/字段字典（演示模式仅保留 30 张核心/支撑表）；零物理外键；购物车/预占/订阅/地址/通知/分析事件/集成/作业/报表等表已移除，契约保留、对应 API 为 stub | in-progress |
+| 需求第 15 章：接口集成        | `apps/api/src/modules/integrations`、`packages/contracts`                                          | Adapter、版本 API、错误结构、幂等任务（演示模式范围：outbox/集成表已移除，integrations/jobs 为 stub——列表空、写抛 demo 错误；统一错误结构与 request_id 真实生效） | in-progress |
 | 需求第 16 章：安全隐私合规    | auth/identity/media/payments/forms                                                                 | OWASP、隐私同意、儿童数据禁收、PCI 范围确认             | planned     |
 | 需求第 17 章：性能可用性运维  | 全部应用、基础设施                                                                                 | CWV、P95、缓存、备份恢复、监控告警                      | in-progress |
 | 需求第 18 章：数据分析        | analytics/reports                                                                                  | 事件字典与六类运营报表                                  | done        |
-| 需求第 19 章：通知            | notifications                                                                                      | 多语言模板、变量校验、追踪重试与收件组                  | done        |
+| 需求第 19 章：通知            | notifications                                                                                      | 多语言模板、变量校验、追踪重试与收件组（演示模式范围：模板/投递表已移除，notifications 为 stub——模板列表空、写入抛 demo 错误、recordDelivery 合成占位） | in-progress |
 | 需求第 20 章：迁移上线        | 迁移脚本与部署配置                                                                                 | `www.wemovetoy.com` 资产/URL 盘点、映射、环境和上线清单 | planned     |
 | 需求第 21 章：验收            | 全部工作区测试                                                                                     | 功能、兼容性、无障碍、性能、安全证据包                  | done        |
 | 需求第 22 章：技术架构        | 根工程、单前端、单体 API、共享包                                                                   | 前后端分离、SSR、PostgreSQL、Redis、存储、监控          | done        |
