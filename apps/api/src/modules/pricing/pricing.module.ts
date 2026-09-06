@@ -16,6 +16,6 @@ import { PricingService } from "./pricing.service";
       useClass: PricingPrismaRepository,
     },
   ],
-  exports: [PricingService],
+  exports: [PricingService, PRICING_REPOSITORY],
 })
 export class PricingModule {}

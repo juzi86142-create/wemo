@@ -85,7 +85,7 @@ async function seedMarkets() {
       currency: "USD",
       timezone: "America/New_York",
       fallbackPolicy: "default_locale",
-      locales: [{ locale: "en-US", language: en, pathPrefix: "", isDefault: true }],
+      locales: [{ locale: "en-US", language: en, pathPrefix: "en-us", isDefault: true }],
     },
     {
       code: "CN",

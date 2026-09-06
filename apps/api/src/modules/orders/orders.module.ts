@@ -17,5 +17,6 @@ import { OrdersService } from "./orders.service";
       useClass: OrdersPrismaRepository,
     },
   ],
+  exports: [ORDERS_REPOSITORY],
 })
 export class OrdersModule {}
