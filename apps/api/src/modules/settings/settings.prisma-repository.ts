@@ -14,7 +14,7 @@ export class SettingsPrismaRepository implements SettingsRepository {
     if (query.locale) where.locale = query.locale;
     if (query.key) where.key = query.key;
 
-    const settings = await this.database.siteSetting.findMany({
+    const settings = await this.database.systemSetting.findMany({
       where,
       include: { market: true, locale: true },
     });
@@ -23,7 +23,7 @@ export class SettingsPrismaRepository implements SettingsRepository {
   }
 
   async upsertSetting(input: SiteSettingUpsert): Promise<SiteSetting> {
-    const existing = await this.database.siteSetting.findFirst({
+    const existing = await this.database.systemSetting.findFirst({
       where: {
         key: input.key,
         marketId: input.market_id,
@@ -33,7 +33,7 @@ export class SettingsPrismaRepository implements SettingsRepository {
 
     let setting;
     if (existing) {
-      setting = await this.database.siteSetting.update({
+      setting = await this.database.systemSetting.update({
         where: { id: existing.id },
         data: {
           value: input.value,
@@ -43,7 +43,7 @@ export class SettingsPrismaRepository implements SettingsRepository {
         include: { market: true, locale: true },
       });
     } else {
-      setting = await this.database.siteSetting.create({
+      setting = await this.database.systemSetting.create({
         data: {
           key: input.key,
           marketId: input.market_id,
@@ -60,7 +60,7 @@ export class SettingsPrismaRepository implements SettingsRepository {
   }
 
   async getPublicSettings(market: string, locale: string, keys: string[]): Promise<SiteSetting[]> {
-    const settings = await this.database.siteSetting.findMany({
+    const settings = await this.database.systemSetting.findMany({
       where: {
         AND: [
           { market: { code: market } },

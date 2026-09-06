@@ -610,3 +610,98 @@ model Redirect {
 
   @@map("redirects")
 }
+
+model Form {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  fields      Json
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@map("forms")
+}
+
+model DataRequest {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  type      String
+  status    String    @default("pending")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("data_requests")
+}
+
+model Integration {
+  id         Int       @id @default(autoincrement())
+  name       String
+  type       String
+  config     Json
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([type, isActive])
+  @@map("integrations")
+}
+
+model JobDefinition {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  schedule    String
+  handler     String
+  status      String    @default("active")
+  config      Json
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, schedule])
+  @@map("job_definitions")
+}
+
+model JobExecution {
+  id          Int       @id @default(autoincrement())
+  jobId       Int       @map("job_id")
+  status      String
+  output      Json?
+  error       String?
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([jobId, createdAt])
+  @@index([status])
+  @@map("job_executions")
+}
+
+model ReportDefinition {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  category    String
+  params      Json
+  status      String    @default("active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([category, status])
+  @@map("report_definitions")
+}
+
+model ReportResult {
+  id           Int       @id @default(autoincrement())
+  definitionId Int       @map("definition_id")
+  params       Json
+  data         Json
+  generatedBy  String?   @map("generated_by")
+  format       String    @default("json")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([definitionId, createdAt])
+  @@map("report_results")
+}
