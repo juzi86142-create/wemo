@@ -1,4 +1,9 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import {
   MediaAssetCreateSchema,
   MediaAssetListQuerySchema,
@@ -10,10 +15,9 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { MediaPrismaRepository } from "./media.prisma-repository";
-import { MEDIA_REPOSITORY } from "./media.repository";
-import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
+import { MEDIA_REPOSITORY, type MediaRepository } from "./media.repository";
+import { RequestContextStore } from "../../runtime/request-context.store";
 
 const MediaIdParamSchema = z.object({
   id: EntityIdSchema,
@@ -45,31 +49,35 @@ function canAccessVisibility(
 export class MediaService {
   constructor(
     @Inject(MEDIA_REPOSITORY)
-    private readonly repository: MediaPrismaRepository,
+    private readonly repository: MediaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  listAssets(query: unknown) {
+  async listAssets(query: unknown) {
     const parsed = parseInput(MediaAssetListQuerySchema, query);
-    return MediaAssetListResponseSchema.parse(
-      this.repository.listAssets({ ...parsed, visibility: "public" }),
-    );
+    const result = await this.repository.listAssets({
+      ...parsed,
+      visibility: "public",
+    });
+    return MediaAssetListResponseSchema.parse(result);
   }
 
-  listAdminAssets(query: unknown) {
+  async listAdminAssets(query: unknown) {
     this.authorization.requireStaffPermission("media:read");
     const parsed = parseInput(MediaAssetListQuerySchema, query);
-    return MediaAssetListResponseSchema.parse(
-      this.repository.listAssets(parsed),
-    );
+    const result = await this.repository.listAssets(parsed);
+    return MediaAssetListResponseSchema.parse(result);
   }
 
-  getAsset(id: unknown) {
+  async getAsset(id: unknown) {
     const parsed = parseInput(MediaIdParamSchema, { id });
-    const asset = this.repository.getAssetByFileKey(parsed.id.toString());
+    const asset = await this.repository.getAssetById(parsed.id);
+    if (!asset) {
+      throw new NotFoundException("媒体资源不存在");
+    }
     canAccessVisibility(asset.visibility, this.authorization);
     return MediaAssetMutationResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,
@@ -77,21 +85,32 @@ export class MediaService {
     });
   }
 
-  getSignedUrl(id: unknown) {
+  async getSignedUrl(id: unknown) {
     const parsed = parseInput(MediaIdParamSchema, { id });
-    const asset = this.repository.getAssetByFileKey(parsed.id.toString());
+    const asset = await this.repository.getAssetById(parsed.id);
+    if (!asset) {
+      throw new NotFoundException("媒体资源不存在");
+    }
     canAccessVisibility(asset.visibility, this.authorization);
+    const baseUrl =
+      process.env.STOREFRONT_URL ?? "http://localhost:3000";
     return MediaSignedUrlResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,
-      item: { signed_url: `/media/${asset.file_key}` },
+      // Demo：文件二进制不上传对象存储，签发指向门户静态资源的链接
+      item: {
+        asset_id: asset.id,
+        url: `${baseUrl}/media/${encodeURIComponent(asset.file_key)}`,
+        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        method: "GET",
+      },
     });
   }
 
-  createAsset(body: unknown) {
-    const actor = this.authorization.requireStaffPermission("media:write");
+  async createAsset(body: unknown) {
+    this.authorization.requireStaffPermission("media:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(MediaAssetCreateSchema, body);
-    const item = this.repository.createAsset(input);
+    const item = await this.repository.createAsset(input);
 
     return MediaAssetMutationResponseSchema.parse({
       request_id: context.request_id,

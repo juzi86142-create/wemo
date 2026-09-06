@@ -1,80 +1,77 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
+import type { AuditLog, AuditLogQuery } from "@wemo/contracts";
 import type { DatabaseClient } from "@wemo/database";
 
-import { AUDIT_REPOSITORY, type AuditRepository } from "./audit.repository";
-import type { AuditEntry, AuditEntryCreateInput, AuditEntryQuery } from "@wemo/contracts";
+import { DATABASE_CLIENT } from "../../database/database.constants";
+import type {
+  AuditLogPage,
+  AuditLogRecordInput,
+  AuditRepository,
+} from "./audit.repository";
+
+type AuditLogRow = NonNullable<
+  Awaited<ReturnType<DatabaseClient["auditLog"]["findFirst"]>>
+>;
 
 @Injectable()
 export class AuditPrismaRepository implements AuditRepository {
-  constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
+  constructor(
+    @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
+  ) {}
 
-  async logEntry(input: AuditEntryCreateInput): Promise<AuditEntry> {
-    const entry = await this.database.auditEntry.create({
+  async recordLog(input: AuditLogRecordInput): Promise<AuditLog> {
+    const row = await this.database.auditLog.create({
       data: {
-        userId: input.user_id,
         actorId: input.actor_id,
         action: input.action,
-        resourceType: input.resource_type,
-        resourceId: input.resource_id,
-        before: input.before ?? {},
-        after: input.after ?? {},
-        ip: input.ip,
-        userAgent: input.user_agent,
+        entity: input.entity,
+        entityId: input.entity_id,
+        before: (input.before ?? null) as never,
+        after: (input.after ?? null) as never,
+        ip: input.ip ?? null,
+        requestId: input.request_id,
       },
     });
-
-    return {
-      id: entry.id,
-      user_id: entry.userId,
-      actor_id: entry.actorId,
-      action: entry.action,
-      resource_type: entry.resourceType,
-      resource_id: entry.resourceId,
-      before: entry.before as any,
-      after: entry.after as any,
-      ip: entry.ip,
-      user_agent: entry.userAgent,
-      created_at: entry.createdAt.toISOString(),
-    };
+    return this.mapRow(row);
   }
 
-  async queryEntries(query: AuditEntryQuery): Promise<{ items: AuditEntry[]; total: number }> {
-    const where: any = {};
-    if (query.user_id) where.userId = query.user_id;
-    if (query.action) where.action = query.action;
-    if (query.resource_type) where.resourceType = query.resource_type;
-    if (query.start_date && query.end_date) {
-      where.createdAt = {
-        gte: new Date(query.start_date),
-        lte: new Date(query.end_date),
-      };
-    }
+  async queryEntries(query: AuditLogQuery): Promise<AuditLogPage> {
+    const where: Record<string, unknown> = {};
+    if (query.actor_id !== undefined) where.actorId = query.actor_id;
+    if (query.action !== undefined) where.action = query.action;
+    if (query.entity !== undefined) where.entity = query.entity;
+    if (query.request_id !== undefined) where.requestId = query.request_id;
 
-    const [entries, total] = await Promise.all([
-      this.database.auditEntry.findMany({
-        where,
-        skip: (query.page - 1) * (query.page_size || 20),
-        take: query.page_size || 20,
+    const [rows, total] = await Promise.all([
+      this.database.auditLog.findMany({
+        where: where as never,
+        skip: (query.page - 1) * query.page_size,
+        take: query.page_size,
         orderBy: { createdAt: "desc" },
       }),
-      this.database.auditEntry.count({ where }),
+      this.database.auditLog.count({ where: where as never }),
     ]);
 
     return {
-      items: entries.map(e => ({
-        id: e.id,
-        user_id: e.userId,
-        actor_id: e.actorId,
-        action: e.action,
-        resource_type: e.resourceType,
-        resource_id: e.resourceId,
-        before: e.before as any,
-        after: e.after as any,
-        ip: e.ip,
-        user_agent: e.userAgent,
-        created_at: e.createdAt.toISOString(),
-      })),
+      items: rows.map((row) => this.mapRow(row)),
       total,
+      page: query.page,
+      page_size: query.page_size,
+    };
+  }
+
+  private mapRow(row: AuditLogRow): AuditLog {
+    return {
+      id: row.id,
+      actor_id: row.actorId ?? 1,
+      action: row.action,
+      entity: row.entity,
+      entity_id: row.entityId,
+      before: row.before as AuditLog["before"],
+      after: row.after as AuditLog["after"],
+      ip: row.ip,
+      request_id: row.requestId,
+      created_at: row.createdAt.toISOString(),
     };
   }
 }

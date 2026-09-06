@@ -1,91 +1,103 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
+import type { JsonValue, PlatformSetting, PlatformSettingMutation } from "@wemo/contracts";
 import type { DatabaseClient } from "@wemo/database";
 
-import { SETTINGS_REPOSITORY, type SettingsRepository } from "./settings.repository";
-import type { SiteSetting, SiteSettingQuery, SiteSettingUpsert } from "@wemo/contracts";
+import { DATABASE_CLIENT } from "../../database/database.constants";
+import { ApiHttpException } from "../../http/api-http.exception";
+import type { SettingsQuery, SettingsRepository } from "./settings.repository";
+
+type SystemSettingRow = NonNullable<
+  Awaited<ReturnType<DatabaseClient["systemSetting"]["findFirst"]>>
+>;
+
+/** Demo：输入未携带 updatedBy（更新人）时记系统账号 1 */
+const SYSTEM_ACTOR_ID = 1;
 
 @Injectable()
 export class SettingsPrismaRepository implements SettingsRepository {
-  constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
+  constructor(
+    @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
+  ) {}
 
-  async getSettings(query: SiteSettingQuery): Promise<SiteSetting[]> {
-    const where: any = {};
-    if (query.market) where.market = query.market;
-    if (query.locale) where.locale = query.locale;
-    if (query.key) where.key = query.key;
+  async getSettings(query: SettingsQuery): Promise<PlatformSetting[]> {
+    const where: Record<string, unknown> = {};
+    if (query.group_name !== undefined) where.groupName = query.group_name;
+    if (query.key !== undefined) where.key = query.key;
 
-    const settings = await this.database.systemSetting.findMany({
-      where,
-      include: { market: true, locale: true },
+    const rows = await this.database.systemSetting.findMany({
+      where: where as never,
+      orderBy: [{ groupName: "asc" }, { key: "asc" }],
     });
-
-    return settings.map(s => this.mapSetting(s));
+    return rows.map((row) => this.mapRow(row));
   }
 
-  async upsertSetting(input: SiteSettingUpsert): Promise<SiteSetting> {
-    const existing = await this.database.systemSetting.findFirst({
+  async upsertSetting(input: PlatformSettingMutation): Promise<PlatformSetting> {
+    const existing = await this.database.systemSetting.findUnique({
       where: {
-        key: input.key,
-        marketId: input.market_id,
-        localeId: input.locale_id,
+        groupName_key: { groupName: input.group_name, key: input.key },
       },
     });
 
-    let setting;
-    if (existing) {
-      setting = await this.database.systemSetting.update({
-        where: { id: existing.id },
-        data: {
-          value: input.value,
-          type: input.type,
-          isPublic: input.is_public ?? existing.isPublic,
-        },
-        include: { market: true, locale: true },
-      });
-    } else {
-      setting = await this.database.systemSetting.create({
-        data: {
-          key: input.key,
-          marketId: input.market_id,
-          localeId: input.locale_id,
-          value: input.value,
-          type: input.type,
-          isPublic: input.is_public ?? false,
-        },
-        include: { market: true, locale: true },
-      });
+    if (
+      input.expected_version !== undefined &&
+      existing &&
+      existing.version !== input.expected_version
+    ) {
+      throw new ApiHttpException(
+        "SETTING_VERSION_CONFLICT",
+        "设置已被其他请求修改，请刷新后重试",
+        409,
+      );
     }
 
-    return this.mapSetting(setting);
+    const nextVersion = existing
+      ? String(Number(existing.version) + 1)
+      : "1";
+    const row = existing
+      ? await this.database.systemSetting.update({
+          where: { id: existing.id },
+          data: {
+            // JsonValue → Prisma InputJsonValue 的相互转换，运行期由数据库 JSON 列兜底
+            value: input.value as never,
+            version: nextVersion,
+            updatedBy: SYSTEM_ACTOR_ID,
+          },
+        })
+      : await this.database.systemSetting.create({
+          data: {
+            groupName: input.group_name,
+            key: input.key,
+            value: input.value as never,
+            version: nextVersion,
+            updatedBy: SYSTEM_ACTOR_ID,
+          },
+        });
+
+    return this.mapRow(row);
   }
 
-  async getPublicSettings(market: string, locale: string, keys: string[]): Promise<SiteSetting[]> {
-    const settings = await this.database.systemSetting.findMany({
-      where: {
-        AND: [
-          { market: { code: market } },
-          { locale: { code: locale } },
-          { key: { in: keys } },
-          { isPublic: true },
-        ],
-      },
-      include: { market: true, locale: true },
+  async getPublicSettings(keys: string[]): Promise<PlatformSetting[]> {
+    // Demo：is_sensitive 不落库，所有设置均可视为公开可读，提供 keys 时仅返回这些 key
+    const rows = await this.database.systemSetting.findMany({
+      where:
+        keys.length > 0
+          ? { key: { in: keys } }
+          : {},
+      orderBy: [{ groupName: "asc" }, { key: "asc" }],
     });
-
-    return settings.map(s => this.mapSetting(s));
+    return rows.map((row) => this.mapRow(row));
   }
 
-  private mapSetting(setting: any): SiteSetting {
+  private mapRow(row: SystemSettingRow): PlatformSetting {
     return {
-      id: setting.id,
-      key: setting.key,
-      value: setting.value,
-      type: setting.type,
-      market: setting.market?.code || null,
-      locale: setting.locale?.code || null,
-      is_public: setting.isPublic,
-      created_at: setting.createdAt.toISOString(),
-      updated_at: setting.updatedAt.toISOString(),
+      id: row.id,
+      group_name: row.groupName,
+      key: row.key,
+      value: row.value as JsonValue,
+      version: row.version,
+      updated_by: row.updatedBy ?? SYSTEM_ACTOR_ID,
+      updated_at: row.updatedAt.toISOString(),
+      is_sensitive: false,
     };
   }
 }

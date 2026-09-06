@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import {
   ReturnCreateSchema,
   ReturnListQuerySchema,
@@ -30,25 +30,28 @@ export class ReturnsService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  listReturns(query: unknown) {
+  async listReturns(query: unknown) {
     const parsed = parseInput(ReturnListQuerySchema, query);
     const actor = this.requestContext.getActor();
-    const scope =
-      actor?.audience === "staff"
-        ? parsed
-        : actor?.audience === "dealer"
-          ? { ...parsed, company_id: actor.company_id ?? undefined }
-          : actor
-            ? { ...parsed, user_id: actor.user_id }
-            : parsed;
-    return ReturnListResponseSchema.parse(this.repository.listReturns(scope));
+    const scope = {
+      ...parsed,
+      ...(actor && actor.audience === "dealer" && actor.company_id
+        ? { company_id: actor.company_id }
+        : {}),
+      ...(actor && actor.audience !== "staff" && actor.audience !== "dealer"
+        ? { user_id: actor.user_id }
+        : {}),
+    };
+    return ReturnListResponseSchema.parse(
+      await this.repository.listReturns(scope),
+    );
   }
 
-  createReturn(body: unknown) {
+  async createReturn(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(ReturnCreateSchema, body);
     const actor = context.actor;
-    const item = this.repository.createReturn({
+    const item = await this.repository.createReturn({
       ...input,
       user_id: actor?.audience === "staff" ? null : actor?.user_id ?? null,
       company_id: actor?.company_id ?? null,
@@ -61,12 +64,12 @@ export class ReturnsService {
     });
   }
 
-  reviewReturn(id: unknown, body: unknown) {
+  async reviewReturn(id: unknown, body: unknown) {
     const context = this.requestContext.requireContext();
-    const actor = this.authorization.requireStaffPermission("returns:write");
+    this.authorization.requireStaffPermission("returns:write");
     const parsedId = parseInput(ReturnIdParamSchema, { id });
     const input = parseInput(ReturnReviewSchema, body);
-    const item = this.repository.reviewReturn(
+    const item = await this.repository.reviewReturn(
       parsedId.id,
       context.request_id,
       input.decision,

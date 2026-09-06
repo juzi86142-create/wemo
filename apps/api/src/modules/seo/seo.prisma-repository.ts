@@ -1,14 +1,28 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import type { DatabaseClient } from "@wemo/database";
+import type { SeoRedirect, SeoRedirectCreateInput } from "@wemo/contracts";
 
-import { SEO_REPOSITORY, type SeoRepository } from "./seo.repository";
-import type { SeoMetadata, SeoQuery, SeoResult } from "@wemo/contracts";
+import { DATABASE_CLIENT } from "../../database/database.constants";
+import {
+  SEO_REPOSITORY,
+  type SeoPageQuery,
+  type SeoPageResult,
+  type SeoRepository,
+} from "./seo.repository";
+
+function readSeoRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
 
 @Injectable()
 export class SeoPrismaRepository implements SeoRepository {
-  constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
+  constructor(
+    @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
+  ) {}
 
-  async getPageSeo(query: SeoQuery): Promise<SeoResult | null> {
+  async getPageSeo(query: SeoPageQuery): Promise<SeoPageResult | null> {
     const entry = await this.database.contentEntry.findFirst({
       where: {
         market: query.market,
@@ -20,73 +34,68 @@ export class SeoPrismaRepository implements SeoRepository {
 
     if (!entry) return null;
 
+    const seo = readSeoRecord(entry.seo);
     return {
-      meta_title: entry.seo?.title || entry.title,
-      meta_description: entry.seo?.description || "",
-      keywords: entry.seo?.keywords || [],
-      canonical_url: `/${entry.market}/${entry.locale}/${entry.slug}`,
+      meta_title:
+        typeof seo.title === "string" && seo.title.length > 0
+          ? seo.title
+          : entry.title,
+      meta_description:
+        typeof seo.description === "string" ? seo.description : "",
+      canonical_url:
+        typeof seo.canonical_url === "string"
+          ? seo.canonical_url
+          : `/${entry.market}/${entry.locale}/${entry.slug}`,
+      no_index:
+        typeof seo.indexable === "boolean" ? !seo.indexable : false,
     };
   }
 
-  async savePageSeo(input: SeoMetadata): Promise<SeoMetadata> {
-    const entry = await this.database.contentEntry.update({
-      where: { id: input.id },
-      data: {
-        seo: {
-          title: input.title,
-          description: input.description,
-          keywords: input.keywords,
-        },
-      },
+  async listRedirects(): Promise<SeoRedirect[]> {
+    const rows = await this.database.redirect.findMany({
+      orderBy: { id: "asc" },
     });
 
-    return {
-      id: entry.id,
-      page_type: entry.type,
-      page_id: entry.id.toString(),
-      market: entry.market,
-      locale: entry.locale,
-      slug: entry.slug,
-      title: entry.seo?.title || "",
-      description: entry.seo?.description || "",
-      keywords: entry.seo?.keywords || [],
-      og_image: "",
-      no_index: false,
-    };
+    return rows.map((row) => ({
+      id: row.id,
+      source_path: row.sourcePath,
+      target_path: row.targetPath,
+      status_code: row.statusCode,
+      created_at: row.createdAt.toISOString(),
+      updated_at: row.createdAt.toISOString(),
+    }));
   }
 
-  async listSeoPages(query: any): Promise<{ items: SeoMetadata[]; total: number; page: number; page_size: number }> {
-    const [entries, total] = await Promise.all([
-      this.database.contentEntry.findMany({
-        where: {
-          status: "published",
-          seo: { not: {} },
-        },
-        skip: (query.page - 1) * query.page_size,
-        take: query.page_size,
-      }),
-      this.database.contentEntry.count({
-        where: { status: "published", seo: { not: {} } },
-      }),
-    ]);
+  async upsertRedirect(input: SeoRedirectCreateInput): Promise<SeoRedirect> {
+    const existing = await this.database.redirect.findUnique({
+      where: { sourcePath: input.source_path },
+    });
+
+    const row = existing
+      ? await this.database.redirect.update({
+          where: { id: existing.id },
+          data: {
+            targetPath: input.target_path,
+            ...(input.status_code !== undefined
+              ? { statusCode: input.status_code }
+              : {}),
+          },
+        })
+      : await this.database.redirect.create({
+          data: {
+            sourcePath: input.source_path,
+            targetPath: input.target_path,
+            statusCode: input.status_code ?? 301,
+          },
+        });
 
     return {
-      items: entries.map(e => ({
-        id: e.id,
-        page_type: e.type,
-        page_id: e.id.toString(),
-        market: e.market,
-        locale: e.locale,
-        slug: e.slug,
-        title: e.seo?.title || "",
-        description: e.seo?.description || "",
-        keywords: e.seo?.keywords || [],
-        og_image: "",
-        no_index: false,
-      })),
-      total,
-      page: query.page,
-      page_size: query.page_size,
+      id: row.id,
+      source_path: row.sourcePath,
+      target_path: row.targetPath,
+      status_code: row.statusCode,
+      created_at: row.createdAt.toISOString(),
+      updated_at: row.createdAt.toISOString(),
     };
   }
 }

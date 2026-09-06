@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { HealthService } from "./health.service";
+import { HealthService } from "../src/health/health.service";
 
 describe("HealthService", () => {
   it("返回稳定的健康状态", () => {

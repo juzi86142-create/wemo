@@ -1,10 +1,14 @@
-import type { SiteSetting, SiteSettingQuery, SiteSettingUpsert } from "@wemo/contracts";
-import type { DatabaseClient } from "@wemo/database";
+import type { PlatformSetting, PlatformSettingMutation } from "@wemo/contracts";
 
 export const SETTINGS_REPOSITORY = Symbol("SETTINGS_REPOSITORY");
 
+export type SettingsQuery = {
+  group_name?: string;
+  key?: string;
+};
+
 export interface SettingsRepository {
-  getSettings(query: SiteSettingQuery): Promise<SiteSetting[]>;
-  upsertSetting(input: SiteSettingUpsert): Promise<SiteSetting>;
-  getPublicSettings(market: string, locale: string, keys: string[]): Promise<SiteSetting[]>;
+  getSettings(query: SettingsQuery): Promise<PlatformSetting[]>;
+  upsertSetting(input: PlatformSettingMutation): Promise<PlatformSetting>;
+  getPublicSettings(keys: string[]): Promise<PlatformSetting[]>;
 }

@@ -5,7 +5,6 @@ import {
   SeoRedirectMutationResponseSchema,
   SeoSitemapResponseSchema,
 } from "@wemo/contracts/content";
-import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
@@ -20,10 +19,6 @@ const SeoMetadataQuerySchema = z.object({
   locale: z.string().min(2).optional(),
 });
 
-const SeoRedirectIdParamSchema = z.object({
-  id: EntityIdSchema,
-});
-
 @Injectable()
 export class SeoService {
   constructor(
@@ -35,19 +30,21 @@ export class SeoService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  getMetadata(query: unknown) {
+  async getMetadata(query: unknown) {
     const parsed = parseInput(SeoMetadataQuerySchema, query);
-    const result = this.repository.getPageSeo({
+    const result = await this.repository.getPageSeo({
       market: parsed.market ?? this.requestContext.getMarket(),
       locale: parsed.locale ?? this.requestContext.getLocale(),
       slug: parsed.path,
     });
-    return result || {
-      canonical_url: "",
-      meta_description: "",
-      meta_title: "",
-      no_index: false,
-    };
+    return (
+      result || {
+        canonical_url: "",
+        meta_description: "",
+        meta_title: "",
+        no_index: false,
+      }
+    );
   }
 
   getSitemap() {
@@ -58,25 +55,20 @@ export class SeoService {
     });
   }
 
-  listRedirects() {
+  async listRedirects() {
     this.authorization.requireStaffPermission("seo:read");
-    return SeoRedirectListResponseSchema.parse([]);
+    const items = await this.repository.listRedirects();
+    return SeoRedirectListResponseSchema.parse(items);
   }
 
-  upsertRedirect(body: unknown) {
-    const actor = this.authorization.requireStaffPermission("seo:write");
+  async upsertRedirect(body: unknown) {
+    this.authorization.requireStaffPermission("seo:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(SeoRedirectCreateSchema, body);
+    const item = await this.repository.upsertRedirect(input);
     return SeoRedirectMutationResponseSchema.parse({
       request_id: context.request_id,
-      item: {
-        id: 1,
-        from_path: input.from_path,
-        to_path: input.to_path,
-        status_code: input.status_code,
-        market: input.market,
-        locale: input.locale,
-      },
+      item,
     });
   }
 }

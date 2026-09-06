@@ -13,8 +13,8 @@ import { z } from "zod";
 import { AuthorizationService } from "../../runtime/authorization.service";
 import { PaymentsPrismaRepository } from "./payments.prisma-repository";
 import { PAYMENTS_REPOSITORY } from "./payments.repository";
-import { OrdersPrismaRepository } from "../orders/orders.prisma-repository";
 import { ORDERS_REPOSITORY } from "../orders/orders.repository";
+import type { OrdersRepository } from "../orders/orders.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
@@ -28,23 +28,28 @@ export class PaymentsService {
     @Inject(PAYMENTS_REPOSITORY)
     private readonly paymentsRepository: PaymentsPrismaRepository,
     @Inject(ORDERS_REPOSITORY)
-    private readonly ordersRepository: OrdersPrismaRepository,
+    private readonly ordersRepository: OrdersRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  listPayments(query: unknown) {
+  async listPayments(query: unknown) {
     this.authorization.requireStaffPermission("payments:read");
     const parsed = parseInput(PaymentListQuerySchema, query);
-    return PaymentListResponseSchema.parse(this.paymentsRepository.listPayments(parsed));
+    return PaymentListResponseSchema.parse(
+      await this.paymentsRepository.listPayments(parsed),
+    );
   }
 
-  createPayment(body: unknown) {
+  async createPayment(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(PaymentCreateSchema, body);
-    const order = this.ordersRepository.getOrderById(input.order_id);
+    const order = await this.ordersRepository.getOrderById(input.order_id);
+    if (!order) {
+      throw new NotFoundException("订单不存在");
+    }
     const actor = context.actor;
     if (
       actor &&
@@ -60,11 +65,12 @@ export class PaymentsService {
         ? { ...(input.payload as Record<string, unknown>) }
         : {};
 
-    const item = this.paymentsRepository.createPayment({
+    const item = await this.paymentsRepository.createPayment({
       amount_minor: input.amount_minor ?? order.total_minor,
       idempotency_key: input.idempotency_key,
       order_id: input.order_id,
       provider: input.provider,
+      currency: order.currency,
       request_id: context.request_id,
       payload: {
         ...payload,
@@ -81,14 +87,22 @@ export class PaymentsService {
     });
   }
 
-  capturePayment(id: unknown, body: unknown) {
+  async capturePayment(id: unknown, body: unknown) {
     const context = this.requestContext.requireContext();
-    const actor = this.authorization.requireActor();
+    this.authorization.requireActor();
     const parsedId = parseInput(PaymentIdParamSchema, { id });
     const input = parseInput(PaymentCaptureSchema, body);
-    const before = this.paymentsRepository.getPaymentById(parsedId.id);
-    const item = this.paymentsRepository.capturePayment(parsedId.id, context.request_id, input);
-    this.ordersRepository.transitionOrder(item.order_id, "paid", context.request_id, "payment captured");
+    const item = await this.paymentsRepository.capturePayment(
+      parsedId.id,
+      context.request_id,
+      input,
+    );
+    await this.ordersRepository.transitionOrder(
+      item.order_id,
+      "paid",
+      context.request_id,
+      "payment captured",
+    );
 
     return PaymentMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -96,15 +110,20 @@ export class PaymentsService {
     });
   }
 
-  refundPayment(id: unknown, body: unknown) {
+  async refundPayment(id: unknown, body: unknown) {
     const context = this.requestContext.requireContext();
-    const actor = this.authorization.requireActor();
+    this.authorization.requireActor();
     const parsedId = parseInput(PaymentIdParamSchema, { id });
     const input = parseInput(PaymentRefundSchema, body);
-    const item = this.paymentsRepository.refundPayment(parsedId.id, input as { amount_minor?: number | undefined; reason?: string | undefined }, context.request_id);
+    const item = await this.paymentsRepository.refundPayment(parsedId.id, input, context.request_id);
     if (item.status === "refunded") {
       try {
-        this.ordersRepository.transitionOrder(item.order_id, "refunded", context.request_id, input.reason);
+        await this.ordersRepository.transitionOrder(
+          item.order_id,
+          "refunded",
+          context.request_id,
+          input.reason,
+        );
       } catch {
         // keep payment history even if order status no longer accepts refund transition
       }

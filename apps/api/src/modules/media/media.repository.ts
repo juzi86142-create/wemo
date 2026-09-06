@@ -1,11 +1,20 @@
-import type { MediaAsset, MediaAssetCreateInput, MediaAssetListQuery, MediaAssetListResponse } from "@wemo/contracts";
-import type { DatabaseClient } from "@wemo/database";
+import type {
+  MediaAsset,
+  MediaAssetCreateInput,
+  MediaAssetListQuery,
+} from "@wemo/contracts";
 
 export const MEDIA_REPOSITORY = Symbol("MEDIA_REPOSITORY");
 
+export type MediaAssetPage = {
+  items: MediaAsset[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
 export interface MediaRepository {
-  listAssets(query: MediaAssetListQuery): Promise<MediaAssetListResponse>;
-  getAssetByFileKey(fileKey: string): Promise<MediaAsset | null>;
+  listAssets(query: MediaAssetListQuery): Promise<MediaAssetPage>;
+  getAssetById(id: number): Promise<MediaAsset | null>;
   createAsset(input: MediaAssetCreateInput): Promise<MediaAsset>;
-  updateAsset(fileKey: string, input: Partial<MediaAssetCreateInput>): Promise<MediaAsset>;
 }

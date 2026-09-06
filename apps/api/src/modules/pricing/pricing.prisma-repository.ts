@@ -1,90 +1,165 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { DatabaseClient } from "@wemo/database";
+import type {
+  PricingPreviewRequest,
+  PricingRecord,
+  PricingRecordListQuery,
+} from "@wemo/contracts";
 
-import { PRICING_REPOSITORY, type PricingRepository } from "./pricing.repository";
+import { DATABASE_CLIENT } from "../../database/database.constants";
+import {
+  type Page,
+  type PricePreview,
+  type PricePreviewItem,
+  type PriceListSummary,
+  type PriceRecordCreateInput,
+  type PricingRepository,
+} from "./pricing.repository";
+
+type PriceRow = NonNullable<
+  Awaited<ReturnType<DatabaseClient["price"]["findFirst"]>>
+>;
+
+/** Prisma 写入端 rules 字段接受的类型（区别于读取端输出的 JsonValue）。 */
+type PriceRulesWriteValue = Parameters<
+  DatabaseClient["price"]["create"]
+>[0]["data"]["rules"];
+
+function toIso(value: Date | null): string | null {
+  return value === null ? null : value.toISOString();
+}
+
+/** valid_from / valid_to：字符串 -> Date，null/undefined -> null（null 表示无日期限制）。 */
+function toDateOrNull(value: string | null | undefined): Date | null {
+  return value ? new Date(value) : null;
+}
 
 @Injectable()
 export class PricingPrismaRepository implements PricingRepository {
   constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
 
-  async previewPricing(input: any): Promise<any> {
+  async previewPricing(input: PricingPreviewRequest): Promise<PricePreview> {
+    const variantIds = [...new Set(input.items.map(item => item.variant_id))];
+
     const prices = await this.database.price.findMany({
       where: {
-        variantId: { in: input.items.map((i: any) => i.variant_id) },
-        market: input.market,
-        currency: input.currency,
-        dealerCompanyId: input.dealer_company_id ?? undefined,
+        variantId: { in: variantIds },
+        ...(input.market !== undefined ? { market: input.market } : {}),
+        ...(input.currency !== undefined ? { currency: input.currency } : {}),
+        ...(input.dealer_company_id !== undefined
+          ? { dealerCompanyId: input.dealer_company_id }
+          : {}),
+        ...(input.dealer_tier_id !== undefined
+          ? { dealerTierId: input.dealer_tier_id }
+          : {}),
+        ...(input.price_list_id !== undefined
+          ? { priceListId: input.price_list_id }
+          : {}),
       },
-      orderBy: { amountMinor: "asc" },
+      orderBy: { createdAt: "asc" },
     });
 
-    const priceMap = new Map(prices.map(p => [p.variantId, p]));
+    const byVariant = new Map<number, PriceRow[]>();
+    for (const price of prices) {
+      const bucket = byVariant.get(price.variantId);
+      if (bucket) bucket.push(price);
+      else byVariant.set(price.variantId, [price]);
+    }
+
+    const items: PricePreviewItem[] = input.items.map(item => {
+      const price = this.pickPrice(byVariant.get(item.variant_id) ?? [], input);
+      const unitPrice = price?.amountMinor ?? 0;
+      return {
+        variant_id: item.variant_id,
+        quantity: item.quantity,
+        currency: price?.currency ?? input.currency ?? "USD",
+        price_type: price?.priceType ?? "default",
+        price_record_id: price?.id ?? 0,
+        dealer_company_id: price?.dealerCompanyId ?? null,
+        dealer_tier_id: price?.dealerTierId ?? null,
+        price_list_id: price?.priceListId ?? null,
+        unit_price_minor: unitPrice,
+        line_total_minor: unitPrice * item.quantity,
+        min_quantity: price?.minQuantity ?? 1,
+        valid_from: toIso(price?.validFrom ?? null),
+        valid_to: toIso(price?.validTo ?? null),
+        snapshot: price
+          ? {
+              id: price.id,
+              market: price.market,
+              currency: price.currency,
+              price_type: price.priceType,
+              min_quantity: price.minQuantity,
+            }
+          : {},
+      };
+    });
 
     return {
-      items: input.items.map((item: any) => {
-        const price = priceMap.get(item.variant_id);
-        return {
-          variant_id: item.variant_id,
-          quantity: item.quantity,
-          unit_price_minor: price?.amountMinor ?? 0,
-          line_total_minor: (price?.amountMinor ?? 0) * item.quantity,
-          currency: price?.currency ?? input.currency,
-          snapshot: {},
-        };
-      }),
-      subtotal_minor: 0,
-      tax_minor: 0,
-      shipping_minor: 0,
-      total_minor: 0,
-      currency: input.currency,
+      // 请求未指定币种时以命中的价格记录为准，仍为空时兜底 USD（正常应由调用方带 currency）。
+      currency: input.currency ?? items[0]?.currency ?? "USD",
+      subtotal_minor: items.reduce((sum, item) => sum + item.line_total_minor, 0),
+      source: "price_table",
+      items,
     };
   }
 
-  async listPriceRecords(query: any): Promise<{ items: any[]; total: number; page: number; page_size: number }> {
+  async listPriceRecords(
+    query: PricingRecordListQuery,
+  ): Promise<Page<PricingRecord>> {
+    const page = query.page;
+    const pageSize = query.page_size;
+    const where = {
+      ...(query.variant_id !== undefined ? { variantId: query.variant_id } : {}),
+      ...(query.market !== undefined ? { market: query.market } : {}),
+      ...(query.currency !== undefined ? { currency: query.currency } : {}),
+      ...(query.price_type !== undefined ? { priceType: query.price_type } : {}),
+    };
+
     const [records, total] = await Promise.all([
       this.database.price.findMany({
-        skip: (query.page - 1) * query.page_size,
-        take: query.page_size,
-        include: { variant: true },
+        where,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        orderBy: { createdAt: "desc" },
       }),
-      this.database.price.count(),
+      this.database.price.count({ where }),
     ]);
 
     return {
-      items: records.map(r => this.mapPriceRecord(r)),
+      items: records.map(record => this.mapPriceRecord(record)),
       total,
-      page: query.page,
-      page_size: query.page_size,
+      page,
+      page_size: pageSize,
     };
   }
 
-  async createPriceRecord(input: any): Promise<any> {
-    const price = await this.database.price.create({
-      data: {
-        variantId: input.variant_id,
-        priceListId: input.price_list_id,
-        dealerTierId: input.dealer_tier_id,
-        dealerCompanyId: input.dealer_company_id,
-        market: input.market,
-        currency: input.currency,
-        priceType: input.price_type,
-        amountMinor: input.amount_minor,
-        minQuantity: input.min_quantity ?? 1,
-        rules: input.rules ?? {},
-        validFrom: input.valid_from ? new Date(input.valid_from) : null,
-        validTo: input.valid_to ? new Date(input.valid_to) : null,
-      },
-      include: { variant: true },
-    });
+  async createPriceRecord(input: PriceRecordCreateInput): Promise<PricingRecord> {
+    if (input.id !== undefined) {
+      const existing = await this.database.price.findUnique({
+        where: { id: input.id },
+      });
+      if (!existing) {
+        throw new NotFoundException(`price record ${input.id} 不存在`);
+      }
+      const updated = await this.database.price.update({
+        where: { id: input.id },
+        data: this.buildPriceData(input, existing),
+      });
+      return this.mapPriceRecord(updated);
+    }
 
-    return this.mapPriceRecord(price);
+    const created = await this.database.price.create({
+      data: this.buildPriceData(input),
+    });
+    return this.mapPriceRecord(created);
   }
 
-  async listPriceLists(): Promise<any[]> {
+  async listPriceLists(): Promise<PriceListSummary[]> {
     const priceLists = await this.database.priceList.findMany({
       where: { status: "active" },
+      orderBy: { code: "asc" },
     });
-
     return priceLists.map(pl => ({
       id: pl.id,
       code: pl.code,
@@ -94,7 +169,83 @@ export class PricingPrismaRepository implements PricingRepository {
     }));
   }
 
-  private mapPriceRecord(price: any): any {
+  /**
+   * 确定性取价：企业专属 > 企业价格表 > 经销商等级价 > 默认 B2B（三个维度均为空）> 任意一条。
+   * dealer_company_id / dealer_tier_id / price_list_id 未提供时，对应档位不作为候选。
+   */
+  private pickPrice(
+    candidates: PriceRow[],
+    input: {
+      dealer_company_id?: number | undefined;
+      dealer_tier_id?: number | undefined;
+      price_list_id?: number | undefined;
+    },
+  ): PriceRow | null {
+    if (candidates.length === 0) return null;
+    const matchers: Array<(price: PriceRow) => boolean> = [
+      price =>
+        input.dealer_company_id !== undefined &&
+        price.dealerCompanyId === input.dealer_company_id,
+      price =>
+        input.dealer_tier_id !== undefined &&
+        price.dealerTierId === input.dealer_tier_id,
+      price =>
+        input.price_list_id !== undefined &&
+        price.priceListId === input.price_list_id,
+      price =>
+        price.dealerCompanyId === null &&
+        price.dealerTierId === null &&
+        price.priceListId === null,
+    ];
+    for (const matches of matchers) {
+      const hit = candidates.find(matches);
+      if (hit) return hit;
+    }
+    return candidates[0] ?? null;
+  }
+
+  private buildPriceData(
+    input: PriceRecordCreateInput,
+    existing?: PriceRow | null,
+  ) {
+    // create 必填字段始终存在；update 时缺失字段回落到 existing 保留原值。
+    return {
+      variantId: input.variant_id ?? existing?.variantId ?? 0,
+      market: input.market ?? existing?.market ?? "",
+      currency: input.currency ?? existing?.currency ?? "USD",
+      priceType: input.price_type ?? existing?.priceType ?? "default",
+      amountMinor: input.amount_minor ?? existing?.amountMinor ?? 0,
+      minQuantity: input.min_quantity ?? existing?.minQuantity ?? 1,
+      rules:
+        input.rules !== undefined
+          ? (input.rules as PriceRulesWriteValue)
+          : ((existing?.rules ?? {}) as PriceRulesWriteValue),
+      validFrom:
+        input.valid_from !== undefined
+          ? toDateOrNull(input.valid_from)
+          : (existing?.validFrom ?? null),
+      validTo:
+        input.valid_to !== undefined
+          ? toDateOrNull(input.valid_to)
+          : (existing?.validTo ?? null),
+      priceListId:
+        input.price_list_id !== undefined
+          ? (input.price_list_id ?? null)
+          : (existing?.priceListId ?? null),
+      dealerTierId:
+        input.dealer_tier_id !== undefined
+          ? (input.dealer_tier_id ?? null)
+          : (existing?.dealerTierId ?? null),
+      dealerCompanyId:
+        input.dealer_company_id !== undefined
+          ? (input.dealer_company_id ?? null)
+          : (existing?.dealerCompanyId ?? null),
+    };
+  }
+
+  private mapPriceRecord(price: PriceRow): PricingRecord {
+    // prices 表没有 updated_at 列，读取侧用 created_at 兜底。
+    const createdAt = price.createdAt.toISOString();
     return {
       id: price.id,
       variant_id: price.variantId,
@@ -106,10 +257,11 @@ export class PricingPrismaRepository implements PricingRepository {
       price_type: price.priceType,
       amount_minor: price.amountMinor,
       min_quantity: price.minQuantity,
-      rules: price.rules,
-      valid_from: price.validFrom?.toISOString() || null,
-      valid_to: price.validTo?.toISOString() || null,
-      created_at: price.createdAt.toISOString(),
+      rules: price.rules as PricingRecord["rules"],
+      valid_from: toIso(price.validFrom),
+      valid_to: toIso(price.validTo),
+      created_at: createdAt,
+      updated_at: createdAt,
     };
   }
 }

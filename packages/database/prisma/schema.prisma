@@ -373,6 +373,24 @@ model Shipment {
   @@map("shipments")
 }
 
+model ReturnRequest {
+  id          Int      @id @default(autoincrement())
+  orderId     Int      @map("order_id")
+  userId      Int?     @map("user_id")
+  companyId   Int?     @map("company_id")
+  status      String
+  reason      String
+  items       Json
+  attachments Json
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([orderId])
+  @@index([userId, status])
+  @@index([companyId, status])
+  @@map("return_requests")
+}
+
 // === 内容 ===
 model ContentEntry {
   id          Int       @id @default(autoincrement())

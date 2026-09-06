@@ -1,4 +1,4 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import {
   CatalogCategoryCreateSchema,
   CatalogCategoryListQuerySchema,
@@ -42,29 +42,30 @@ export class CatalogService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  listCategories(query: unknown) {
+  async listCategories(query: unknown) {
     const parsed = parseInput(CatalogCategoryListQuerySchema, query);
-    const items = this.repository
-      .listCategories({ ...parsed, status: "active" })
-      .items;
+    const page = await this.repository.listCategories({
+      ...parsed,
+      status: "active",
+    });
     return CatalogCategoryListResponseSchema.parse(
-      listResponse(items, parsed.page, parsed.page_size),
+      listResponse(page.items, page.page, page.page_size),
     );
   }
 
-  listAdminCategories(query: unknown) {
+  async listAdminCategories(query: unknown) {
     this.authorization.requireStaffPermission("catalog:read");
     const parsed = parseInput(CatalogCategoryListQuerySchema, query);
     return CatalogCategoryListResponseSchema.parse(
-      this.repository.listCategories(parsed),
+      await this.repository.listCategories(parsed),
     );
   }
 
-  createCategory(body: unknown) {
-    const actor = this.authorization.requireStaffPermission("catalog:write");
+  async createCategory(body: unknown) {
+    this.authorization.requireStaffPermission("catalog:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(CatalogCategoryCreateSchema, body);
-    const item = this.repository.upsertCategory(input);
+    const item = await this.repository.upsertCategory(input);
 
     return CatalogCategoryMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -72,12 +73,12 @@ export class CatalogService {
     });
   }
 
-  updateCategory(id: unknown, body: unknown) {
-    const actor = this.authorization.requireStaffPermission("catalog:write");
+  async updateCategory(id: unknown, body: unknown) {
+    this.authorization.requireStaffPermission("catalog:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(CatalogIdParamSchema, { id });
     const input = parseInput(CatalogCategoryUpdateSchema, body);
-    const item = this.repository.upsertCategory({
+    const item = await this.repository.upsertCategory({
       ...(input as any),
       id: parsedId.id,
     });
@@ -88,24 +89,27 @@ export class CatalogService {
     });
   }
 
-  listProducts(query: unknown) {
+  async listProducts(query: unknown) {
     const parsed = parseInput(CatalogProductListQuerySchema, query);
-    const list = this.repository.listProducts({ ...parsed, status: "active" });
+    const list = await this.repository.listProducts({
+      ...parsed,
+      status: "active",
+    });
     return CatalogProductListResponseSchema.parse(list);
   }
 
-  listAdminProducts(query: unknown) {
+  async listAdminProducts(query: unknown) {
     this.authorization.requireStaffPermission("catalog:read");
     const parsed = parseInput(CatalogProductListQuerySchema, query);
     return CatalogProductListResponseSchema.parse(
-      this.repository.listProducts(parsed),
+      await this.repository.listProducts(parsed),
     );
   }
 
-  getProduct(slug: unknown) {
+  async getProduct(slug: unknown) {
     const parsed = parseInput(CatalogSlugParamSchema, { slug });
-    const product = this.repository.getProductBySlug(parsed.slug);
-    if (product.status !== "active") {
+    const product = await this.repository.getProductBySlug(parsed.slug);
+    if (!product || product.status !== "active") {
       throw new NotFoundException("商品不存在");
     }
     return CatalogProductResponseSchema.parse({
@@ -114,11 +118,11 @@ export class CatalogService {
     });
   }
 
-  createProduct(body: unknown) {
-    const actor = this.authorization.requireStaffPermission("catalog:write");
+  async createProduct(body: unknown) {
+    this.authorization.requireStaffPermission("catalog:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(CatalogProductCreateSchema, body);
-    const item = this.repository.upsertProduct(input);
+    const item = await this.repository.upsertProduct(input as any);
 
     return CatalogProductMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -126,13 +130,15 @@ export class CatalogService {
     });
   }
 
-  updateProduct(id: unknown, body: unknown) {
-    const actor = this.authorization.requireStaffPermission("catalog:write");
+  async updateProduct(id: unknown, body: unknown) {
+    this.authorization.requireStaffPermission("catalog:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(CatalogIdParamSchema, { id });
     const input = parseInput(CatalogProductUpdateSchema, body);
-    const before = this.repository.getProductBySlug(parsedId.id.toString());
-    const item = this.repository.upsertProduct({ ...input, id: parsedId.id });
+    const item = await this.repository.upsertProduct({
+      ...input,
+      id: parsedId.id,
+    } as any);
 
     return CatalogProductMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -140,12 +146,14 @@ export class CatalogService {
     });
   }
 
-  publishProduct(id: unknown) {
-    const actor = this.authorization.requireStaffPermission("catalog:write");
+  async publishProduct(id: unknown) {
+    this.authorization.requireStaffPermission("catalog:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(CatalogIdParamSchema, { id });
-    const before = this.repository.getProductBySlug(parsedId.id.toString());
-    const item = this.repository.upsertProduct({ ...before, status: "active" });
+    const item = await this.repository.upsertProduct({
+      id: parsedId.id,
+      status: "active",
+    } as any);
 
     return CatalogProductMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -153,12 +161,14 @@ export class CatalogService {
     });
   }
 
-  archiveProduct(id: unknown) {
-    const actor = this.authorization.requireStaffPermission("catalog:write");
+  async archiveProduct(id: unknown) {
+    this.authorization.requireStaffPermission("catalog:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(CatalogIdParamSchema, { id });
-    const before = this.repository.getProductBySlug(parsedId.id.toString());
-    const item = this.repository.upsertProduct({ ...before, status: "archived" });
+    const item = await this.repository.upsertProduct({
+      id: parsedId.id,
+      status: "archived",
+    } as any);
 
     return CatalogProductMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -166,8 +176,8 @@ export class CatalogService {
     });
   }
 
-  listVariants() {
-    const items = this.repository.listVariants();
+  async listVariants() {
+    const items = await this.repository.listVariants();
     return CatalogVariantListResponseSchema.parse(
       listResponse(items, 1, Math.max(items.length, 1)),
     );

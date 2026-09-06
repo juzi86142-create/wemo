@@ -22,13 +22,10 @@ export class SettingsService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  getSnapshot() {
+  async getSnapshot() {
     this.authorization.requireStaffPermission("settings:read");
     const context = this.requestContext.requireContext();
-    const settings = this.repository.getSettings({
-      market: context.market,
-      locale: context.locale,
-    });
+    const settings = await this.repository.getSettings({});
     return PlatformSettingsSnapshotSchema.parse(
       {
         request_id: context.request_id,
@@ -37,18 +34,11 @@ export class SettingsService {
     );
   }
 
-  updateSetting(body: unknown) {
+  async updateSetting(body: unknown) {
     this.authorization.requireStaffPermission("settings:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(PlatformSettingMutationSchema, body);
-    const item = this.repository.upsertSetting({
-      key: input.key,
-      value: input.value,
-      type: "string",
-      market_id: context.market || "global",
-      locale_id: context.locale || "en-US",
-      is_public: false,
-    });
+    const item = await this.repository.upsertSetting(input);
 
     return PlatformSettingMutationResponseSchema.parse({
       request_id: context.request_id,

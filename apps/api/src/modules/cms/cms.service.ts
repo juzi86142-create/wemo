@@ -14,7 +14,6 @@ import { AuthorizationService } from "../../runtime/authorization.service";
 import { CmsPrismaRepository } from "./cms.prisma-repository";
 import { CMS_REPOSITORY } from "./cms.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
-import { listResponse } from "../../runtime/list-response";
 import { parseInput } from "../../runtime/validation";
 
 const ContentIdParamSchema = z.object({
@@ -36,26 +35,27 @@ export class CmsService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  listEntries(query: unknown) {
+  async listEntries(query: unknown) {
     const parsed = parseInput(ContentEntryListQuerySchema, query);
     return ContentEntryListResponseSchema.parse(
-      this.repository.listContentEntries({ ...parsed, status: "published" }),
+      await this.repository.listContentEntries({
+        ...parsed,
+        status: "published",
+      } as any),
     );
   }
 
-  listAdminEntries(query: unknown) {
+  async listAdminEntries(query: unknown) {
     this.authorization.requireStaffPermission("content:read");
     const parsed = parseInput(ContentEntryListQuerySchema, query);
     return ContentEntryListResponseSchema.parse(
-      this.repository.listContentEntries(parsed),
+      await this.repository.listContentEntries(parsed as any),
     );
   }
 
-  getEntry(slug: unknown, type?: unknown) {
+  async getEntry(slug: unknown) {
     const parsedSlug = parseInput(ContentSlugParamSchema, { slug });
-    const parsedType =
-      type === undefined ? undefined : String(type).trim() || undefined;
-    const entry = this.repository.getContentEntry(
+    const entry = await this.repository.getContentEntry(
       this.requestContext.getMarket(),
       this.requestContext.getLocale(),
       parsedSlug.slug,
@@ -69,11 +69,11 @@ export class CmsService {
     });
   }
 
-  createEntry(body: unknown) {
-    const actor = this.authorization.requireStaffPermission("content:write");
+  async createEntry(body: unknown) {
+    this.authorization.requireStaffPermission("content:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(ContentEntryCreateSchema, body);
-    const item = this.repository.createContentEntry(input);
+    const item = await this.repository.createContentEntry(input);
 
     return ContentEntryMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -81,12 +81,15 @@ export class CmsService {
     });
   }
 
-  updateEntry(id: unknown, body: unknown) {
-    const actor = this.authorization.requireStaffPermission("content:write");
+  async updateEntry(id: unknown, body: unknown) {
+    this.authorization.requireStaffPermission("content:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ContentIdParamSchema, { id });
     const input = parseInput(ContentEntryUpdateSchema, body);
-    const item = this.repository.updateContentEntry(parsedId.id, input);
+    const item = await this.repository.updateContentEntry(
+      parsedId.id,
+      input as any,
+    );
 
     return ContentEntryMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -94,11 +97,13 @@ export class CmsService {
     });
   }
 
-  publishEntry(id: unknown) {
-    const actor = this.authorization.requireStaffPermission("content:write");
+  async publishEntry(id: unknown) {
+    this.authorization.requireStaffPermission("content:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ContentIdParamSchema, { id });
-    const item = this.repository.updateContentEntry(parsedId.id, { status: "published" });
+    const item = await this.repository.updateContentEntry(parsedId.id, {
+      status: "published",
+    });
 
     return ContentEntryMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -106,11 +111,13 @@ export class CmsService {
     });
   }
 
-  archiveEntry(id: unknown) {
-    const actor = this.authorization.requireStaffPermission("content:write");
+  async archiveEntry(id: unknown) {
+    this.authorization.requireStaffPermission("content:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ContentIdParamSchema, { id });
-    const item = this.repository.updateContentEntry(parsedId.id, { status: "archived" });
+    const item = await this.repository.updateContentEntry(parsedId.id, {
+      status: "archived",
+    });
 
     return ContentEntryMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -118,13 +125,11 @@ export class CmsService {
     });
   }
 
-  listNavigation() {
-    const items = this.repository.getNavigation(
+  async listNavigation() {
+    const items = await this.repository.getNavigation(
       this.requestContext.getMarket(),
       this.requestContext.getLocale(),
     );
-    return ContentNavigationListResponseSchema.parse(
-      listResponse(items, 1, Math.max(items.length, 1)),
-    );
+    return ContentNavigationListResponseSchema.parse(items);
   }
 }

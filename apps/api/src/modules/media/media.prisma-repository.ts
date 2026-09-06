@@ -1,87 +1,98 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
+import type {
+  JsonValue,
+  MediaAsset,
+  MediaAssetCreateInput,
+  MediaAssetListQuery,
+} from "@wemo/contracts";
 import type { DatabaseClient } from "@wemo/database";
 
-import { MEDIA_REPOSITORY, type MediaRepository } from "./media.repository";
-import type { MediaAsset } from "@wemo/contracts";
+import { DATABASE_CLIENT } from "../../database/database.constants";
+import type { MediaAssetPage, MediaRepository } from "./media.repository";
+
+type MediaAssetRow = NonNullable<
+  Awaited<ReturnType<DatabaseClient["mediaAsset"]["findFirst"]>>
+>;
 
 @Injectable()
 export class MediaPrismaRepository implements MediaRepository {
-  constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
+  constructor(
+    @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
+  ) {}
 
-  async listAssets(query: any): Promise<any> {
-    const where: any = {};
-    if (query.type) where.type = query.type;
-    if (query.visibility) where.visibility = query.visibility;
+  async listAssets(query: MediaAssetListQuery): Promise<MediaAssetPage> {
+    const where: Record<string, unknown> = {};
+    if (query.visibility !== undefined) where.visibility = query.visibility;
+    if (query.type !== undefined) where.type = query.type;
+    if (query.q !== undefined) {
+      where.OR = [{ fileKey: { contains: query.q } }, { alt: { contains: query.q } }];
+    }
 
-    const [assets, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.database.mediaAsset.findMany({
-        where,
+        where: where as never,
         skip: (query.page - 1) * query.page_size,
         take: query.page_size,
         orderBy: { createdAt: "desc" },
       }),
-      this.database.mediaAsset.count({ where }),
+      this.database.mediaAsset.count({ where: where as never }),
     ]);
 
     return {
-      items: assets.map(a => this.mapAsset(a)),
+      items: rows.map((row) => this.mapRow(row)),
       total,
       page: query.page,
       page_size: query.page_size,
     };
   }
 
-  async getAssetByFileKey(fileKey: string): Promise<MediaAsset | null> {
-    const asset = await this.database.mediaAsset.findUnique({
-      where: { fileKey },
-    });
-
-    return asset ? this.mapAsset(asset) : null;
+  async getAssetById(id: number): Promise<MediaAsset | null> {
+    const row = await this.database.mediaAsset.findUnique({ where: { id } });
+    return row ? this.mapRow(row) : null;
   }
 
-  async createAsset(input: any): Promise<MediaAsset> {
-    const asset = await this.database.mediaAsset.create({
+  async createAsset(input: MediaAssetCreateInput): Promise<MediaAsset> {
+    // Demo：不上传二进制，仅保存元数据，file_key 直接入库
+    const row = await this.database.mediaAsset.create({
       data: {
         type: input.type,
         fileKey: input.file_key,
         mime: input.mime,
         size: input.size,
         checksum: input.checksum,
-        alt: input.alt,
-        visibility: input.visibility ?? "private",
-        metadata: input.metadata ?? {},
-      },
-    });
-
-    return this.mapAsset(asset);
-  }
-
-  async updateAsset(fileKey: string, input: any): Promise<MediaAsset> {
-    const asset = await this.database.mediaAsset.update({
-      where: { fileKey },
-      data: {
-        alt: input.alt,
+        alt: input.alt ?? null,
         visibility: input.visibility,
-        metadata: input.metadata,
+        metadata: (input.metadata ?? {}) as never,
       },
     });
-
-    return this.mapAsset(asset);
+    return this.mapRow(row);
   }
 
-  private mapAsset(asset: any): MediaAsset {
+  private mapRow(row: MediaAssetRow): MediaAsset {
     return {
-      id: asset.id,
-      file_key: asset.fileKey,
-      type: asset.type,
-      mime: asset.mime,
-      size: asset.size,
-      checksum: asset.checksum,
-      alt: asset.alt,
-      visibility: asset.visibility,
-      version: asset.version,
-      metadata: asset.metadata,
-      created_at: asset.createdAt.toISOString(),
+      id: row.id,
+      type: row.type,
+      file_key: row.fileKey,
+      mime: row.mime,
+      size: row.size,
+      checksum: row.checksum,
+      alt: row.alt,
+      visibility: row.visibility as MediaAsset["visibility"],
+      tags: [],
+      // 表内无 versions/updated_at，demo 以当前行作为唯一版本
+      versions: [
+        {
+          version: row.version,
+          file_key: row.fileKey,
+          mime: row.mime,
+          size: row.size,
+          checksum: row.checksum,
+          created_at: row.createdAt.toISOString(),
+        },
+      ],
+      metadata: row.metadata as JsonValue,
+      created_at: row.createdAt.toISOString(),
+      updated_at: row.createdAt.toISOString(),
     };
   }
 }

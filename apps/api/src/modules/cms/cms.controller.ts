@@ -25,8 +25,8 @@ export class CmsController {
   }
 
   @Get("cms/entries/:slug")
-  getEntry(@Param("slug") slug: string, @Query("type") type?: string) {
-    return this.cmsService.getEntry(slug, type);
+  getEntry(@Param("slug") slug: string) {
+    return this.cmsService.getEntry(slug);
   }
 
   @Get("cms/navigation")

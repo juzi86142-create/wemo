@@ -1,49 +1,63 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { DatabaseClient } from "@wemo/database";
+import type { ReturnListQuery, ReturnRequest, ReturnStatus } from "@wemo/contracts";
 
-import { RETURNS_REPOSITORY, type ReturnsRepository } from "./returns.repository";
-import type { ReturnRequest } from "@wemo/contracts";
+import { DATABASE_CLIENT } from "../../database/database.constants";
+import {
+  RETURNS_REPOSITORY,
+  type ReturnCreateRecord,
+  type ReturnsRepository,
+} from "./returns.repository";
+
+type ReturnRow = NonNullable<
+  Awaited<ReturnType<DatabaseClient["returnRequest"]["findUnique"]>>
+>;
 
 @Injectable()
 export class ReturnsPrismaRepository implements ReturnsRepository {
-  constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
+  constructor(
+    @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
+  ) {}
 
-  async createReturn(input: any): Promise<ReturnRequest> {
-    const returnNo = `RET-${Date.now()}`;
-    const returnRecord = await this.database.returnRequest.create({
+  async createReturn(input: ReturnCreateRecord): Promise<ReturnRequest> {
+    const row = await this.database.returnRequest.create({
       data: {
-        returnNo,
         orderId: input.order_id,
-        orderItemId: input.order_item_id,
-        customerId: input.customer_id,
+        userId: input.user_id,
+        companyId: input.company_id,
+        status: "requested",
         reason: input.reason,
-        status: "pending",
-        quantity: input.quantity,
-        refundAmountMinor: input.refund_amount_minor,
-        currency: input.currency,
-        images: input.images || [],
-        notes: input.notes,
+        items: input.items as never,
+        attachments: input.attachments as never,
       },
     });
 
-    return this.mapReturn(returnRecord);
+    return this.mapReturn(row);
   }
 
   async getReturnById(id: number): Promise<ReturnRequest | null> {
-    const returnRecord = await this.database.returnRequest.findUnique({
+    const row = await this.database.returnRequest.findUnique({
       where: { id },
     });
-
-    return returnRecord ? this.mapReturn(returnRecord) : null;
+    return row ? this.mapReturn(row) : null;
   }
 
-  async listReturns(query: any): Promise<{ items: ReturnRequest[]; total: number; page: number; page_size: number }> {
-    const where: any = {};
-    if (query.customer_id) where.customerId = query.customer_id;
-    if (query.order_id) where.orderId = query.order_id;
-    if (query.status) where.status = query.status;
+  async listReturns(query: ReturnListQuery): Promise<{
+    items: ReturnRequest[];
+    total: number;
+    page: number;
+    page_size: number;
+  }> {
+    const where = {
+      ...(query.order_id !== undefined ? { orderId: query.order_id } : {}),
+      ...(query.user_id !== undefined ? { userId: query.user_id } : {}),
+      ...(query.company_id !== undefined
+        ? { companyId: query.company_id }
+        : {}),
+      ...(query.status !== undefined ? { status: query.status } : {}),
+    };
 
-    const [returns, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.database.returnRequest.findMany({
         where,
         skip: (query.page - 1) * query.page_size,
@@ -54,81 +68,68 @@ export class ReturnsPrismaRepository implements ReturnsRepository {
     ]);
 
     return {
-      items: returns.map(r => this.mapReturn(r)),
+      items: rows.map((row) => this.mapReturn(row)),
       total,
       page: query.page,
       page_size: query.page_size,
     };
   }
 
-  async updateReturnStatus(id: number, input: any): Promise<ReturnRequest> {
-    const returnRecord = await this.database.returnRequest.update({
+  async reviewReturn(
+    id: number,
+    requestId: string,
+    decision: ReturnStatus,
+    note?: string,
+  ): Promise<ReturnRequest> {
+    const existing = await this.database.returnRequest.findUnique({
       where: { id },
-      data: {
-        status: input.status,
-        notes: input.notes,
-      },
     });
+    if (!existing) {
+      throw new NotFoundException("退货申请不存在");
+    }
 
-    return this.mapReturn(returnRecord);
-  }
-
-  async approveReturn(id: number, requestId: string, note?: string): Promise<ReturnRequest> {
-    const returnRecord = await this.database.$transaction(async (tx) => {
+    const row = await this.database.$transaction(async (tx) => {
       const updated = await tx.returnRequest.update({
         where: { id },
         data: {
-          status: "approved",
-          notes: note ? `${note}` : undefined,
+          status: decision,
         },
       });
 
-      await tx.auditEntry.create({
+      await tx.auditLog.create({
         data: {
-          userId: 0,
-          actorId: 0,
-          action: "return.approve",
-          resourceType: "return",
-          resourceId: id.toString(),
-          ip: "",
-          userAgent: "",
+          actorId: 1,
+          action: `return.${decision}`,
+          entity: "return_request",
+          entityId: id,
+          before: { status: existing.status },
+          after: { status: decision, note: note ?? null },
+          requestId,
+          ip: null,
         },
       });
 
       return updated;
     });
 
-    return this.mapReturn(returnRecord);
+    return this.mapReturn(row);
   }
 
-  async rejectReturn(id: number, requestId: string, note?: string): Promise<ReturnRequest> {
-    const returnRecord = await this.database.returnRequest.update({
-      where: { id },
-      data: {
-        status: "rejected",
-        notes: note,
-      },
-    });
-
-    return this.mapReturn(returnRecord);
-  }
-
-  private mapReturn(returnRecord: any): ReturnRequest {
+  private mapReturn(row: ReturnRow): ReturnRequest {
     return {
-      id: returnRecord.id,
-      return_no: returnRecord.returnNo,
-      order_id: returnRecord.orderId,
-      order_item_id: returnRecord.orderItemId,
-      customer_id: returnRecord.customerId,
-      reason: returnRecord.reason,
-      status: returnRecord.status,
-      quantity: returnRecord.quantity,
-      refund_amount_minor: returnRecord.refundAmountMinor,
-      currency: returnRecord.currency,
-      images: returnRecord.images || [],
-      notes: returnRecord.notes,
-      created_at: returnRecord.createdAt.toISOString(),
-      updated_at: returnRecord.updatedAt.toISOString(),
-    };
+      id: row.id,
+      order_id: row.orderId,
+      user_id: row.userId,
+      company_id: row.companyId,
+      status: row.status as ReturnRequest["status"],
+      reason: row.reason,
+      items: row.items as ReturnRequest["items"],
+      attachments: row.attachments as ReturnRequest["attachments"],
+      history: [],
+      created_at: row.createdAt.toISOString(),
+      updated_at: row.updatedAt.toISOString(),
+      refunded_at:
+        row.status === "refunded" ? row.updatedAt.toISOString() : null,
+    } as ReturnRequest;
   }
 }

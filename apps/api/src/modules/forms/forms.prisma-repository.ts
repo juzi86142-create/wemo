@@ -1,99 +1,148 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import type {
+  FormSubmission,
+  FormSubmissionCreateInput,
+  FormSubmissionListQuery,
+  FormSubmissionUpdateInput,
+  JsonValue,
+} from "@wemo/contracts";
 import type { DatabaseClient } from "@wemo/database";
 
-import { FORMS_REPOSITORY, type FormsRepository } from "./forms.repository";
-import type { Form, FormSubmission } from "@wemo/contracts";
+import { DATABASE_CLIENT } from "../../database/database.constants";
+import type {
+  FormDefinition,
+  FormDefinitionCreateInput,
+  FormDefinitionListQuery,
+  FormDefinitionUpdateInput,
+  FormPage,
+  FormsRepository,
+} from "./forms.repository";
+
+// Prisma schema 尚未包含 form_submissions 模型（生成 client 无该 delegate），
+// 此处按表结构声明最小访问面；schema 恢复并重新 generate 后可换回 database.formSubmission 直调。
+type FormSubmissionRow = {
+  id: number;
+  submissionNo: string;
+  type: string;
+  source: string;
+  payload: unknown;
+  assigneeId: number | null;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type FormSubmissionDelegate = {
+  create(args: {
+    data: {
+      submissionNo: string;
+      type: string;
+      source: string;
+      payload: unknown;
+      assigneeId: number | null;
+      status: string;
+    };
+  }): Promise<FormSubmissionRow>;
+  findMany(args: {
+    where: unknown;
+    skip: number;
+    take: number;
+    orderBy: unknown;
+  }): Promise<FormSubmissionRow[]>;
+  count(args: { where: unknown }): Promise<number>;
+  findUnique(args: { where: { id: number } }): Promise<FormSubmissionRow | null>;
+  update(args: { where: { id: number }; data: unknown }): Promise<FormSubmissionRow>;
+};
 
 @Injectable()
 export class FormsPrismaRepository implements FormsRepository {
-  constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
+  constructor(
+    @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
+  ) {}
 
-  async createForm(input: any): Promise<Form> {
-    const form = await this.database.form.create({
+  private get submissions(): FormSubmissionDelegate {
+    return (
+      this.database as unknown as { formSubmission: FormSubmissionDelegate }
+    ).formSubmission;
+  }
+
+  async createForm(input: FormDefinitionCreateInput): Promise<FormDefinition> {
+    void input;
+    throw new Error("Demo模式：暂不支持表单定义管理");
+  }
+
+  async getFormById(id: number): Promise<FormDefinition | null> {
+    void id;
+    throw new Error("Demo模式：暂不支持表单定义管理");
+  }
+
+  async listForms(query: FormDefinitionListQuery): Promise<FormPage<FormDefinition>> {
+    void query;
+    throw new Error("Demo模式：暂不支持表单定义管理");
+  }
+
+  async updateForm(
+    id: number,
+    input: FormDefinitionUpdateInput,
+  ): Promise<FormDefinition> {
+    void id;
+    void input;
+    throw new Error("Demo模式：暂不支持表单定义管理");
+  }
+
+  async submitForm(input: FormSubmissionCreateInput): Promise<FormSubmission> {
+    const row = await this.submissions.create({
       data: {
-        name: input.name,
-        description: input.description,
-        fields: input.fields || [],
-        isActive: input.is_active ?? true,
+        submissionNo: this.buildSubmissionNo(),
+        type: input.type,
+        source: input.source,
+        payload: input.payload,
+        assigneeId: null,
+        status: "new",
       },
     });
 
-    return this.mapForm(form);
+    return this.mapSubmission(row);
   }
 
-  async getFormById(id: number): Promise<Form | null> {
-    const form = await this.database.form.findUnique({
-      where: { id },
-    });
+  async updateSubmission(
+    id: number,
+    input: FormSubmissionUpdateInput,
+  ): Promise<FormSubmission> {
+    const existing = await this.submissions.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException("提交记录不存在");
+    }
 
-    return form ? this.mapForm(form) : null;
+    // priority/tags/internal_note 无对应列，demo 阶段仅落库状态与负责人
+    const data: Record<string, unknown> = {};
+    if (input.assignee_id !== undefined) data.assigneeId = input.assignee_id;
+    if (input.status !== undefined) data.status = input.status;
+
+    const row = await this.submissions.update({ where: { id }, data });
+    return this.mapSubmission(row);
   }
 
-  async listForms(query: any): Promise<{ items: Form[]; total: number; page: number; page_size: number }> {
-    const where: any = {};
-    if (query.is_active !== undefined) where.isActive = query.is_active;
+  async listSubmissions(
+    query: FormSubmissionListQuery,
+  ): Promise<FormPage<FormSubmission>> {
+    const where: Record<string, unknown> = {};
+    if (query.type !== undefined) where.type = query.type;
+    if (query.status !== undefined) where.status = query.status;
+    if (query.assignee_id !== undefined) where.assigneeId = query.assignee_id;
 
-    const [forms, total] = await Promise.all([
-      this.database.form.findMany({
+    const [rows, total] = await Promise.all([
+      this.submissions.findMany({
         where,
         skip: (query.page - 1) * query.page_size,
         take: query.page_size,
         orderBy: { createdAt: "desc" },
       }),
-      this.database.form.count({ where }),
+      this.submissions.count({ where }),
     ]);
 
     return {
-      items: forms.map(f => this.mapForm(f)),
-      total,
-      page: query.page,
-      page_size: query.page_size,
-    };
-  }
-
-  async updateForm(id: number, input: any): Promise<Form> {
-    const form = await this.database.form.update({
-      where: { id },
-      data: {
-        name: input.name,
-        description: input.description,
-        fields: input.fields,
-        isActive: input.is_active,
-      },
-    });
-
-    return this.mapForm(form);
-  }
-
-  async submitForm(input: any): Promise<FormSubmission> {
-    const submission = await this.database.formSubmission.create({
-      data: {
-        formId: input.form_id,
-        data: input.data || {},
-        ip: input.ip,
-        userAgent: input.user_agent,
-      },
-    });
-
-    return this.mapSubmission(submission);
-  }
-
-  async listSubmissions(query: any): Promise<{ items: FormSubmission[]; total: number; page: number; page_size: number }> {
-    const where: any = {};
-    if (query.form_id) where.formId = query.form_id;
-
-    const [submissions, total] = await Promise.all([
-      this.database.formSubmission.findMany({
-        where,
-        skip: (query.page - 1) * query.page_size,
-        take: query.page_size,
-        orderBy: { createdAt: "desc" },
-      }),
-      this.database.formSubmission.count({ where }),
-    ]);
-
-    return {
-      items: submissions.map(s => this.mapSubmission(s)),
+      items: rows.map((row) => this.mapSubmission(row)),
       total,
       page: query.page,
       page_size: query.page_size,
@@ -101,33 +150,35 @@ export class FormsPrismaRepository implements FormsRepository {
   }
 
   async getSubmissionById(id: number): Promise<FormSubmission | null> {
-    const submission = await this.database.formSubmission.findUnique({
-      where: { id },
-    });
-
-    return submission ? this.mapSubmission(submission) : null;
+    const row = await this.submissions.findUnique({ where: { id } });
+    return row ? this.mapSubmission(row) : null;
   }
 
-  private mapForm(form: any): Form {
-    return {
-      id: form.id,
-      name: form.name,
-      description: form.description,
-      fields: form.fields || [],
-      is_active: form.isActive,
-      created_at: form.createdAt.toISOString(),
-      updated_at: form.updatedAt.toISOString(),
-    };
+  private buildSubmissionNo(): string {
+    const stamp = Date.now().toString(36).toUpperCase();
+    const random = Math.random().toString(36).slice(2, 6).toUpperCase();
+    return `FS-${stamp}-${random}`;
   }
 
-  private mapSubmission(submission: any): FormSubmission {
+  // attachments/priority/tags/internal_note/request_id/history 无对应列，
+  // 返回契约形状时补齐稳定默认值（request_id 以 submission_no 回退）
+  private mapSubmission(row: FormSubmissionRow): FormSubmission {
     return {
-      id: submission.id,
-      form_id: submission.formId,
-      data: submission.data || {},
-      ip: submission.ip,
-      user_agent: submission.userAgent,
-      created_at: submission.createdAt.toISOString(),
+      id: row.id,
+      submission_no: row.submissionNo,
+      type: row.type,
+      source: row.source,
+      payload: row.payload as JsonValue,
+      attachments: [],
+      assignee_id: row.assigneeId,
+      priority: "normal",
+      tags: [],
+      internal_note: null,
+      status: row.status,
+      request_id: row.submissionNo,
+      created_at: row.createdAt.toISOString(),
+      updated_at: row.updatedAt.toISOString(),
+      history: [],
     };
   }
 }

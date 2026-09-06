@@ -1,13 +1,32 @@
-import type { ReturnRequest, ReturnRequestCreateInput, ReturnRequestListQuery, ReturnRequestUpdateInput } from "@wemo/contracts";
-import type { DatabaseClient } from "@wemo/database";
+import type {
+  ReturnCreateInput,
+  ReturnListQuery,
+  ReturnRequest,
+  ReturnStatus,
+} from "@wemo/contracts";
 
 export const RETURNS_REPOSITORY = Symbol("RETURNS_REPOSITORY");
 
+/** createReturn 的仓储入参：契约字段 + 服务端推导的上下文字段。 */
+export interface ReturnCreateRecord extends ReturnCreateInput {
+  user_id: number | null;
+  company_id: number | null;
+  request_id: string;
+}
+
 export interface ReturnsRepository {
-  createReturn(input: ReturnRequestCreateInput): Promise<ReturnRequest>;
+  createReturn(input: ReturnCreateRecord): Promise<ReturnRequest>;
   getReturnById(id: number): Promise<ReturnRequest | null>;
-  listReturns(query: ReturnRequestListQuery): Promise<{ items: ReturnRequest[]; total: number; page: number; page_size: number }>;
-  updateReturnStatus(id: number, input: ReturnRequestUpdateInput): Promise<ReturnRequest>;
-  approveReturn(id: number, requestId: string, note?: string): Promise<ReturnRequest>;
-  rejectReturn(id: number, requestId: string, note?: string): Promise<ReturnRequest>;
+  listReturns(query: ReturnListQuery): Promise<{
+    items: ReturnRequest[];
+    total: number;
+    page: number;
+    page_size: number;
+  }>;
+  reviewReturn(
+    id: number,
+    requestId: string,
+    decision: ReturnStatus,
+    note?: string,
+  ): Promise<ReturnRequest>;
 }

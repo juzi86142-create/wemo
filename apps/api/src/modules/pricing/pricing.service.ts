@@ -78,7 +78,10 @@ export class PricingService {
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(PricingRecordIdParamSchema, { id });
     const input = parseInput(PricingRecordUpsertSchema, body);
-    const item = this.repository.createPriceRecord({ ...input, id: parsedId.id });
+    const item = this.repository.createPriceRecord({
+      ...input,
+      id: parsedId.id,
+    } as any);
 
     return PricingRecordMutationResponseSchema.parse({
       request_id: context.request_id,

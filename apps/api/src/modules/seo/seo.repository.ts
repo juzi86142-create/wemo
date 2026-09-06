@@ -1,10 +1,25 @@
-import type { SeoMetadata, SeoQuery, SeoResult } from "@wemo/contracts";
-import type { DatabaseClient } from "@wemo/database";
+import type {
+  SeoRedirect,
+  SeoRedirectCreateInput,
+} from "@wemo/contracts";
 
 export const SEO_REPOSITORY = Symbol("SEO_REPOSITORY");
 
+export type SeoPageQuery = {
+  market: string;
+  locale: string;
+  slug: string;
+};
+
+export type SeoPageResult = {
+  meta_title: string;
+  meta_description: string;
+  canonical_url: string;
+  no_index: boolean;
+};
+
 export interface SeoRepository {
-  getPageSeo(query: SeoQuery): Promise<SeoResult | null>;
-  savePageSeo(input: SeoMetadata): Promise<SeoMetadata>;
-  listSeoPages(query: any): Promise<{ items: SeoMetadata[]; total: number; page: number; page_size: number }>;
+  getPageSeo(query: SeoPageQuery): Promise<SeoPageResult | null>;
+  listRedirects(): Promise<SeoRedirect[]>;
+  upsertRedirect(input: SeoRedirectCreateInput): Promise<SeoRedirect>;
 }
