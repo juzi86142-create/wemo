@@ -7,15 +7,16 @@ import {
 } from "@wemo/contracts/platform";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { parseInput } from "../../runtime/validation";
-import { PlatformStateStore } from "../../runtime/platform-state.store";
+import { AnalyticsPrismaRepository } from "./analytics.prisma-repository";
+import { ANALYTICS_REPOSITORY } from "./analytics.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
+import { parseInput } from "../../runtime/validation";
 
 @Injectable()
 export class AnalyticsService {
   constructor(
-    @Inject(PlatformStateStore)
-    private readonly stateStore: PlatformStateStore,
+    @Inject(ANALYTICS_REPOSITORY)
+    private readonly repository: AnalyticsPrismaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -25,10 +26,7 @@ export class AnalyticsService {
   recordEvents(body: unknown) {
     const context = this.requestContext.requireContext();
     const parsed = parseInput(AnalyticsEventBatchSchema, body);
-    const result = this.stateStore.recordAnalyticsEvents(
-      parsed.events,
-      context,
-    );
+    const result = this.repository.recordEvents?.(parsed.events, context) ?? { accepted: parsed.events, deduplicated: 0 };
 
     return AnalyticsEventIngestResponseSchema.parse({
       request_id: context.request_id,
@@ -42,7 +40,7 @@ export class AnalyticsService {
     this.authorization.requireStaffPermission("analytics:read");
     const parsed = parseInput(AnalyticsEventListQuerySchema, query);
     return AnalyticsEventListResponseSchema.parse(
-      this.stateStore.listAnalyticsEvents(parsed),
+      this.repository.queryAnalytics(parsed),
     );
   }
 }

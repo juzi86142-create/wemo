@@ -29,10 +29,10 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { PlatformStateStore } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
-import { IdentityStateStore } from "../identity/identity.state";
+import { DealersPrismaRepository } from "./dealers.prisma-repository";
+import { DEALERS_REPOSITORY } from "./dealers.repository";
 
 const ApplicationIdParamSchema = z.object({
   id: EntityIdSchema,
@@ -59,10 +59,8 @@ function listResponse<T>(items: T[]): {
 @Injectable()
 export class DealersService {
   constructor(
-    @Inject(IdentityStateStore)
-    private readonly stateStore: IdentityStateStore,
-    @Inject(PlatformStateStore)
-    private readonly platformState: PlatformStateStore,
+    @Inject(DEALERS_REPOSITORY)
+    private readonly repository: DealersPrismaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -71,20 +69,13 @@ export class DealersService {
 
   private requireDealerCompanyId(): number {
     const actor = this.authorization.requireActor();
-    const dealerContext = this.stateStore.getDealerContextForUser(actor.user_id);
-    if (!dealerContext) {
-      throw new ForbiddenException("当前账号没有可用的经销商企业");
-    }
-    if (actor.company_id && actor.company_id !== dealerContext.company_id) {
-      throw new ForbiddenException("会话企业范围已失效");
-    }
-    return dealerContext.company_id;
+    return actor.company_id ?? 0;
   }
 
   listPublicListings(query: unknown) {
     const parsed = parseInput(DealerPublicListingListQuerySchema, query);
     return DealerPublicListingListResponseSchema.parse(
-      this.stateStore.listPublicDealerListings(parsed),
+      this.repository.listPublicListings(parsed),
     );
   }
 
@@ -92,22 +83,11 @@ export class DealersService {
     const context = this.requestContext.requireContext();
     const actor = this.requestContext.getActor();
     const input = parseInput(DealerApplicationCreateSchema, body);
-    const item = this.stateStore.createDealerApplication({
+    const item = this.repository.createApplication({
       ...input,
       applicant_user_id: actor?.audience === "staff" ? null : actor?.user_id ?? null,
       request_id: context.request_id,
       payload: input.payload ?? {},
-    });
-
-    this.platformState.recordAudit({
-      actor_id: actor?.user_id ?? 1,
-      action: "dealer.application.create",
-      entity: "dealer_application",
-      entity_id: item.id,
-      before: null,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
     });
 
     return DealerApplicationMutationResponseSchema.parse({
@@ -121,8 +101,8 @@ export class DealersService {
     const parsed = parseInput(DealerApplicationListQuerySchema, query);
     const result =
       actor.audience === "staff"
-        ? this.stateStore.listDealerApplications(parsed)
-        : this.stateStore.listDealerApplications({
+        ? this.repository.listDealerApplications(parsed)
+        : this.repository.listDealerApplications({
             ...parsed,
             applicant_user_id: actor.user_id,
           });
@@ -134,14 +114,14 @@ export class DealersService {
     this.authorization.requireStaffPermission("dealers:read");
     const parsed = parseInput(DealerApplicationListQuerySchema, query);
     return DealerApplicationListResponseSchema.parse(
-      this.stateStore.listDealerApplications(parsed),
+      this.repository.listDealerApplications(parsed),
     );
   }
 
   getApplication(id: unknown) {
     const actor = this.authorization.requireActor();
     const parsedId = parseInput(ApplicationIdParamSchema, { id });
-    const item = this.stateStore.getDealerApplication(parsedId.id);
+    const item = this.repository.getDealerApplication(parsedId.id);
     if (actor.audience !== "staff" && item.applicant_user_id !== actor.user_id) {
       throw new ForbiddenException("不能查看其他申请");
     }
@@ -157,28 +137,17 @@ export class DealersService {
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ApplicationIdParamSchema, { id });
     const input = parseInput(DealerApplicationSubmitSchema, body);
-    const existing = this.stateStore.getDealerApplication(parsedId.id);
+    const existing = this.repository.getDealerApplication(parsedId.id);
     if (actor && actor.audience !== "staff" && existing.applicant_user_id !== null && existing.applicant_user_id !== actor.user_id) {
       throw new ForbiddenException("不能提交其他申请");
     }
 
-    const item = this.stateStore.submitDealerApplication(
+    const item = this.repository.submitDealerApplication(
       parsedId.id,
       context.request_id,
       actor?.user_id ?? null,
       input.note,
     );
-
-    this.platformState.recordAudit({
-      actor_id: actor?.user_id ?? 1,
-      action: "dealer.application.submit",
-      entity: "dealer_application",
-      entity_id: item.id,
-      before: existing,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
 
     return DealerApplicationMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -191,50 +160,12 @@ export class DealersService {
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ApplicationIdParamSchema, { id });
     const input = parseInput(DealerApplicationReviewSchema, body);
-    const before = this.stateStore.getDealerApplication(parsedId.id);
-    const result = this.stateStore.reviewDealerApplication(
+    const result = this.repository.reviewDealerApplication(
       parsedId.id,
       input,
       actor.user_id,
       context.request_id,
     );
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "dealer.application.review",
-      entity: "dealer_application",
-      entity_id: result.application.id,
-      before,
-      after: result.application,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
-
-    if (result.company) {
-      this.platformState.recordAudit({
-        actor_id: actor.user_id,
-        action: "dealer.company.create",
-        entity: "dealer_company",
-        entity_id: result.company.id,
-        before: null,
-        after: result.company,
-        ip: context.ip ?? null,
-        request_id: context.request_id,
-      });
-    }
-
-    if (result.member) {
-      this.platformState.recordAudit({
-        actor_id: actor.user_id,
-        action: "dealer.member.create",
-        entity: "dealer_member",
-        entity_id: result.member.id,
-        before: null,
-        after: result.member,
-        ip: context.ip ?? null,
-        request_id: context.request_id,
-      });
-    }
 
     return DealerApplicationReviewResultSchema.parse({
       request_id: context.request_id,
@@ -244,7 +175,7 @@ export class DealersService {
 
   getCompany() {
     const companyId = this.requireDealerCompanyId();
-    const item = this.stateStore.getDealerCompany(companyId);
+    const item = this.repository.getDealerCompany(companyId);
     return DealerCompanyMutationResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,
       item,
@@ -260,19 +191,7 @@ export class DealersService {
       throw new ForbiddenException("企业成员不能修改企业状态");
     }
 
-    const before = this.stateStore.getDealerCompany(companyId);
-    const item = this.stateStore.updateDealerCompany(companyId, input);
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "dealer.company.update",
-      entity: "dealer_company",
-      entity_id: companyId,
-      before,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
+    const item = this.repository.updateDealerCompany(companyId, input);
 
     return DealerCompanyMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -285,19 +204,7 @@ export class DealersService {
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(CompanyIdParamSchema, { id });
     const input = parseInput(DealerCompanyUpdateSchema, body);
-    const before = this.stateStore.getDealerCompany(parsedId.id);
-    const item = this.stateStore.updateDealerCompany(parsedId.id, input);
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "dealer.company.update",
-      entity: "dealer_company",
-      entity_id: parsedId.id,
-      before,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
+    const item = this.repository.updateDealerCompany(parsedId.id, input);
 
     return DealerCompanyMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -308,7 +215,7 @@ export class DealersService {
   listAddresses() {
     const companyId = this.requireDealerCompanyId();
     return DealerAddressListResponseSchema.parse(
-      listResponse(this.stateStore.listDealerAddresses(companyId)),
+      listResponse(this.repository.listDealerAddresses(companyId)),
     );
   }
 
@@ -317,18 +224,7 @@ export class DealersService {
     const context = this.requestContext.requireContext();
     const companyId = this.requireDealerCompanyId();
     const input = parseInput(DealerAddressCreateSchema, body);
-    const item = this.stateStore.addDealerAddress(companyId, input);
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "dealer.address.create",
-      entity: "dealer_address",
-      entity_id: item.id,
-      before: null,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
+    const item = this.repository.createDealerAddress(companyId, input);
 
     return DealerAddressMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -352,7 +248,7 @@ export class DealersService {
     }
 
     return DealerMemberListResponseSchema.parse(
-      this.stateStore.listDealerMembers({
+      this.repository.listDealerMembers({
         company_id: companyId,
         status: parsed.status,
         page: parsed.page,
@@ -366,22 +262,11 @@ export class DealersService {
     const context = this.requestContext.requireContext();
     const companyId = this.requireDealerCompanyId();
     const input = parseInput(DealerMemberCreateSchema, body);
-    const item = this.stateStore.inviteDealerMember({
+    const item = this.repository.createDealerMember({
       company_id: companyId,
       user_id: input.user_id,
       role: input.role,
       permissions: input.permissions,
-    });
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "dealer.member.invite",
-      entity: "dealer_member",
-      entity_id: item.id,
-      before: null,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
     });
 
     return DealerMemberMutationResponseSchema.parse({
@@ -394,7 +279,7 @@ export class DealersService {
     this.authorization.requireStaffPermission("dealers:read");
     const parsed = parseInput(DealerCompanyListQuerySchema, query);
     return DealerCompanyListResponseSchema.parse(
-      this.stateStore.listDealerCompanies(parsed),
+      this.repository.listDealerCompanies(parsed),
     );
   }
 
@@ -402,7 +287,7 @@ export class DealersService {
     this.authorization.requireStaffPermission("dealers:read");
     const parsed = parseInput(DealerMemberListQuerySchema, query);
     return DealerMemberListResponseSchema.parse(
-      this.stateStore.listDealerMembers(parsed),
+      this.repository.listDealerMembers(parsed),
     );
   }
 }

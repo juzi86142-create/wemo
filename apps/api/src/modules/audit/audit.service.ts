@@ -5,14 +5,15 @@ import {
 } from "@wemo/contracts/platform";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
+import { AuditPrismaRepository } from "./audit.prisma-repository";
+import { AUDIT_REPOSITORY } from "./audit.repository";
 import { parseInput } from "../../runtime/validation";
-import { PlatformStateStore } from "../../runtime/platform-state.store";
 
 @Injectable()
 export class AuditService {
   constructor(
-    @Inject(PlatformStateStore)
-    private readonly stateStore: PlatformStateStore,
+    @Inject(AUDIT_REPOSITORY)
+    private readonly repository: AuditPrismaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
   ) {}
@@ -21,7 +22,7 @@ export class AuditService {
     this.authorization.requireStaffPermission("audit:read");
     const parsed = parseInput(AuditLogQuerySchema, query);
     return AuditLogListResponseSchema.parse(
-      this.stateStore.listAuditLogs(parsed),
+      this.repository.queryEntries(parsed),
     );
   }
 }

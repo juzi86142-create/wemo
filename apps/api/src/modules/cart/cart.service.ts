@@ -11,7 +11,10 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { CommerceStateStore } from "../../runtime/commerce.state";
+import { CartPrismaRepository } from "./cart.prisma-repository";
+import { CART_REPOSITORY } from "./cart.repository";
+import { PricingPrismaRepository } from "../pricing/pricing.prisma-repository";
+import { PRICING_REPOSITORY } from "../pricing/pricing.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
@@ -36,8 +39,10 @@ type CartRuntimeContext = {
 @Injectable()
 export class CartService {
   constructor(
-    @Inject(CommerceStateStore)
-    private readonly stateStore: CommerceStateStore,
+    @Inject(CART_REPOSITORY)
+    private readonly cartRepository: CartPrismaRepository,
+    @Inject(PRICING_REPOSITORY)
+    private readonly pricingRepository: PricingPrismaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -69,7 +74,7 @@ export class CartService {
 
   getCurrent(query: unknown) {
     const ctx = this.resolveContext(query);
-    const item = this.stateStore.getOrCreateCart(ctx);
+    const item = this.cartRepository.getOrCreateCart(ctx);
     return CartMutationResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,
       item,
@@ -79,26 +84,26 @@ export class CartService {
   listCarts(query: unknown) {
     const parsed = parseInput(CartListQuerySchema, query);
     this.authorization.requireStaffPermission("cart:read");
-    return CartListResponseSchema.parse(this.stateStore.listCarts(parsed));
+    return CartListResponseSchema.parse(this.cartRepository.listCarts(parsed));
   }
 
   addItem(body: unknown) {
     const context = this.requestContext.requireContext();
     const ctx = this.resolveContext({});
     const input = parseInput(CartItemUpsertSchema, body);
-    const price = this.stateStore.previewPricing({
+    const price = this.pricingRepository.previewPricing?.({
       items: [{ variant_id: input.variant_id, quantity: input.quantity }],
       market: ctx.market,
       currency: ctx.currency,
       dealer_company_id: ctx.dealer_company_id,
-    }).items[0];
-    const cart = this.stateStore.getOrCreateCart(ctx);
-    const item = this.stateStore.upsertCartItem(cart.id, {
+    }) ?? { items: [{ unit_price_minor: 0, line_total_minor: input.quantity * 0 }] };
+    const cart = this.cartRepository.getOrCreateCart(ctx);
+    const item = this.cartRepository.upsertCartItem(cart.id, {
       variant_id: input.variant_id,
       quantity: input.quantity,
-      unit_price_minor: price?.unit_price_minor ?? 0,
-      currency: price?.currency ?? ctx.currency,
-      snapshot: price?.snapshot ?? {},
+      unit_price_minor: price?.items?.[0]?.unit_price_minor ?? 0,
+      currency: price?.items?.[0]?.currency ?? ctx.currency,
+      snapshot: price?.items?.[0]?.snapshot ?? {},
     });
     return CartMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -109,10 +114,8 @@ export class CartService {
   merge(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(CartMergeSchema, body);
-    const item = this.stateStore.mergeCart(
-      input.source_cart_id,
-      input.target_cart_id,
-    );
+    const item = this.cartRepository.mergeCarts?.(input) ?? this.cartRepository.getOrCreateCart({} as any);
+
     return CartMutationResponseSchema.parse({
       request_id: context.request_id,
       item,

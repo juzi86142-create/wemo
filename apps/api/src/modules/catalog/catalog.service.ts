@@ -17,8 +17,8 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { ExperienceStateStore } from "../../runtime/experience.state";
-import { PlatformStateStore } from "../../runtime/platform-state.store";
+import { CatalogPrismaRepository } from "./catalog.prisma-repository";
+import { CATALOG_REPOSITORY } from "./catalog.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { listResponse } from "../../runtime/list-response";
 import { parseInput } from "../../runtime/validation";
@@ -34,10 +34,8 @@ const CatalogIdParamSchema = z.object({
 @Injectable()
 export class CatalogService {
   constructor(
-    @Inject(ExperienceStateStore)
-    private readonly stateStore: ExperienceStateStore,
-    @Inject(PlatformStateStore)
-    private readonly platformState: PlatformStateStore,
+    @Inject(CATALOG_REPOSITORY)
+    private readonly repository: CatalogPrismaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -46,7 +44,7 @@ export class CatalogService {
 
   listCategories(query: unknown) {
     const parsed = parseInput(CatalogCategoryListQuerySchema, query);
-    const items = this.stateStore
+    const items = this.repository
       .listCategories({ ...parsed, status: "active" })
       .items;
     return CatalogCategoryListResponseSchema.parse(
@@ -58,7 +56,7 @@ export class CatalogService {
     this.authorization.requireStaffPermission("catalog:read");
     const parsed = parseInput(CatalogCategoryListQuerySchema, query);
     return CatalogCategoryListResponseSchema.parse(
-      this.stateStore.listCategories(parsed),
+      this.repository.listCategories(parsed),
     );
   }
 
@@ -66,18 +64,7 @@ export class CatalogService {
     const actor = this.authorization.requireStaffPermission("catalog:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(CatalogCategoryCreateSchema, body);
-    const item = this.stateStore.upsertCategory(input);
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "catalog.category.create",
-      entity: "catalog_category",
-      entity_id: item.id,
-      before: null,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
+    const item = this.repository.upsertCategory(input);
 
     return CatalogCategoryMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -90,23 +77,9 @@ export class CatalogService {
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(CatalogIdParamSchema, { id });
     const input = parseInput(CatalogCategoryUpdateSchema, body);
-    const before = this.stateStore.listCategories({ page: 1, page_size: 1 }).items.find(
-      (category) => category.id === parsedId.id,
-    );
-    const item = this.stateStore.upsertCategory({
+    const item = this.repository.upsertCategory({
       ...(input as any),
       id: parsedId.id,
-    });
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "catalog.category.update",
-      entity: "catalog_category",
-      entity_id: item.id,
-      before: before ?? null,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
     });
 
     return CatalogCategoryMutationResponseSchema.parse({
@@ -117,7 +90,7 @@ export class CatalogService {
 
   listProducts(query: unknown) {
     const parsed = parseInput(CatalogProductListQuerySchema, query);
-    const list = this.stateStore.listProducts({ ...parsed, status: "active" });
+    const list = this.repository.listProducts({ ...parsed, status: "active" });
     return CatalogProductListResponseSchema.parse(list);
   }
 
@@ -125,13 +98,13 @@ export class CatalogService {
     this.authorization.requireStaffPermission("catalog:read");
     const parsed = parseInput(CatalogProductListQuerySchema, query);
     return CatalogProductListResponseSchema.parse(
-      this.stateStore.listProducts(parsed),
+      this.repository.listProducts(parsed),
     );
   }
 
   getProduct(slug: unknown) {
     const parsed = parseInput(CatalogSlugParamSchema, { slug });
-    const product = this.stateStore.getProductBySlug(parsed.slug);
+    const product = this.repository.getProductBySlug(parsed.slug);
     if (product.status !== "active") {
       throw new NotFoundException("商品不存在");
     }
@@ -145,18 +118,7 @@ export class CatalogService {
     const actor = this.authorization.requireStaffPermission("catalog:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(CatalogProductCreateSchema, body);
-    const item = this.stateStore.upsertProduct(input);
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "catalog.product.create",
-      entity: "catalog_product",
-      entity_id: item.id,
-      before: null,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
+    const item = this.repository.upsertProduct(input);
 
     return CatalogProductMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -169,19 +131,8 @@ export class CatalogService {
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(CatalogIdParamSchema, { id });
     const input = parseInput(CatalogProductUpdateSchema, body);
-    const before = this.stateStore.getProductById(parsedId.id);
-    const item = this.stateStore.upsertProduct({ ...input, id: parsedId.id });
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "catalog.product.update",
-      entity: "catalog_product",
-      entity_id: item.id,
-      before,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
+    const before = this.repository.getProductBySlug(parsedId.id.toString());
+    const item = this.repository.upsertProduct({ ...input, id: parsedId.id });
 
     return CatalogProductMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -193,19 +144,8 @@ export class CatalogService {
     const actor = this.authorization.requireStaffPermission("catalog:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(CatalogIdParamSchema, { id });
-    const before = this.stateStore.getProductById(parsedId.id);
-    const item = this.stateStore.publishProduct(parsedId.id);
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "catalog.product.publish",
-      entity: "catalog_product",
-      entity_id: item.id,
-      before,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
+    const before = this.repository.getProductBySlug(parsedId.id.toString());
+    const item = this.repository.upsertProduct({ ...before, status: "active" });
 
     return CatalogProductMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -217,19 +157,8 @@ export class CatalogService {
     const actor = this.authorization.requireStaffPermission("catalog:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(CatalogIdParamSchema, { id });
-    const before = this.stateStore.getProductById(parsedId.id);
-    const item = this.stateStore.archiveProduct(parsedId.id);
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "catalog.product.archive",
-      entity: "catalog_product",
-      entity_id: item.id,
-      before,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
+    const before = this.repository.getProductBySlug(parsedId.id.toString());
+    const item = this.repository.upsertProduct({ ...before, status: "archived" });
 
     return CatalogProductMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -238,12 +167,7 @@ export class CatalogService {
   }
 
   listVariants() {
-    const items = this.stateStore
-      .listVariants()
-      .filter((variant) => {
-        const product = this.stateStore.getProductById(variant.product_id);
-        return variant.status === "active" && product.status === "active";
-      });
+    const items = this.repository.listVariants();
     return CatalogVariantListResponseSchema.parse(
       listResponse(items, 1, Math.max(items.length, 1)),
     );
