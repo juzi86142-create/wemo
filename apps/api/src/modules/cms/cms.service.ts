@@ -130,6 +130,11 @@ export class CmsService {
       this.requestContext.getMarket(),
       this.requestContext.getLocale(),
     );
-    return ContentNavigationListResponseSchema.parse(items);
+    return ContentNavigationListResponseSchema.parse({
+      items,
+      page: 1,
+      page_size: Math.max(items.length, 1),
+      total: items.length,
+    });
   }
 }

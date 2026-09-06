@@ -35,19 +35,21 @@ function readNavigationItems(body: unknown): ContentNavigation["items"] {
   const raw = record?.items;
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((item) => {
+    .map((item, index) => {
       const entry = readRecord(item);
       if (!entry) return null;
+      const label = typeof entry.label === "string" ? entry.label : "";
+      const path = typeof entry.url === "string" ? entry.url : "";
+      if (label === "" || path === "") return null;
       return {
         id:
-          typeof entry.id === "number"
-            ? entry.id
-            : `${entry.label ?? "item"}-${raw.indexOf(item)}`,
-        label: typeof entry.label === "string" ? entry.label : "",
-        url: typeof entry.url === "string" ? entry.url : "",
-        ...(typeof entry.sort_order === "number"
-          ? { sort_order: entry.sort_order }
-          : {}),
+          typeof entry.id === "number" ? entry.id : index + 1,
+        label,
+        path,
+        order: typeof entry.order === "number" ? entry.order : index,
+        children: Array.isArray(entry.children)
+          ? readNavigationItems({ items: entry.children })
+          : [],
       } as ContentNavigation["items"][number];
     })
     .filter((item): item is ContentNavigation["items"][number] => item !== null);
