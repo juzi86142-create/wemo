@@ -1,6 +1,3 @@
--- CreateSchema
-CREATE SCHEMA IF NOT EXISTS "public";
-
 -- CreateTable
 CREATE TABLE "public"."users" (
     "id" SERIAL NOT NULL,
@@ -9,6 +6,7 @@ CREATE TABLE "public"."users" (
     "name" TEXT NOT NULL,
     "phone" TEXT,
     "locale" TEXT NOT NULL DEFAULT 'en-US',
+    "audience" TEXT NOT NULL DEFAULT 'user',
     "status" TEXT NOT NULL DEFAULT 'pending_verification',
     "verified_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -39,43 +37,16 @@ CREATE TABLE "public"."user_roles" (
 );
 
 -- CreateTable
-CREATE TABLE "public"."addresses" (
-    "id" SERIAL NOT NULL,
-    "user_id" INTEGER NOT NULL,
-    "kind" TEXT NOT NULL,
-    "payload" JSONB NOT NULL,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "addresses_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "public"."sessions" (
     "id" SERIAL NOT NULL,
     "user_id" INTEGER NOT NULL,
     "audience" TEXT NOT NULL,
+    "token" TEXT NOT NULL,
     "expires_at" TIMESTAMP(3) NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "revoked_at" TIMESTAMP(3),
 
     CONSTRAINT "sessions_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "public"."dealer_applications" (
-    "id" SERIAL NOT NULL,
-    "application_no" TEXT NOT NULL,
-    "applicant_user_id" INTEGER,
-    "legal_name" TEXT NOT NULL,
-    "country" TEXT NOT NULL,
-    "contact_email" TEXT NOT NULL,
-    "payload" JSONB NOT NULL,
-    "status" TEXT NOT NULL DEFAULT 'draft',
-    "submitted_at" TIMESTAMP(3),
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "dealer_applications_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -88,6 +59,7 @@ CREATE TABLE "public"."dealer_companies" (
     "price_list_id" INTEGER,
     "currency" TEXT NOT NULL,
     "terms" JSONB NOT NULL,
+    "public_listing" BOOLEAN NOT NULL DEFAULT false,
     "status" TEXT NOT NULL DEFAULT 'active',
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "archived_at" TIMESTAMP(3),
@@ -108,14 +80,62 @@ CREATE TABLE "public"."dealer_members" (
 );
 
 -- CreateTable
-CREATE TABLE "public"."dealer_addresses" (
+CREATE TABLE "public"."dealer_applications" (
     "id" SERIAL NOT NULL,
-    "company_id" INTEGER NOT NULL,
-    "kind" TEXT NOT NULL,
+    "application_no" TEXT NOT NULL,
+    "applicant_user_id" INTEGER,
+    "legal_name" TEXT NOT NULL,
+    "country" TEXT NOT NULL,
+    "contact_email" TEXT NOT NULL,
     "payload" JSONB NOT NULL,
-    "public_listing" JSONB,
+    "status" TEXT NOT NULL DEFAULT 'draft',
+    "submitted_at" TIMESTAMP(3),
+    "reviewed_at" TIMESTAMP(3),
+    "review_note" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "dealer_addresses_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "dealer_applications_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "public"."languages" (
+    "id" SERIAL NOT NULL,
+    "code" TEXT NOT NULL,
+    "label" TEXT NOT NULL,
+    "native_label" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'active',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "languages_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "public"."markets" (
+    "id" SERIAL NOT NULL,
+    "code" TEXT NOT NULL,
+    "default_locale" TEXT NOT NULL,
+    "currency" TEXT NOT NULL,
+    "timezone" TEXT NOT NULL,
+    "settings" JSONB NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'active',
+
+    CONSTRAINT "markets_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "public"."market_locales" (
+    "id" SERIAL NOT NULL,
+    "market_id" INTEGER NOT NULL,
+    "language_id" INTEGER NOT NULL,
+    "locale" TEXT NOT NULL,
+    "path_prefix" TEXT NOT NULL,
+    "is_default" BOOLEAN NOT NULL DEFAULT false,
+    "sort_order" INTEGER NOT NULL DEFAULT 0,
+    "status" TEXT NOT NULL DEFAULT 'active',
+
+    CONSTRAINT "market_locales_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -175,18 +195,6 @@ CREATE TABLE "public"."variants" (
 );
 
 -- CreateTable
-CREATE TABLE "public"."price_lists" (
-    "id" SERIAL NOT NULL,
-    "code" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "market" TEXT NOT NULL,
-    "currency" TEXT NOT NULL,
-    "status" TEXT NOT NULL DEFAULT 'active',
-
-    CONSTRAINT "price_lists_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "public"."prices" (
     "id" SERIAL NOT NULL,
     "variant_id" INTEGER NOT NULL,
@@ -207,6 +215,18 @@ CREATE TABLE "public"."prices" (
 );
 
 -- CreateTable
+CREATE TABLE "public"."price_lists" (
+    "id" SERIAL NOT NULL,
+    "code" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "market" TEXT NOT NULL,
+    "currency" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'active',
+
+    CONSTRAINT "price_lists_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "public"."inventory_balances" (
     "id" SERIAL NOT NULL,
     "variant_id" INTEGER NOT NULL,
@@ -223,48 +243,10 @@ CREATE TABLE "public"."inventory_balances" (
 );
 
 -- CreateTable
-CREATE TABLE "public"."inventory_reservations" (
-    "id" SERIAL NOT NULL,
-    "inventory_balance_id" INTEGER NOT NULL,
-    "owner_type" TEXT NOT NULL,
-    "owner_id" INTEGER NOT NULL,
-    "quantity" INTEGER NOT NULL,
-    "status" TEXT NOT NULL DEFAULT 'active',
-    "expires_at" TIMESTAMP(3),
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "inventory_reservations_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "public"."carts" (
-    "id" SERIAL NOT NULL,
-    "user_id" INTEGER,
-    "company_id" INTEGER,
-    "channel" TEXT NOT NULL,
-    "market" TEXT NOT NULL,
-    "currency" TEXT NOT NULL,
-    "status" TEXT NOT NULL DEFAULT 'active',
-    "expires_at" TIMESTAMP(3),
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "carts_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "public"."cart_items" (
-    "id" SERIAL NOT NULL,
-    "cart_id" INTEGER NOT NULL,
-    "variant_id" INTEGER NOT NULL,
-    "quantity" INTEGER NOT NULL,
-
-    CONSTRAINT "cart_items_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "public"."orders" (
     "id" SERIAL NOT NULL,
     "order_no" TEXT NOT NULL,
+    "request_id" TEXT,
     "channel" TEXT NOT NULL,
     "user_id" INTEGER,
     "company_id" INTEGER,
@@ -356,22 +338,6 @@ CREATE TABLE "public"."shipments" (
 );
 
 -- CreateTable
-CREATE TABLE "public"."return_requests" (
-    "id" SERIAL NOT NULL,
-    "order_id" INTEGER NOT NULL,
-    "user_id" INTEGER,
-    "company_id" INTEGER,
-    "status" TEXT NOT NULL,
-    "reason" TEXT NOT NULL,
-    "items" JSONB NOT NULL,
-    "attachments" JSONB NOT NULL,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "return_requests_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "public"."content_entries" (
     "id" SERIAL NOT NULL,
     "type" TEXT NOT NULL,
@@ -407,121 +373,13 @@ CREATE TABLE "public"."media_assets" (
 );
 
 -- CreateTable
-CREATE TABLE "public"."form_submissions" (
-    "id" SERIAL NOT NULL,
-    "submission_no" TEXT NOT NULL,
-    "type" TEXT NOT NULL,
-    "source" TEXT NOT NULL,
-    "payload" JSONB NOT NULL,
-    "assignee_id" INTEGER,
-    "status" TEXT NOT NULL DEFAULT 'new',
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "form_submissions_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "public"."favorites" (
-    "id" SERIAL NOT NULL,
-    "user_id" INTEGER NOT NULL,
-    "product_id" INTEGER NOT NULL,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "favorites_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "public"."subscriptions" (
-    "id" SERIAL NOT NULL,
-    "user_id" INTEGER NOT NULL,
-    "channel" TEXT NOT NULL,
-    "status" TEXT NOT NULL DEFAULT 'active',
-    "consent_at" TIMESTAMP(3),
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "subscriptions_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "public"."notification_deliveries" (
-    "id" SERIAL NOT NULL,
-    "user_id" INTEGER,
-    "company_id" INTEGER,
-    "template_key" TEXT NOT NULL,
-    "channel" TEXT NOT NULL,
-    "status" TEXT NOT NULL,
-    "payload" JSONB NOT NULL,
-    "provider_id" TEXT,
-    "sent_at" TIMESTAMP(3),
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "notification_deliveries_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "public"."analytics_events" (
-    "id" SERIAL NOT NULL,
-    "name" TEXT NOT NULL,
-    "request_id" TEXT NOT NULL,
-    "user_id" INTEGER,
-    "company_id" INTEGER,
-    "market" TEXT,
-    "locale" TEXT,
-    "payload" JSONB NOT NULL,
-    "occurred_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "analytics_events_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "public"."languages" (
-    "id" SERIAL NOT NULL,
-    "code" TEXT NOT NULL,
-    "label" TEXT NOT NULL,
-    "native_label" TEXT NOT NULL,
-    "status" TEXT NOT NULL DEFAULT 'active',
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "languages_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "public"."markets" (
-    "id" SERIAL NOT NULL,
-    "code" TEXT NOT NULL,
-    "default_locale" TEXT NOT NULL,
-    "currency" TEXT NOT NULL,
-    "timezone" TEXT NOT NULL,
-    "settings" JSONB NOT NULL,
-    "status" TEXT NOT NULL DEFAULT 'active',
-
-    CONSTRAINT "markets_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "public"."market_locales" (
-    "id" SERIAL NOT NULL,
-    "market_id" INTEGER NOT NULL,
-    "language_id" INTEGER NOT NULL,
-    "locale" TEXT NOT NULL,
-    "path_prefix" TEXT NOT NULL,
-    "is_default" BOOLEAN NOT NULL DEFAULT false,
-    "sort_order" INTEGER NOT NULL DEFAULT 0,
-    "status" TEXT NOT NULL DEFAULT 'active',
-
-    CONSTRAINT "market_locales_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "public"."system_settings" (
     "id" SERIAL NOT NULL,
     "group_name" TEXT NOT NULL,
     "key" TEXT NOT NULL,
     "value" JSONB NOT NULL,
     "version" TEXT NOT NULL,
-    "updated_by" INTEGER NOT NULL,
+    "updated_by" INTEGER,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "system_settings_pkey" PRIMARY KEY ("id")
@@ -530,7 +388,7 @@ CREATE TABLE "public"."system_settings" (
 -- CreateTable
 CREATE TABLE "public"."audit_logs" (
     "id" SERIAL NOT NULL,
-    "actor_id" INTEGER NOT NULL,
+    "actor_id" INTEGER,
     "action" TEXT NOT NULL,
     "entity" TEXT NOT NULL,
     "entity_id" INTEGER NOT NULL,
@@ -541,20 +399,6 @@ CREATE TABLE "public"."audit_logs" (
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "audit_logs_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "public"."outbox_events" (
-    "id" SERIAL NOT NULL,
-    "topic" TEXT NOT NULL,
-    "aggregate_id" INTEGER NOT NULL,
-    "payload" JSONB NOT NULL,
-    "status" TEXT NOT NULL DEFAULT 'pending',
-    "available_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "processed_at" TIMESTAMP(3),
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "outbox_events_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -584,22 +428,13 @@ CREATE INDEX "user_roles_role_id_idx" ON "public"."user_roles"("role_id");
 CREATE UNIQUE INDEX "user_roles_user_id_role_id_key" ON "public"."user_roles"("user_id", "role_id");
 
 -- CreateIndex
-CREATE INDEX "addresses_user_id_idx" ON "public"."addresses"("user_id");
+CREATE UNIQUE INDEX "sessions_token_key" ON "public"."sessions"("token");
 
 -- CreateIndex
 CREATE INDEX "sessions_user_id_idx" ON "public"."sessions"("user_id");
 
 -- CreateIndex
 CREATE INDEX "sessions_expires_at_idx" ON "public"."sessions"("expires_at");
-
--- CreateIndex
-CREATE UNIQUE INDEX "dealer_applications_application_no_key" ON "public"."dealer_applications"("application_no");
-
--- CreateIndex
-CREATE INDEX "dealer_applications_status_country_idx" ON "public"."dealer_applications"("status", "country");
-
--- CreateIndex
-CREATE INDEX "dealer_applications_applicant_user_id_idx" ON "public"."dealer_applications"("applicant_user_id");
 
 -- CreateIndex
 CREATE INDEX "dealer_companies_status_country_idx" ON "public"."dealer_companies"("status", "country");
@@ -620,7 +455,34 @@ CREATE INDEX "dealer_members_user_id_idx" ON "public"."dealer_members"("user_id"
 CREATE UNIQUE INDEX "dealer_members_company_id_user_id_key" ON "public"."dealer_members"("company_id", "user_id");
 
 -- CreateIndex
-CREATE INDEX "dealer_addresses_company_id_idx" ON "public"."dealer_addresses"("company_id");
+CREATE UNIQUE INDEX "dealer_applications_application_no_key" ON "public"."dealer_applications"("application_no");
+
+-- CreateIndex
+CREATE INDEX "dealer_applications_status_country_idx" ON "public"."dealer_applications"("status", "country");
+
+-- CreateIndex
+CREATE INDEX "dealer_applications_applicant_user_id_idx" ON "public"."dealer_applications"("applicant_user_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "languages_code_key" ON "public"."languages"("code");
+
+-- CreateIndex
+CREATE INDEX "languages_status_idx" ON "public"."languages"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "markets_code_key" ON "public"."markets"("code");
+
+-- CreateIndex
+CREATE INDEX "market_locales_market_id_status_sort_order_idx" ON "public"."market_locales"("market_id", "status", "sort_order");
+
+-- CreateIndex
+CREATE INDEX "market_locales_language_id_idx" ON "public"."market_locales"("language_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "market_locales_market_id_locale_key" ON "public"."market_locales"("market_id", "locale");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "market_locales_market_id_path_prefix_key" ON "public"."market_locales"("market_id", "path_prefix");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "categories_slug_key" ON "public"."categories"("slug");
@@ -647,9 +509,6 @@ CREATE UNIQUE INDEX "variants_barcode_key" ON "public"."variants"("barcode");
 CREATE INDEX "variants_product_id_idx" ON "public"."variants"("product_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "price_lists_code_key" ON "public"."price_lists"("code");
-
--- CreateIndex
 CREATE INDEX "prices_variant_id_market_currency_idx" ON "public"."prices"("variant_id", "market", "currency");
 
 -- CreateIndex
@@ -662,31 +521,13 @@ CREATE INDEX "prices_dealer_company_id_idx" ON "public"."prices"("dealer_company
 CREATE INDEX "prices_dealer_tier_id_idx" ON "public"."prices"("dealer_tier_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "price_lists_code_key" ON "public"."price_lists"("code");
+
+-- CreateIndex
 CREATE INDEX "inventory_balances_variant_id_idx" ON "public"."inventory_balances"("variant_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "inventory_balances_variant_id_warehouse_code_market_key" ON "public"."inventory_balances"("variant_id", "warehouse_code", "market");
-
--- CreateIndex
-CREATE INDEX "inventory_reservations_inventory_balance_id_status_idx" ON "public"."inventory_reservations"("inventory_balance_id", "status");
-
--- CreateIndex
-CREATE INDEX "inventory_reservations_owner_type_owner_id_idx" ON "public"."inventory_reservations"("owner_type", "owner_id");
-
--- CreateIndex
-CREATE INDEX "carts_user_id_status_idx" ON "public"."carts"("user_id", "status");
-
--- CreateIndex
-CREATE INDEX "carts_company_id_status_idx" ON "public"."carts"("company_id", "status");
-
--- CreateIndex
-CREATE INDEX "cart_items_cart_id_idx" ON "public"."cart_items"("cart_id");
-
--- CreateIndex
-CREATE INDEX "cart_items_variant_id_idx" ON "public"."cart_items"("variant_id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "cart_items_cart_id_variant_id_key" ON "public"."cart_items"("cart_id", "variant_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "orders_order_no_key" ON "public"."orders"("order_no");
@@ -737,15 +578,6 @@ CREATE INDEX "shipments_order_id_idx" ON "public"."shipments"("order_id");
 CREATE INDEX "shipments_tracking_no_idx" ON "public"."shipments"("tracking_no");
 
 -- CreateIndex
-CREATE INDEX "return_requests_order_id_idx" ON "public"."return_requests"("order_id");
-
--- CreateIndex
-CREATE INDEX "return_requests_user_id_status_idx" ON "public"."return_requests"("user_id", "status");
-
--- CreateIndex
-CREATE INDEX "return_requests_company_id_status_idx" ON "public"."return_requests"("company_id", "status");
-
--- CreateIndex
 CREATE INDEX "content_entries_type_status_idx" ON "public"."content_entries"("type", "status");
 
 -- CreateIndex
@@ -758,66 +590,6 @@ CREATE UNIQUE INDEX "media_assets_file_key_key" ON "public"."media_assets"("file
 CREATE INDEX "media_assets_checksum_idx" ON "public"."media_assets"("checksum");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "form_submissions_submission_no_key" ON "public"."form_submissions"("submission_no");
-
--- CreateIndex
-CREATE INDEX "form_submissions_type_status_idx" ON "public"."form_submissions"("type", "status");
-
--- CreateIndex
-CREATE INDEX "form_submissions_assignee_id_idx" ON "public"."form_submissions"("assignee_id");
-
--- CreateIndex
-CREATE INDEX "favorites_user_id_idx" ON "public"."favorites"("user_id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "favorites_user_id_product_id_key" ON "public"."favorites"("user_id", "product_id");
-
--- CreateIndex
-CREATE INDEX "subscriptions_user_id_idx" ON "public"."subscriptions"("user_id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "subscriptions_user_id_channel_key" ON "public"."subscriptions"("user_id", "channel");
-
--- CreateIndex
-CREATE INDEX "notification_deliveries_user_id_status_idx" ON "public"."notification_deliveries"("user_id", "status");
-
--- CreateIndex
-CREATE INDEX "notification_deliveries_company_id_status_idx" ON "public"."notification_deliveries"("company_id", "status");
-
--- CreateIndex
-CREATE INDEX "notification_deliveries_template_key_created_at_idx" ON "public"."notification_deliveries"("template_key", "created_at");
-
--- CreateIndex
-CREATE INDEX "analytics_events_name_occurred_at_idx" ON "public"."analytics_events"("name", "occurred_at");
-
--- CreateIndex
-CREATE INDEX "analytics_events_user_id_occurred_at_idx" ON "public"."analytics_events"("user_id", "occurred_at");
-
--- CreateIndex
-CREATE UNIQUE INDEX "languages_code_key" ON "public"."languages"("code");
-
--- CreateIndex
-CREATE INDEX "languages_status_idx" ON "public"."languages"("status");
-
--- CreateIndex
-CREATE UNIQUE INDEX "markets_code_key" ON "public"."markets"("code");
-
--- CreateIndex
-CREATE INDEX "market_locales_market_id_status_sort_order_idx" ON "public"."market_locales"("market_id", "status", "sort_order");
-
--- CreateIndex
-CREATE INDEX "market_locales_language_id_idx" ON "public"."market_locales"("language_id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "market_locales_market_id_locale_key" ON "public"."market_locales"("market_id", "locale");
-
--- CreateIndex
-CREATE UNIQUE INDEX "market_locales_market_id_path_prefix_key" ON "public"."market_locales"("market_id", "path_prefix");
-
--- CreateIndex
-CREATE INDEX "system_settings_updated_by_idx" ON "public"."system_settings"("updated_by");
-
--- CreateIndex
 CREATE UNIQUE INDEX "system_settings_group_name_key_key" ON "public"."system_settings"("group_name", "key");
 
 -- CreateIndex
@@ -825,12 +597,6 @@ CREATE INDEX "audit_logs_entity_entity_id_created_at_idx" ON "public"."audit_log
 
 -- CreateIndex
 CREATE INDEX "audit_logs_actor_id_created_at_idx" ON "public"."audit_logs"("actor_id", "created_at");
-
--- CreateIndex
-CREATE INDEX "outbox_events_status_available_at_idx" ON "public"."outbox_events"("status", "available_at");
-
--- CreateIndex
-CREATE INDEX "outbox_events_aggregate_id_idx" ON "public"."outbox_events"("aggregate_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "redirects_source_path_key" ON "public"."redirects"("source_path");

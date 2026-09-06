@@ -8,7 +8,7 @@ import {
   MediaAssetSchema,
   NotificationDeliverySchema,
   SearchQuerySchema,
-} from "./index.js";
+} from "@wemo/contracts";
 
 const timestamp = "2026-09-05T00:00:00.000Z";
 

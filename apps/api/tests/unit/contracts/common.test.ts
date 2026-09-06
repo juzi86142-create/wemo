@@ -6,7 +6,7 @@ import {
   createPaginatedResponseSchema,
   EntityIdSchema,
   PaginationSchema,
-} from "./index.js";
+} from "@wemo/contracts";
 
 describe("通用 API 契约", () => {
   it("解析正整数实体 ID 和带默认值的分页参数", () => {

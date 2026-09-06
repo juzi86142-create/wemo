@@ -33,3 +33,4 @@ uploads/
 # Logs
 *.log
 pnpm-debug.log*
+dist-seed/

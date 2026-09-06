@@ -2,7 +2,7 @@ import type { SaveMarketInput } from "@wemo/contracts";
 import type { DatabaseClient } from "@wemo/database";
 import { describe, expect, it, vi } from "vitest";
 
-import { LocalizationPrismaRepository } from "./localization.prisma-repository";
+import { LocalizationPrismaRepository } from "../../../src/modules/localization/localization.prisma-repository";
 
 const languageRow = {
   id: 1,

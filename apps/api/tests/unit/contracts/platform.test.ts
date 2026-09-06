@@ -5,7 +5,7 @@ import {
   MarketContextSchema,
   PublicPlatformConfigSchema,
   SaveMarketSchema,
-} from "./index.js";
+} from "@wemo/contracts";
 
 describe("平台契约", () => {
   it("接受语言与市场分离且只有一个默认 locale 的配置", () => {

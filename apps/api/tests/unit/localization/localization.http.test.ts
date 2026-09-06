@@ -7,14 +7,14 @@ import {
 import type { Language, Market } from "@wemo/contracts";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { configureApplication } from "../../http/configure-application";
-import { ApiHttpModule } from "../../http/api-http.module";
-import { LocalizationController } from "./localization.controller";
+import { configureApplication } from "../../../src/http/configure-application";
+import { ApiHttpModule } from "../../../src/http/api-http.module";
+import { LocalizationController } from "../../../src/modules/localization/localization.controller";
 import {
   LOCALIZATION_REPOSITORY,
   type LocalizationRepository,
-} from "./localization.repository";
-import { LocalizationService } from "./localization.service";
+} from "../../../src/modules/localization/localization.repository";
+import { LocalizationService } from "../../../src/modules/localization/localization.service";
 
 const language: Language = {
   id: 1,

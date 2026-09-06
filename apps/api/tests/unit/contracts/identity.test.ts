@@ -6,7 +6,7 @@ import {
   IdentityNotificationListQuerySchema,
   IdentityUserMutationResponseSchema,
   PermissionCodeSchema,
-} from "./index.js";
+} from "@wemo/contracts";
 
 describe("identity contracts", () => {
   it("parses user and session payloads", () => {

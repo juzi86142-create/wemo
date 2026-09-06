@@ -1,91 +1,103 @@
-# API 测试目录
-
-本目录包含后端API的单元测试、集成测试和端到端测试。
-
-## 目录结构
-
-```
-apps/api/tests/
-├── unit/                    # 单元测试
-│   ├── auth/               # 认证模块测试
-│   ├── cart/               # 购物车模块测试
-│   ├── catalog/            # 商品目录模块测试
-│   ├── dealers/            # 经销商模块测试
-│   ├── identity/           # 身份管理模块测试
-│   ├── notifications/      # 通知模块测试
-│   ├── orders/             # 订单模块测试
-│   └── payments/           # 支付模块测试
-├── integration/            # 集成测试（待补充）
-└── e2e/                   # 端到端测试（待补充）
-```
+# 测试策略（Demo 级别）
 
 ## 测试原则
 
-**Demo项目测试原则**: 只测试合法情况（Happy Path），不测试非法/异常情况。
+- ✅ **只覆盖正常流程** - 测试Happy Path即可
+- ✅ **Demo级别** - 不需要复杂的错误场景
+- ✅ **本地运行** - 假设本地环境有PostgreSQL和MinIO
 
-### 已覆盖的模块
+## 测试分类
 
-- ✅ **auth**: 注册、登录、邮箱验证、密码找回、会话管理
-- ✅ **cart**: 购物车CRUD、合并、清空
-- ✅ **catalog**: 商品分类、商品、变体管理
-- ✅ **dealers**: 经销商申请、审核、企业、成员管理
-- ✅ **identity**: 用户资料、地址、订阅、角色管理
-- ✅ **notifications**: 通知模板、发送记录、重试
-- ✅ **orders**: 订单创建、查询、状态更新
-- ✅ **payments**: 支付创建、捕获、退款
+### 1. 单元测试（Unit Tests）
+- 位置：`tests/unit/`
+- 目的：验证单个Service/Repository方法
+- 范围：只测正常流程
+- 示例：`localization.service.test.ts`
 
-### 每个模块包含
+### 2. 数据库集成测试（Database Integration）
+- 位置：`tests/unit/*/database.test.ts`
+- 目的：验证Prisma Repository能正常读写数据库
+- 控制：通过环境变量 `RUN_DATABASE_INTEGRATION=1` 启用
+- 示例：`localization.database.test.ts`
 
-- `*.service.test.ts` - Service层业务逻辑测试
-- `*.controller.test.ts` - Controller层HTTP适配测试（如有）
+### 3. HTTP集成测试（HTTP Integration）
+- 位置：`tests/unit/*/http.test.ts`
+- 目的：验证Controller端点能正常处理请求
+- 控制：通过环境变量 `RUN_HTTP_INTEGRATION=1` 启用
+- 示例：`localization.http.test.ts`
+
+### 4. 生产装配测试（Production Assembly）
+- 位置：`tests/app.module.test.ts`
+- 目的：验证NestJS模块能正常装配
+- 范围：验证所有Service和Repository能正确注入
+
+### 5. 健康检查测试（Health Check）
+- 位置：`tests/health.service.test.ts`
+- 目的：验证基础健康检查端点
 
 ## 运行测试
 
 ```bash
+# 运行所有单元测试（跳过数据库集成）
+pnpm test
+
+# 运行数据库集成测试
+RUN_DATABASE_INTEGRATION=1 pnpm test
+
+# 运行HTTP集成测试
+RUN_HTTP_INTEGRATION=1 pnpm test
+
 # 运行所有测试
-cd apps/api
-npm test
-
-# 运行特定模块的测试
-npm test -- tests/unit/auth
-
-# 运行特定文件
-npm test -- tests/unit/auth/auth.service.test.ts
-
-# 查看详细输出
-npm test -- --reporter=verbose
-
-# 监听模式
-npm test -- --watch
+RUN_DATABASE_INTEGRATION=1 RUN_HTTP_INTEGRATION=1 pnpm test
 ```
 
-## 测试覆盖率
+## 测试覆盖范围
 
-当前测试覆盖率：
-- **单元测试**: 8个核心业务模块
-- **集成测试**: 3个（runtime目录下）
-- **E2E测试**: 待补充
+| 模块 | 单元测试 | 数据库集成 | HTTP集成 |
+|------|---------|-----------|---------|
+| Localization | ✅ | ✅ | ✅ |
+| Analytics | ⏳ | ⏳ | ⏳ |
+| Audit | ⏳ | ⏳ | ⏳ |
+| Auth | ⏳ | ⏳ | ⏳ |
+| Cart | ⏳ | ⏳ | ⏳ |
+| Catalog | ⏳ | ⏳ | ⏳ |
+| Cms | ⏳ | ⏳ | ⏳ |
+| Dealers | ⏳ | ⏳ | ⏳ |
+| Forms | ⏳ | ⏳ | ⏳ |
+| Identity | ⏳ | ⏳ | ⏳ |
+| Integrations | ⏳ | ⏳ | ⏳ |
+| Inventory | ⏳ | ⏳ | ⏳ |
+| Jobs | ⏳ | ⏳ | ⏳ |
+| Media | ⏳ | ⏳ | ⏳ |
+| Notifications | ⏳ | ⏳ | ⏳ |
+| Orders | ⏳ | ⏳ | ⏳ |
+| Payments | ⏳ | ⏳ | ⏳ |
+| Pricing | ⏳ | ⏳ | ⏳ |
+| Quotes | ⏳ | ⏳ | ⏳ |
+| Reports | ⏳ | ⏳ | ⏳ |
+| Returns | ⏳ | ⏳ | ⏳ |
+| Search | ⏳ | ⏳ | ⏳ |
+| Seo | ⏳ | ⏳ | ⏳ |
+| Settings | ⏳ | ⏳ | ⏳ |
 
-## 待补充的测试
+## 测试数据管理
 
-- ⏳ 其他业务模块（pricing, inventory, media等）
-- ⏳ 集成测试（完整业务流程）
-- ⏳ E2E测试（用户端到端流程）
-- ⏳ 性能测试
-- ⏳ 安全测试
+- 使用环境变量 `DATABASE_URL` 连接本地PostgreSQL
+- 集成测试使用事务或清理脚本避免数据污染
+- Seed数据通过 `apps/api/src/seed.ts` 提供
+- Demo环境可以重复运行seed脚本
 
-## 测试命名规范
+## 已知限制
 
-- 测试文件: `*.test.ts`
-- 测试套件: `describe("模块名", () => { ... })`
-- 测试用例: `it("场景描述", async () => { ... })`
+- ❌ 暂不覆盖异常流程和错误处理
+- ❌ 暂不覆盖并发场景
+- ❌ 暂不覆盖权限拒绝场景
+- ❌ 暂不覆盖状态机非法转换
 
-## 示例
+## 下一步
 
-```typescript
-describe("AuthService", () => {
-  it("正常注册普通用户并返回用户信息", async () => {
-    // 测试代码
-  });
-});
-```
+当需要提升测试覆盖率时，可以按以下顺序补充：
+1. 完成所有模块的单元测试（正常流程）
+2. 补充数据库集成测试
+3. 补充HTTP集成测试
+4. 添加关键场景的状态机测试

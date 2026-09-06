@@ -1,8 +1,8 @@
 import { createDatabase, type DatabaseClient } from "@wemo/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { LocalizationPrismaRepository } from "./localization.prisma-repository";
-import { LocalizationService } from "./localization.service";
+import { LocalizationPrismaRepository } from "../../../src/modules/localization/localization.prisma-repository";
+import { LocalizationService } from "../../../src/modules/localization/localization.service";
 
 const runIntegration = process.env.RUN_DATABASE_INTEGRATION === "1";
 const describeDatabase = runIntegration ? describe : describe.skip;
