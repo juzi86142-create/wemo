@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import type {
   Cart,
   CartItem,
@@ -111,7 +116,10 @@ export class CommerceStateStore {
   private readonly returnIdempotency = new Map<string, number>();
   private readonly quoteIdempotency = new Map<string, number>();
 
-  constructor(private readonly experience: ExperienceStateStore) {
+  constructor(
+    @Inject(ExperienceStateStore)
+    private readonly experience: ExperienceStateStore,
+  ) {
     const bus = this.experience.getVariantById(this.experience.getProductBySlug("demo-bus").variants[0]!.id);
     const racer = this.experience.getVariantById(this.experience.getProductBySlug("demo-racer").variants[0]!.id);
 
@@ -402,7 +410,7 @@ export class CommerceStateStore {
         snapshot: {
           variant: this.getVariantSnapshot(line.variant_id),
           pricing_record: clone(record),
-        },
+        } as Record<string, JsonValue>,
       });
     }
 
@@ -713,7 +721,7 @@ export class CommerceStateStore {
   }
 
   createOrder(input: {
-    channel: CommerceChannel;
+    channel: Order["channel"];
     user_id: number | null;
     company_id: number | null;
     currency: string;
@@ -822,7 +830,7 @@ export class CommerceStateStore {
       failure_reason: null,
       idempotency_key: input.idempotency_key,
       refunded_minor: 0,
-      payload: clone(input.payload),
+      payload: clone(input.payload ?? {}) as JsonValue,
       created_at: nowIso(),
       updated_at: nowIso(),
     };

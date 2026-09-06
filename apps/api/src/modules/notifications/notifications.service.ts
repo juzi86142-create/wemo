@@ -91,7 +91,10 @@ export class NotificationsService {
     const actor = this.authorization.requireStaffPermission("notifications:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(NotificationDeliveryCreateSchema, body);
-    const item = this.stateStore.recordNotificationDelivery(input);
+    const item = this.stateStore.recordNotificationDelivery({
+      ...input,
+      request_id: input.request_id ?? context.request_id,
+    });
 
     this.platformState.recordAudit({
       actor_id: actor.user_id,

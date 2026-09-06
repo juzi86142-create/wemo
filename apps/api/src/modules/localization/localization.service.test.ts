@@ -108,6 +108,71 @@ describe("LocalizationService", () => {
     });
   });
 
+  it("快照优先使用运行态公开市场数据", async () => {
+    const experienceState = {
+      listMarkets: vi.fn(() => ({
+        items: [
+          {
+            code: "global",
+            default_locale: "en-US",
+            currency: "USD",
+            timezone: "UTC",
+            fallback_locales: ["en-US", "zh-CN"],
+            status: "active",
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      })),
+      listLocales: vi.fn(() => ({
+        items: [
+          {
+            code: "en-US",
+            name: "English (US)",
+            market: "global",
+            direction: "ltr",
+            fallback_locale: null,
+            status: "active",
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      })),
+      listRoutes: vi.fn(() => ({
+        items: [
+          {
+            market: "global",
+            locale: "en-US",
+            prefix: "/",
+            default: true,
+            fallback_chain: ["en-US", "zh-CN"],
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      })),
+    };
+    const service = new LocalizationService(
+      repositoryFor(market("default_locale")),
+      experienceState as never,
+    );
+
+    await expect(service.snapshot("req-snapshot-1")).resolves.toMatchObject({
+      request_id: "req-snapshot-1",
+      item: {
+        markets: [{ code: "global" }],
+        locales: [{ code: "en-US" }],
+        routes: [{ prefix: "/" }],
+      },
+    });
+    expect(experienceState.listMarkets).toHaveBeenCalledOnce();
+    expect(experienceState.listLocales).toHaveBeenCalledOnce();
+    expect(experienceState.listRoutes).toHaveBeenCalledOnce();
+  });
+
   it("hide_untranslated 策略拒绝不存在的 locale", async () => {
     const service = new LocalizationService(
       repositoryFor(market("hide_untranslated")),

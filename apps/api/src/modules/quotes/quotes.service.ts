@@ -8,6 +8,7 @@ import {
   QuoteVersionListResponseSchema,
   QuoteReviewSchema,
 } from "@wemo/contracts/commerce";
+import type { JsonValue } from "@wemo/contracts/common";
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
@@ -181,7 +182,7 @@ export class QuotesService {
         pricing_snapshot: before.pricing_snapshot,
         terms_snapshot: before.terms_snapshot,
         note: input.note ?? null,
-      },
+      } as JsonValue,
       items: before.items.map((item, index) => ({
         id: index + 1,
         variant_id: item.variant_id,
@@ -192,7 +193,7 @@ export class QuotesService {
         tax_minor: 0,
         shipping_minor: 0,
         total_minor: 0,
-        detail_snapshot: item,
+        detail_snapshot: item as JsonValue,
       })),
       request_id: context.request_id,
       note: input.note ?? null,

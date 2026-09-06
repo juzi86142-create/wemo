@@ -7,6 +7,7 @@ import {
   OrderMutationResponseSchema,
   OrderStatusSchema,
 } from "@wemo/contracts/commerce";
+import type { JsonValue } from "@wemo/contracts/common";
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
@@ -113,7 +114,7 @@ export class OrdersService {
       detail_snapshot: {
         preview: item,
         request_id: context.request_id,
-      },
+      } as JsonValue,
     }));
 
     const subtotal_minor = orderItems.reduce((sum, item) => sum + item.total_minor, 0);
@@ -136,7 +137,7 @@ export class OrdersService {
         cart_id: input.cart_id ?? null,
         quote_id: input.quote_id ?? null,
         note: input.note ?? null,
-      },
+      } as JsonValue,
       items: orderItems,
       request_id: context.request_id,
       note: input.note ?? null,

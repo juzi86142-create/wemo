@@ -45,7 +45,9 @@ export async function createApiApp(
     try {
       const context = createRequestContext(request);
       reply.header("x-request-id", context.request_id);
-      requestContextStore.run(context, () => done());
+      requestContextStore.run(context, () => {
+        done();
+      });
     } catch (error) {
       const requestId =
         typeof request.id === "string" && request.id.trim()

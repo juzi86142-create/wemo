@@ -649,6 +649,7 @@ export class ExperienceStateStore {
   private createSeedProduct(input: CatalogProductCreateInput): CatalogProduct {
     const productId = this.productSeq++;
     const created_at = nowIso();
+    const status = input.status ?? "draft";
     const variants = input.variants.map((variant) => ({
       id: this.productSeq++,
       product_id: productId,
@@ -672,7 +673,7 @@ export class ExperienceStateStore {
       age_max: input.age_max ?? null,
       tags: [...input.tags],
       primary_image_url: input.primary_image_url ?? null,
-      status: input.status,
+      status,
       primary_category_id: input.primary_category_id,
       category_ids: [...input.category_ids],
       market_visibility: clone(input.market_visibility),
@@ -680,8 +681,8 @@ export class ExperienceStateStore {
       media_asset_ids: [...input.media_asset_ids],
       related_product_ids: [...input.related_product_ids],
       variants,
-      published_at: input.status === "active" ? created_at : null,
-      archived_at: input.status === "archived" ? created_at : null,
+      published_at: status === "active" ? created_at : null,
+      archived_at: status === "archived" ? created_at : null,
       created_at,
       updated_at: created_at,
     };
@@ -1147,15 +1148,23 @@ export class ExperienceStateStore {
         market: entry.market,
         locale: entry.locale,
         status: entry.status,
-        items: ((entry.body as { items?: ContentNavigation["items"] }).items ?? []).map(
-          (item) => ({
-            id: item.id,
-            label: item.label,
-            path: item.path,
-            order: item.order,
-            children: item.children ?? [],
-          }),
-        ),
+        items: ((
+          entry.body as {
+            items?: Array<{
+              id: number;
+              label: string;
+              path: string;
+              order: number;
+              children?: ContentNavigation["items"];
+            }>;
+          }
+        ).items ?? []).map((item) => ({
+          id: item.id,
+          label: item.label,
+          path: item.path,
+          order: item.order,
+          children: item.children ?? [],
+        })),
         created_at: entry.created_at,
         updated_at: entry.updated_at,
       }));
@@ -1628,12 +1637,15 @@ export class ExperienceStateStore {
   }
 
   recordNotificationDelivery(input: NotificationDeliveryCreateInput): NotificationDelivery {
+    const requestId =
+      input.request_id ??
+      `${input.template_code}:${input.channel}:${input.recipient_user_id ?? "null"}:${input.company_id ?? "null"}`;
     const dedupeKey = [
       input.template_code,
       input.recipient_user_id ?? "null",
       input.company_id ?? "null",
       input.channel,
-      input.request_id,
+      requestId,
     ].join(":");
     const existingId = this.deliveryIdempotency.get(dedupeKey);
     if (existingId) {
@@ -1652,7 +1664,7 @@ export class ExperienceStateStore {
       audience: input.audience,
       channel: input.channel,
       status: input.status ?? "queued",
-      request_id: input.request_id,
+      request_id: requestId,
       payload: clone(input.payload),
       attempts: 1,
       provider_message_id: input.provider_message_id ?? null,

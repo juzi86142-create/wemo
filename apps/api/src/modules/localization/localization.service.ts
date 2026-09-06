@@ -1,9 +1,16 @@
-import { ForbiddenException, Inject, Injectable, Logger } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+} from "@nestjs/common";
 import {
   LanguageListResponseSchema,
   MarketContextSchema,
   MarketListResponseSchema,
   PaginationSchema,
+  LocalizationSnapshotSchema,
   RequestIdSchema,
   ResolveMarketContextQuerySchema,
   SaveMarketSchema,
@@ -15,6 +22,7 @@ import {
 } from "@wemo/contracts";
 
 import { ApiHttpException } from "../../http/api-http.exception";
+import { ExperienceStateStore } from "../../runtime/experience.state";
 import {
   LOCALIZATION_REPOSITORY,
   type LocalizationRepository,
@@ -32,6 +40,9 @@ export class LocalizationService {
   constructor(
     @Inject(LOCALIZATION_REPOSITORY)
     private readonly repository: LocalizationRepository,
+    @Optional()
+    @Inject(ExperienceStateStore)
+    private readonly experienceState?: ExperienceStateStore,
   ) {}
 
   async listLanguages(input: unknown) {
@@ -44,6 +55,17 @@ export class LocalizationService {
     const pagination = PaginationSchema.parse(input);
     const result = await this.repository.listPublicMarkets(pagination);
     return MarketListResponseSchema.parse({ ...pagination, ...result });
+  }
+
+  async snapshot(requestId: string) {
+    const snapshot = this.experienceState
+      ? this.buildRuntimeSnapshot()
+      : await this.buildRepositorySnapshot();
+
+    return LocalizationSnapshotSchema.parse({
+      request_id: RequestIdSchema.parse(requestId),
+      item: snapshot,
+    });
   }
 
   async resolveMarketContext(input: unknown) {
@@ -142,5 +164,62 @@ export class LocalizationService {
         request_id: context.request_id,
       }),
     );
+  }
+
+  private buildRuntimeSnapshot() {
+    const markets = this.experienceState?.listMarkets().items ?? [];
+    const locales = this.experienceState?.listLocales().items ?? [];
+    const routes = this.experienceState?.listRoutes().items ?? [];
+
+    return {
+      markets,
+      locales,
+      routes,
+    };
+  }
+
+  private async buildRepositorySnapshot() {
+    const pagination = { page: 1, page_size: 100 };
+    const markets = await this.repository.listPublicMarkets(pagination);
+    return {
+      markets: markets.items.map((market) => ({
+        code: market.code,
+        default_locale:
+          market.locales.find((locale) => locale.is_default)?.locale ??
+          market.locales[0]?.locale ??
+          "en-US",
+        currency: market.currency,
+        timezone: market.timezone,
+        fallback_locales: market.locales.map((locale) => locale.locale),
+        status: market.status,
+      })),
+      locales: markets.items.flatMap((market) =>
+        market.locales.map((locale) => ({
+          code: locale.locale,
+          name: locale.language.label,
+          market: market.code,
+          direction: "ltr",
+          fallback_locale: locale.is_default
+            ? null
+            : market.locales.find((entry) => entry.is_default)?.locale ?? null,
+          status: locale.language.status,
+        })),
+      ),
+      routes: markets.items.flatMap((market) =>
+        market.locales.map((locale) => ({
+          market: market.code,
+          locale: locale.locale,
+          prefix: locale.is_default ? "/" : `/${locale.path_prefix}`,
+          default: locale.is_default,
+          fallback_chain: locale.is_default
+            ? [locale.locale]
+            : [
+                locale.locale,
+                market.locales.find((entry) => entry.is_default)?.locale ??
+                  locale.locale,
+              ],
+        })),
+      ),
+    };
   }
 }
