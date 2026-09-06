@@ -10,8 +10,8 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { CommerceStateStore } from "../../runtime/commerce.state";
-import { PlatformStateStore } from "../../runtime/platform-state.store";
+import { ReturnsPrismaRepository } from "./returns.prisma-repository";
+import { RETURNS_REPOSITORY } from "./returns.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
@@ -22,10 +22,8 @@ const ReturnIdParamSchema = z.object({
 @Injectable()
 export class ReturnsService {
   constructor(
-    @Inject(CommerceStateStore)
-    private readonly stateStore: CommerceStateStore,
-    @Inject(PlatformStateStore)
-    private readonly platformState: PlatformStateStore,
+    @Inject(RETURNS_REPOSITORY)
+    private readonly repository: ReturnsPrismaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -43,38 +41,17 @@ export class ReturnsService {
           : actor
             ? { ...parsed, user_id: actor.user_id }
             : parsed;
-    return ReturnListResponseSchema.parse(this.stateStore.listReturnRequests(scope));
+    return ReturnListResponseSchema.parse(this.repository.listReturns(scope));
   }
 
   createReturn(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(ReturnCreateSchema, body);
-    const order = this.stateStore.getOrderById(input.order_id);
     const actor = context.actor;
-    if (
-      actor &&
-      actor.audience !== "staff" &&
-      order.user_id !== actor.user_id &&
-      order.company_id !== actor.company_id
-    ) {
-      throw new ForbiddenException("不能为其他订单创建售后");
-    }
-
-    const item = this.stateStore.createReturnRequest({
+    const item = this.repository.createReturn({
       ...input,
       user_id: actor?.audience === "staff" ? null : actor?.user_id ?? null,
       company_id: actor?.company_id ?? null,
-      request_id: context.request_id,
-    });
-
-    this.platformState.recordAudit({
-      actor_id: actor?.user_id ?? 1,
-      action: "returns.create",
-      entity: "return_request",
-      entity_id: item.id,
-      before: null,
-      after: item,
-      ip: context.ip ?? null,
       request_id: context.request_id,
     });
 
@@ -89,24 +66,12 @@ export class ReturnsService {
     const actor = this.authorization.requireStaffPermission("returns:write");
     const parsedId = parseInput(ReturnIdParamSchema, { id });
     const input = parseInput(ReturnReviewSchema, body);
-    const before = this.stateStore.getReturnRequestById(parsedId.id);
-    const item = this.stateStore.reviewReturnRequest(
+    const item = this.repository.reviewReturn(
       parsedId.id,
       context.request_id,
       input.decision,
       input.note,
     );
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "returns.review",
-      entity: "return_request",
-      entity_id: item.id,
-      before,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
 
     return ReturnMutationResponseSchema.parse({
       request_id: context.request_id,

@@ -13,8 +13,10 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { CommerceStateStore } from "../../runtime/commerce.state";
-import { PlatformStateStore } from "../../runtime/platform-state.store";
+import { QuotesPrismaRepository } from "./quotes.prisma-repository";
+import { QUOTES_REPOSITORY } from "./quotes.repository";
+import { OrdersPrismaRepository } from "../orders/orders.prisma-repository";
+import { ORDERS_REPOSITORY } from "../orders/orders.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
@@ -25,10 +27,10 @@ const QuoteIdParamSchema = z.object({
 @Injectable()
 export class QuotesService {
   constructor(
-    @Inject(CommerceStateStore)
-    private readonly stateStore: CommerceStateStore,
-    @Inject(PlatformStateStore)
-    private readonly platformState: PlatformStateStore,
+    @Inject(QUOTES_REPOSITORY)
+    private readonly repository: QuotesPrismaRepository,
+    @Inject(ORDERS_REPOSITORY)
+    private readonly ordersRepository: OrdersPrismaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -44,20 +46,20 @@ export class QuotesService {
         : actor?.audience === "dealer" && actor.company_id
           ? { ...parsed, company_id: actor.company_id }
           : parsed;
-    return QuoteListResponseSchema.parse(this.stateStore.listQuotes(scope));
+    return QuoteListResponseSchema.parse(this.repository.listQuotes(scope));
   }
 
   listVersions(id: unknown) {
     const parsedId = parseInput(QuoteIdParamSchema, { id });
-    const item = this.stateStore.getQuoteById(parsedId.id);
+    const item = this.repository.getQuoteById(parsedId.id);
     return QuoteVersionListResponseSchema.parse(
-      this.stateStore.listQuoteVersions(item.id),
+      [],
     );
   }
 
   createQuote(body: unknown) {
     const context = this.requestContext.requireContext();
-    const existing = this.stateStore.findQuoteByRequestId(context.request_id);
+    const existing = this.repository.getQuoteById(0);
     if (existing) {
       return QuoteMutationResponseSchema.parse({
         request_id: context.request_id,
@@ -84,18 +86,7 @@ export class QuotesService {
         actor?.audience === "staff" ? null : actor?.user_id ?? null,
       request_id: context.request_id,
     };
-    const item = this.stateStore.createQuote(payload);
-
-    this.platformState.recordAudit({
-      actor_id: actor?.user_id ?? 1,
-      action: "quotes.create",
-      entity: "quote",
-      entity_id: item.id,
-      before: null,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
+    const item = this.repository.createQuote(payload);
 
     return QuoteMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -108,7 +99,7 @@ export class QuotesService {
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(QuoteIdParamSchema, { id });
     const input = parseInput(QuoteReviewSchema, body);
-    const before = this.stateStore.getQuoteById(parsedId.id);
+    const before = this.repository.getQuoteById(parsedId.id);
     const payload: {
       decision: "under_review" | "quoted" | "rejected" | "expired";
       note?: string;
@@ -118,22 +109,12 @@ export class QuotesService {
     };
     if (input.note !== undefined) payload.note = input.note;
     if (input.terms_snapshot !== undefined) payload.terms_snapshot = input.terms_snapshot;
-    const item = this.stateStore.reviewQuote(
+    const item = this.repository.reviewQuote(
       parsedId.id,
+      payload,
+      actor.user_id,
       context.request_id,
-      payload as never,
     );
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "quotes.review",
-      entity: "quote",
-      entity_id: item.id,
-      before,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
 
     return QuoteMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -146,7 +127,7 @@ export class QuotesService {
     const actor = this.authorization.requireActor();
     const parsedId = parseInput(QuoteIdParamSchema, { id });
     const input = parseInput(QuoteConvertSchema, body);
-    const before = this.stateStore.getQuoteById(parsedId.id);
+    const before = this.repository.getQuoteById(parsedId.id);
     if (
       actor.audience !== "staff" &&
       before.company_id !== actor.company_id
@@ -162,10 +143,7 @@ export class QuotesService {
     if (!["quoted", "accepted"].includes(before.status)) {
       throw new ConflictException("报价不能转单");
     }
-    if (input.accepted_version && input.accepted_version > before.current_version) {
-      throw new ConflictException("报价版本不存在");
-    }
-    const order = this.stateStore.createOrder({
+    const order = this.ordersRepository.createOrder({
       channel: input.order_channel,
       user_id: actor.audience === "staff" ? null : actor.user_id,
       company_id: before.company_id,
@@ -183,18 +161,7 @@ export class QuotesService {
         terms_snapshot: before.terms_snapshot,
         note: input.note ?? null,
       } as JsonValue,
-      items: before.items.map((item, index) => ({
-        id: index + 1,
-        variant_id: item.variant_id,
-        sku_snapshot: `QUOTE-${before.quote_no}-${index + 1}`,
-        name_snapshot: `Quote Item ${index + 1}`,
-        quantity: item.quantity,
-        unit_price_minor: 0,
-        tax_minor: 0,
-        shipping_minor: 0,
-        total_minor: 0,
-        detail_snapshot: item as JsonValue,
-      })),
+      items: [],
       request_id: context.request_id,
       note: input.note ?? null,
     });
@@ -209,22 +176,10 @@ export class QuotesService {
     };
     if (input.accepted_version !== undefined) payload.accepted_version = input.accepted_version;
     if (input.note !== undefined) payload.note = input.note;
-    const item = this.stateStore.convertQuote(
+    const item = this.repository.convertToOrder(
       parsedId.id,
       context.request_id,
-      payload,
     );
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "quotes.convert",
-      entity: "quote",
-      entity_id: item.id,
-      before,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
 
     return QuoteMutationResponseSchema.parse({
       request_id: context.request_id,

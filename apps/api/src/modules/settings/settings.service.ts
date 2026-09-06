@@ -6,15 +6,16 @@ import {
 } from "@wemo/contracts/platform";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
+import { SettingsPrismaRepository } from "./settings.prisma-repository";
+import { SETTINGS_REPOSITORY } from "./settings.repository";
 import { parseInput } from "../../runtime/validation";
-import { PlatformStateStore } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
 
 @Injectable()
 export class SettingsService {
   constructor(
-    @Inject(PlatformStateStore)
-    private readonly stateStore: PlatformStateStore,
+    @Inject(SETTINGS_REPOSITORY)
+    private readonly repository: SettingsPrismaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -23,8 +24,16 @@ export class SettingsService {
 
   getSnapshot() {
     this.authorization.requireStaffPermission("settings:read");
+    const context = this.requestContext.requireContext();
+    const settings = this.repository.getSettings({
+      market: context.market,
+      locale: context.locale,
+    });
     return PlatformSettingsSnapshotSchema.parse(
-      this.stateStore.snapshotSettings(this.requestContext.requireContext().request_id),
+      {
+        request_id: context.request_id,
+        items: settings,
+      },
     );
   }
 
@@ -32,16 +41,14 @@ export class SettingsService {
     this.authorization.requireStaffPermission("settings:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(PlatformSettingMutationSchema, body);
-    const item = this.stateStore.upsertSetting(
-      {
-        group_name: input.group_name,
-        key: input.key,
-        value: input.value,
-        expected_version: input.expected_version,
-        is_sensitive: input.is_sensitive,
-      },
-      context,
-    );
+    const item = this.repository.upsertSetting({
+      key: input.key,
+      value: input.value,
+      type: "string",
+      market_id: 0,
+      locale_id: 0,
+      is_public: false,
+    });
 
     return PlatformSettingMutationResponseSchema.parse({
       request_id: context.request_id,

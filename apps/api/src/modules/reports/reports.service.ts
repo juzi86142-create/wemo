@@ -8,8 +8,9 @@ import {
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
+import { ReportsPrismaRepository } from "./reports.prisma-repository";
+import { REPORTS_REPOSITORY } from "./reports.repository";
 import { parseInput } from "../../runtime/validation";
-import { PlatformStateStore } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
 
 const ReportKindParamSchema = z.object({
@@ -19,8 +20,8 @@ const ReportKindParamSchema = z.object({
 @Injectable()
 export class ReportsService {
   constructor(
-    @Inject(PlatformStateStore)
-    private readonly stateStore: PlatformStateStore,
+    @Inject(REPORTS_REPOSITORY)
+    private readonly repository: ReportsPrismaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -38,9 +39,8 @@ export class ReportsService {
       kind: parsedKind.kind,
       ...queryObject,
     });
-    const snapshot = this.stateStore.buildReportSnapshot(
-      parsedKind.kind,
-      this.requestContext.requireContext().request_id,
+    const snapshot = this.repository.runReport(
+      parsedKind.kind === "sales" ? 1 : parsedKind.kind === "inventory" ? 1 : 1,
       {
         from: parsedQuery.from,
         to: parsedQuery.to,

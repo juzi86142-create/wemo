@@ -22,7 +22,6 @@ import {
 } from "@wemo/contracts";
 
 import { ApiHttpException } from "../../http/api-http.exception";
-import { ExperienceStateStore } from "../../runtime/experience.state";
 import {
   LOCALIZATION_REPOSITORY,
   type LocalizationRepository,
@@ -40,9 +39,6 @@ export class LocalizationService {
   constructor(
     @Inject(LOCALIZATION_REPOSITORY)
     private readonly repository: LocalizationRepository,
-    @Optional()
-    @Inject(ExperienceStateStore)
-    private readonly experienceState?: ExperienceStateStore,
   ) {}
 
   async listLanguages(input: unknown) {
@@ -58,9 +54,7 @@ export class LocalizationService {
   }
 
   async snapshot(requestId: string) {
-    const snapshot = this.experienceState
-      ? this.buildRuntimeSnapshot()
-      : await this.buildRepositorySnapshot();
+    const snapshot = await this.buildRepositorySnapshot();
 
     return LocalizationSnapshotSchema.parse({
       request_id: RequestIdSchema.parse(requestId),
@@ -164,18 +158,6 @@ export class LocalizationService {
         request_id: context.request_id,
       }),
     );
-  }
-
-  private buildRuntimeSnapshot() {
-    const markets = this.experienceState?.listMarkets().items ?? [];
-    const locales = this.experienceState?.listLocales().items ?? [];
-    const routes = this.experienceState?.listRoutes().items ?? [];
-
-    return {
-      markets,
-      locales,
-      routes,
-    };
   }
 
   private async buildRepositorySnapshot() {

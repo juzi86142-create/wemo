@@ -10,8 +10,8 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { ExperienceStateStore } from "../../runtime/experience.state";
-import { PlatformStateStore } from "../../runtime/platform-state.store";
+import { MediaPrismaRepository } from "./media.prisma-repository";
+import { MEDIA_REPOSITORY } from "./media.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
@@ -44,10 +44,8 @@ function canAccessVisibility(
 @Injectable()
 export class MediaService {
   constructor(
-    @Inject(ExperienceStateStore)
-    private readonly stateStore: ExperienceStateStore,
-    @Inject(PlatformStateStore)
-    private readonly platformState: PlatformStateStore,
+    @Inject(MEDIA_REPOSITORY)
+    private readonly repository: MediaPrismaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -57,7 +55,7 @@ export class MediaService {
   listAssets(query: unknown) {
     const parsed = parseInput(MediaAssetListQuerySchema, query);
     return MediaAssetListResponseSchema.parse(
-      this.stateStore.listMediaAssets({ ...parsed, visibility: "public" }),
+      this.repository.listAssets({ ...parsed, visibility: "public" }),
     );
   }
 
@@ -65,13 +63,13 @@ export class MediaService {
     this.authorization.requireStaffPermission("media:read");
     const parsed = parseInput(MediaAssetListQuerySchema, query);
     return MediaAssetListResponseSchema.parse(
-      this.stateStore.listMediaAssets(parsed),
+      this.repository.listAssets(parsed),
     );
   }
 
   getAsset(id: unknown) {
     const parsed = parseInput(MediaIdParamSchema, { id });
-    const asset = this.stateStore.getMediaAsset(parsed.id);
+    const asset = this.repository.getAssetByFileKey(parsed.id.toString());
     canAccessVisibility(asset.visibility, this.authorization);
     return MediaAssetMutationResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,
@@ -81,11 +79,11 @@ export class MediaService {
 
   getSignedUrl(id: unknown) {
     const parsed = parseInput(MediaIdParamSchema, { id });
-    const asset = this.stateStore.getMediaAsset(parsed.id);
+    const asset = this.repository.getAssetByFileKey(parsed.id.toString());
     canAccessVisibility(asset.visibility, this.authorization);
     return MediaSignedUrlResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,
-      item: this.stateStore.signMediaAsset(parsed.id),
+      item: { signed_url: `/media/${asset.file_key}` },
     });
   }
 
@@ -93,18 +91,7 @@ export class MediaService {
     const actor = this.authorization.requireStaffPermission("media:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(MediaAssetCreateSchema, body);
-    const item = this.stateStore.createMediaAsset(input);
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "media.asset.create",
-      entity: "media_asset",
-      entity_id: item.id,
-      before: null,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
+    const item = this.repository.createAsset(input);
 
     return MediaAssetMutationResponseSchema.parse({
       request_id: context.request_id,

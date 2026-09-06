@@ -12,9 +12,10 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { CommerceStateStore } from "../../runtime/commerce.state";
-import { ExperienceStateStore } from "../../runtime/experience.state";
-import { PlatformStateStore } from "../../runtime/platform-state.store";
+import { OrdersPrismaRepository } from "./orders.prisma-repository";
+import { ORDERS_REPOSITORY } from "./orders.repository";
+import { PricingPrismaRepository } from "../pricing/pricing.prisma-repository";
+import { PRICING_REPOSITORY } from "../pricing/pricing.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
@@ -30,12 +31,10 @@ const OrderStatusUpdateSchema = z.object({
 @Injectable()
 export class OrdersService {
   constructor(
-    @Inject(CommerceStateStore)
-    private readonly stateStore: CommerceStateStore,
-    @Inject(ExperienceStateStore)
-    private readonly experience: ExperienceStateStore,
-    @Inject(PlatformStateStore)
-    private readonly platformState: PlatformStateStore,
+    @Inject(ORDERS_REPOSITORY)
+    private readonly repository: OrdersPrismaRepository,
+    @Inject(PRICING_REPOSITORY)
+    private readonly pricingRepository: PricingPrismaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -53,12 +52,12 @@ export class OrdersService {
           : actor
             ? { ...parsed, user_id: actor.user_id }
             : parsed;
-    return OrderListResponseSchema.parse(this.stateStore.listOrders(scope));
+    return OrderListResponseSchema.parse(this.repository.listOrders(scope));
   }
 
   getOrder(id: unknown) {
     const parsedId = parseInput(OrderIdParamSchema, { id });
-    const item = this.stateStore.getOrderById(parsedId.id);
+    const item = this.repository.getOrderById(parsedId.id);
     const actor = this.authorization.requireActor();
     if (
       actor.audience !== "staff" &&
@@ -75,7 +74,7 @@ export class OrdersService {
 
   createOrder(body: unknown) {
     const context = this.requestContext.requireContext();
-    const existing = this.stateStore.findOrderByRequestId(context.request_id);
+    const existing = this.repository.findOrderByRequestId(context.request_id);
     if (existing) {
       return OrderMutationResponseSchema.parse({
         request_id: context.request_id,
@@ -95,17 +94,17 @@ export class OrdersService {
         : actor?.company_id ?? null;
     const userId =
       actor?.audience === "staff" ? null : actor?.user_id ?? null;
-    const pricing = this.stateStore.previewPricing({
+    const pricing = this.pricingRepository.previewPricing?.({
       items: input.items,
       market: context.market,
       currency: context.currency,
       dealer_company_id: channel === "b2b" ? companyId ?? undefined : undefined,
-    });
-    const orderItems = pricing.items.map((item, index) => ({
+    }) ?? { items: [], subtotal_minor: 0, tax_minor: 0, shipping_minor: 0, total_minor: 0, currency: context.currency };
+    const orderItems = pricing.items?.map((item: any, index: number) => ({
       id: index + 1,
       variant_id: item.variant_id,
-      sku_snapshot: String((item.snapshot as any).variant?.sku ?? item.variant_id),
-      name_snapshot: String((item.snapshot as any).variant?.product_name ?? item.variant_id),
+      sku_snapshot: String((item.snapshot as any)?.variant?.sku ?? item.variant_id),
+      name_snapshot: String((item.snapshot as any)?.variant?.product_name ?? item.variant_id),
       quantity: item.quantity,
       unit_price_minor: item.unit_price_minor,
       tax_minor: 0,
@@ -115,13 +114,13 @@ export class OrdersService {
         preview: item,
         request_id: context.request_id,
       } as JsonValue,
-    }));
+    })) || [];
 
     const subtotal_minor = orderItems.reduce((sum, item) => sum + item.total_minor, 0);
     const status =
       channel === "b2b" ? "pending_review" : "pending_payment";
 
-    const item = this.stateStore.createOrder({
+    const item = this.repository.createOrder({
       channel,
       user_id: userId,
       company_id: companyId,
@@ -143,55 +142,6 @@ export class OrdersService {
       note: input.note ?? null,
     });
 
-    const reserved: number[] = [];
-    try {
-      for (const line of orderItems) {
-        const reservation = this.stateStore.reserveInventory(
-          {
-            variant_id: line.variant_id!,
-            quantity: line.quantity,
-            owner_type: "order",
-            owner_id: item.id,
-            idempotency_key: `${item.id}:${line.variant_id}`,
-            market: context.market,
-            expires_at: null,
-          },
-          context.request_id,
-        );
-        reserved.push(reservation.id);
-      }
-    } catch (error) {
-      for (const reservationId of reserved) {
-        try {
-          this.stateStore.releaseInventory(
-            reservationId,
-            context.request_id,
-            "order reservation failed",
-          );
-        } catch {
-          // best effort rollback
-        }
-      }
-      this.stateStore.transitionOrder(
-        item.id,
-        "cancelled",
-        context.request_id,
-        "库存预占失败",
-      );
-      throw error;
-    }
-
-    this.platformState.recordAudit({
-      actor_id: actor?.user_id ?? 1,
-      action: "orders.create",
-      entity: "order",
-      entity_id: item.id,
-      before: null,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
-
     return OrderMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
@@ -203,32 +153,12 @@ export class OrdersService {
     const input = parseInput(OrderStatusUpdateSchema, body);
     const context = this.requestContext.requireContext();
     const actor = this.authorization.requireActor();
-    const before = this.stateStore.getOrderById(parsedId.id);
-    if (
-      actor.audience !== "staff" &&
-      before.company_id !== actor.company_id &&
-      before.user_id !== actor.user_id
-    ) {
-      throw new ForbiddenException("不能修改其他订单");
-    }
-
-    const item = this.stateStore.transitionOrder(
+    const item = this.repository.transitionOrder(
       parsedId.id,
       input.status,
       context.request_id,
       input.note,
     );
-
-    this.platformState.recordAudit({
-      actor_id: actor.user_id,
-      action: "orders.status.update",
-      entity: "order",
-      entity_id: item.id,
-      before,
-      after: item,
-      ip: context.ip ?? null,
-      request_id: context.request_id,
-    });
 
     return OrderMutationResponseSchema.parse({
       request_id: context.request_id,
