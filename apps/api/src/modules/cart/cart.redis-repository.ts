@@ -5,6 +5,13 @@ import type { DatabaseClient } from "@wemo/database";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
+import { paginate } from "../../runtime/pagination";
+import {
+  readHashAll,
+  readHashOne,
+  redisNextId,
+  writeHashObject,
+} from "../../runtime/redis-hash";
 import {
   CART_REPOSITORY,
   type CartContext,
@@ -60,7 +67,7 @@ export class CartRedisRepository implements CartRepository {
       }
     }
 
-    const id = await this.redis.incr(`${PREFIX}:next`);
+    const id = await redisNextId(this.redis, `${PREFIX}:next`);
     const created = nowIso();
     const cart: Cart = {
       id,
@@ -119,25 +126,13 @@ export class CartRedisRepository implements CartRepository {
       await Promise.all(cartIds.map((id) => this.loadCart(id)))
     ).filter((cart): cart is Cart => cart !== null);
 
-    const filtered = carts.filter((cart) => {
-      if (
-        query.company_id !== undefined &&
-        cart.company_id !== query.company_id
-      )
-        return false;
-      if (query.status !== undefined && cart.status !== query.status)
-        return false;
-      if (query.channel !== undefined && cart.channel !== query.channel)
-        return false;
-      return true;
+    return paginate(carts, query, {
+      exact: {
+        company_id: query.company_id,
+        status: query.status,
+        channel: query.channel,
+      },
     });
-    const start = (query.page - 1) * query.page_size;
-    return {
-      items: filtered.slice(start, start + query.page_size),
-      total: filtered.length,
-      page: query.page,
-      page_size: query.page_size,
-    };
   }
 
   /** 新增或更新购物车行并重算金额 */
@@ -151,13 +146,13 @@ export class CartRedisRepository implements CartRepository {
     }
 
     const itemsKeyName = itemsKey(cartId);
-    const existingRaw = await this.redis.hget(
+    const existingItem = await readHashOne<StoredCartItem>(
+      this.redis,
       itemsKeyName,
-      String(input.variant_id),
+      input.variant_id,
+      (raw) => JSON.parse(raw) as StoredCartItem,
     );
-    const addedAt = existingRaw
-      ? (JSON.parse(existingRaw) as StoredCartItem).added_at
-      : nowIso();
+    const addedAt = existingItem ? existingItem.added_at : nowIso();
     const item: StoredCartItem = {
       id: input.variant_id,
       variant_id: input.variant_id,
@@ -169,11 +164,7 @@ export class CartRedisRepository implements CartRepository {
       added_at: addedAt,
       updated_at: nowIso(),
     };
-    await this.redis.hset(
-      itemsKeyName,
-      String(input.variant_id),
-      JSON.stringify(item),
-    );
+    await writeHashObject(this.redis, itemsKeyName, input.variant_id, item);
 
     return this.reloadTotals(cart);
   }
@@ -208,11 +199,7 @@ export class CartRedisRepository implements CartRepository {
             existing.unit_price_minor * (existing.quantity + source.quantity),
           updated_at: nowIso(),
         };
-        await this.redis.hset(
-          itemsKey(targetId),
-          variantId,
-          JSON.stringify(merged),
-        );
+        await writeHashObject(this.redis, itemsKey(targetId), variantId, merged);
       } else {
         await this.redis.hset(itemsKey(targetId), variantId, raw);
       }
@@ -348,10 +335,12 @@ export class CartRedisRepository implements CartRepository {
   }
 
   private async reloadTotals(cart: Cart): Promise<Cart> {
-    const itemRaw = await this.redis.hgetall(itemsKey(cart.id));
-    const items = Object.entries(itemRaw)
-      .map(([, raw]) => JSON.parse(raw) as StoredCartItem)
-      .sort((a, b) => a.added_at.localeCompare(b.added_at));
+    const items = await readHashAll<StoredCartItem>(
+      this.redis,
+      itemsKey(cart.id),
+      (raw) => JSON.parse(raw) as StoredCartItem,
+    );
+    items.sort((a, b) => a.added_at.localeCompare(b.added_at));
     const subtotal = items.reduce(
       (sum, item) => sum + item.line_total_minor,
       0,

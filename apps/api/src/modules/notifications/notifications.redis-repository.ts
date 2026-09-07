@@ -9,6 +9,13 @@ import type {
 } from "@wemo/contracts";
 
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
+import { paginate } from "../../runtime/pagination";
+import {
+  readHashAll,
+  readHashOne,
+  redisNextId,
+  writeHashObject,
+} from "../../runtime/redis-hash";
 import {
   NOTIFICATIONS_REPOSITORY,
   type NotificationPage,
@@ -28,17 +35,14 @@ export class NotificationsRedisRepository implements NotificationsRepository {
     page: number;
     page_size: number;
   }): Promise<NotificationPage<NotificationTemplate>> {
-    const raw = await this.redis.hgetall(TEMPLATES_KEY);
-    const templates = Object.entries(raw)
-      .map(([, value]) => JSON.parse(value) as NotificationTemplate)
-      .sort((a, b) => a.created_at.localeCompare(b.created_at));
-    const start = (query.page - 1) * query.page_size;
-    return {
-      items: templates.slice(start, start + query.page_size),
-      total: templates.length,
-      page: query.page,
-      page_size: query.page_size,
-    };
+    const templates = await readHashAll<NotificationTemplate>(
+      this.redis,
+      TEMPLATES_KEY,
+      (raw) => JSON.parse(raw) as NotificationTemplate,
+    );
+    return paginate(templates, query, {
+      sortBy: (a, b) => a.created_at.localeCompare(b.created_at),
+    });
   }
 
   /** 按 id 更新或新建通知模板 */
@@ -46,14 +50,15 @@ export class NotificationsRedisRepository implements NotificationsRepository {
     input: NotificationTemplateUpdateInput & { id?: number },
   ): Promise<NotificationTemplate> {
     if (input.id !== undefined) {
-      const existingRaw = await this.redis.hget(
+      const existing = await readHashOne<NotificationTemplate>(
+        this.redis,
         TEMPLATES_KEY,
-        String(input.id),
+        input.id,
+        (raw) => JSON.parse(raw) as NotificationTemplate,
       );
-      if (!existingRaw) {
+      if (!existing) {
         throw new NotFoundException(`通知模板 ${input.id} 不存在`);
       }
-      const existing = JSON.parse(existingRaw) as NotificationTemplate;
       const updated: NotificationTemplate = {
         ...existing,
         ...(input.code !== undefined ? { code: input.code } : {}),
@@ -70,17 +75,14 @@ export class NotificationsRedisRepository implements NotificationsRepository {
         id: existing.id,
         updated_at: new Date().toISOString(),
       };
-      await this.redis.hset(
-        TEMPLATES_KEY,
-        String(updated.id),
-        JSON.stringify(updated),
-      );
+      await writeHashObject(this.redis, TEMPLATES_KEY, updated.id, updated);
       return updated;
     }
 
     const now = new Date().toISOString();
     const template: NotificationTemplate = {
-      id: await this.redis.incr(
+      id: await redisNextId(
+        this.redis,
         `${REDIS_KEY_PREFIX}:notifications:templates:next`,
       ),
       code: input.code ?? "",
@@ -95,11 +97,7 @@ export class NotificationsRedisRepository implements NotificationsRepository {
       created_at: now,
       updated_at: now,
     } as NotificationTemplate;
-    await this.redis.hset(
-      TEMPLATES_KEY,
-      String(template.id),
-      JSON.stringify(template),
-    );
+    await writeHashObject(this.redis, TEMPLATES_KEY, template.id, template);
     return template;
   }
 
@@ -107,41 +105,32 @@ export class NotificationsRedisRepository implements NotificationsRepository {
   async getNotificationTemplateById(
     id: number,
   ): Promise<NotificationTemplate | null> {
-    const raw = await this.redis.hget(TEMPLATES_KEY, String(id));
-    return raw ? (JSON.parse(raw) as NotificationTemplate) : null;
+    return readHashOne<NotificationTemplate>(
+      this.redis,
+      TEMPLATES_KEY,
+      id,
+      (raw) => JSON.parse(raw) as NotificationTemplate,
+    );
   }
 
   /** 按收件人 企业 受众 状态过滤分页查询投递记录 */
   async listDeliveries(
     query: NotificationDeliveryListQuery,
   ): Promise<NotificationPage<NotificationDelivery>> {
-    const raw = await this.redis.hgetall(DELIVERIES_KEY);
-    let deliveries = Object.entries(raw)
-      .map(([, value]) => JSON.parse(value) as NotificationDelivery)
-      .sort((a, b) => b.created_at.localeCompare(a.created_at));
-
-    if (query.recipient_user_id !== undefined) {
-      deliveries = deliveries.filter(
-        (d) => d.recipient_user_id === query.recipient_user_id,
-      );
-    }
-    if (query.company_id !== undefined) {
-      deliveries = deliveries.filter((d) => d.company_id === query.company_id);
-    }
-    if (query.audience !== undefined) {
-      deliveries = deliveries.filter((d) => d.audience === query.audience);
-    }
-    if (query.status !== undefined) {
-      deliveries = deliveries.filter((d) => d.status === query.status);
-    }
-
-    const start = (query.page - 1) * query.page_size;
-    return {
-      items: deliveries.slice(start, start + query.page_size),
-      total: deliveries.length,
-      page: query.page,
-      page_size: query.page_size,
-    };
+    const deliveries = await readHashAll<NotificationDelivery>(
+      this.redis,
+      DELIVERIES_KEY,
+      (raw) => JSON.parse(raw) as NotificationDelivery,
+    );
+    return paginate(deliveries, query, {
+      exact: {
+        recipient_user_id: query.recipient_user_id,
+        company_id: query.company_id,
+        audience: query.audience,
+        status: query.status,
+      },
+      sortBy: (a, b) => b.created_at.localeCompare(a.created_at),
+    });
   }
 
   /** 写入一条通知投递记录 */
@@ -150,7 +139,8 @@ export class NotificationsRedisRepository implements NotificationsRepository {
   ): Promise<NotificationDelivery> {
     const now = new Date().toISOString();
     const delivery: NotificationDelivery = {
-      id: await this.redis.incr(
+      id: await redisNextId(
+        this.redis,
         `${REDIS_KEY_PREFIX}:notifications:deliveries:next`,
       ),
       template_code: input.template_code,
@@ -168,11 +158,7 @@ export class NotificationsRedisRepository implements NotificationsRepository {
       sent_at: null,
       updated_at: now,
     };
-    await this.redis.hset(
-      DELIVERIES_KEY,
-      String(delivery.id),
-      JSON.stringify(delivery),
-    );
+    await writeHashObject(this.redis, DELIVERIES_KEY, delivery.id, delivery);
     return delivery;
   }
 
@@ -180,8 +166,12 @@ export class NotificationsRedisRepository implements NotificationsRepository {
   async getNotificationDeliveryById(
     id: number,
   ): Promise<NotificationDelivery | null> {
-    const raw = await this.redis.hget(DELIVERIES_KEY, String(id));
-    return raw ? (JSON.parse(raw) as NotificationDelivery) : null;
+    return readHashOne<NotificationDelivery>(
+      this.redis,
+      DELIVERIES_KEY,
+      id,
+      (raw) => JSON.parse(raw) as NotificationDelivery,
+    );
   }
 
   /** 将投递记录重置为待发送并递增尝试次数 */
@@ -189,11 +179,15 @@ export class NotificationsRedisRepository implements NotificationsRepository {
     id: number,
     reason?: string,
   ): Promise<NotificationDelivery> {
-    const raw = await this.redis.hget(DELIVERIES_KEY, String(id));
-    if (!raw) {
+    const delivery = await readHashOne<NotificationDelivery>(
+      this.redis,
+      DELIVERIES_KEY,
+      id,
+      (raw) => JSON.parse(raw) as NotificationDelivery,
+    );
+    if (!delivery) {
       throw new NotFoundException(`通知投递 ${id} 不存在`);
     }
-    const delivery = JSON.parse(raw) as NotificationDelivery;
     const updated: NotificationDelivery = {
       ...delivery,
       status: "queued",
@@ -201,7 +195,7 @@ export class NotificationsRedisRepository implements NotificationsRepository {
       failure_reason: reason ?? null,
       updated_at: new Date().toISOString(),
     };
-    await this.redis.hset(DELIVERIES_KEY, String(id), JSON.stringify(updated));
+    await writeHashObject(this.redis, DELIVERIES_KEY, id, updated);
     return updated;
   }
 }

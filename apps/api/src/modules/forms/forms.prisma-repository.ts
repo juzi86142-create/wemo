@@ -11,6 +11,13 @@ import type { DatabaseClient } from "@wemo/database";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
+import { paginate } from "../../runtime/pagination";
+import {
+  readHashAll,
+  readHashOne,
+  redisNextId,
+  writeHashObject,
+} from "../../runtime/redis-hash";
 import { generateBusinessNo } from "../../runtime/ids";
 import type {
   FormDefinition,
@@ -38,7 +45,10 @@ export class FormsPrismaRepository implements FormsRepository {
   async createForm(input: FormDefinitionCreateInput): Promise<FormDefinition> {
     const now = new Date().toISOString();
     const form: FormDefinition = {
-      id: await this.redis.incr(`${REDIS_KEY_PREFIX}:forms:definitions:next`),
+      id: await redisNextId(
+        this.redis,
+        `${REDIS_KEY_PREFIX}:forms:definitions:next`,
+      ),
       name: input.name,
       description: input.description ?? null,
       fields: input.fields ?? [],
@@ -46,33 +56,30 @@ export class FormsPrismaRepository implements FormsRepository {
       created_at: now,
       updated_at: now,
     };
-    await this.redis.hset(
-      FORM_DEFINITIONS_KEY,
-      String(form.id),
-      JSON.stringify(form),
-    );
+    await writeHashObject(this.redis, FORM_DEFINITIONS_KEY, form.id, form);
     return form;
   }
 
   async getFormById(id: number): Promise<FormDefinition | null> {
-    const raw = await this.redis.hget(FORM_DEFINITIONS_KEY, String(id));
-    return raw ? (JSON.parse(raw) as FormDefinition) : null;
+    return readHashOne<FormDefinition>(
+      this.redis,
+      FORM_DEFINITIONS_KEY,
+      id,
+      (raw) => JSON.parse(raw) as FormDefinition,
+    );
   }
 
   async listForms(
     query: FormDefinitionListQuery,
   ): Promise<FormPage<FormDefinition>> {
-    const raw = await this.redis.hgetall(FORM_DEFINITIONS_KEY);
-    const forms = Object.entries(raw)
-      .map(([, value]) => JSON.parse(value) as FormDefinition)
-      .sort((a, b) => b.created_at.localeCompare(a.created_at));
-    const start = (query.page - 1) * query.page_size;
-    return {
-      items: forms.slice(start, start + query.page_size),
-      total: forms.length,
-      page: query.page,
-      page_size: query.page_size,
-    };
+    const forms = await readHashAll<FormDefinition>(
+      this.redis,
+      FORM_DEFINITIONS_KEY,
+      (raw) => JSON.parse(raw) as FormDefinition,
+    );
+    return paginate(forms, query, {
+      sortBy: (a, b) => b.created_at.localeCompare(a.created_at),
+    });
   }
 
   async updateForm(
@@ -93,11 +100,7 @@ export class FormsPrismaRepository implements FormsRepository {
       ...(input.is_active !== undefined ? { is_active: input.is_active } : {}),
       updated_at: new Date().toISOString(),
     };
-    await this.redis.hset(
-      FORM_DEFINITIONS_KEY,
-      String(id),
-      JSON.stringify(updated),
-    );
+    await writeHashObject(this.redis, FORM_DEFINITIONS_KEY, id, updated);
     return updated;
   }
 

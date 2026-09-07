@@ -19,7 +19,11 @@ import {
 } from "./auth.repository";
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
-
+import {
+  readHashOne,
+  redisNextId,
+  writeHashObject,
+} from "../../runtime/redis-hash";
 import { nowIso } from "../../runtime/time";
 
 /** users 表行的最小形状（无 relation，纯标量字段） */
@@ -173,16 +177,22 @@ export class AuthPrismaRepository implements AuthRepository {
     input: { channel: string; status: string; consent_at: string },
   ): Promise<void> {
     const key = `${REDIS_KEY_PREFIX}:user:${userId}:subscriptions`;
-    const existing = await this.redis.hget(key, input.channel);
+    const existing = await readHashOne<Record<string, unknown>>(
+      this.redis,
+      key,
+      input.channel,
+      (raw) => JSON.parse(raw) as Record<string, unknown>,
+    );
     const now = nowIso();
     const subscription = existing
       ? {
-          ...(JSON.parse(existing) as Record<string, unknown>),
+          ...existing,
           status: input.status,
           consent_at: input.consent_at,
         }
       : {
-          id: await this.redis.incr(
+          id: await redisNextId(
+            this.redis,
             `${REDIS_KEY_PREFIX}:user:${userId}:subscriptions:next`,
           ),
           user_id: userId,
@@ -191,7 +201,7 @@ export class AuthPrismaRepository implements AuthRepository {
           consent_at: input.consent_at,
           created_at: now,
         };
-    await this.redis.hset(key, input.channel, JSON.stringify(subscription));
+    await writeHashObject(this.redis, key, input.channel, subscription);
   }
 
   async recordNotification(
@@ -199,7 +209,8 @@ export class AuthPrismaRepository implements AuthRepository {
   ): Promise<IdentityNotification> {
     const now = nowIso();
     const notification: IdentityNotification = {
-      id: await this.redis.incr(
+      id: await redisNextId(
+        this.redis,
         `${REDIS_KEY_PREFIX}:notifications:deliveries:next`,
       ),
       recipient_user_id: input.recipient_user_id,
@@ -215,10 +226,11 @@ export class AuthPrismaRepository implements AuthRepository {
       created_at: now,
       sent_at: null,
     };
-    await this.redis.hset(
+    await writeHashObject(
+      this.redis,
       `${REDIS_KEY_PREFIX}:notifications:deliveries`,
-      String(notification.id),
-      JSON.stringify(notification),
+      notification.id,
+      notification,
     );
     return notification;
   }

@@ -20,6 +20,11 @@ import type { DatabaseClient } from "@wemo/database";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
+import {
+  readHashAll,
+  redisNextId,
+  writeHashObject,
+} from "../../runtime/redis-hash";
 
 function companyAddressesKey(companyId: number): string {
   return `${REDIS_KEY_PREFIX}:company:${companyId}:addresses`;
@@ -389,10 +394,12 @@ export class DealersPrismaRepository implements DealersRepository {
   }
 
   async listDealerAddresses(companyId: number): Promise<DealerAddress[]> {
-    const raw = await this.redis.hgetall(companyAddressesKey(companyId));
-    return Object.entries(raw)
-      .map(([, value]) => JSON.parse(value) as DealerAddress)
-      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+    const addresses = await readHashAll<DealerAddress>(
+      this.redis,
+      companyAddressesKey(companyId),
+      (raw) => JSON.parse(raw) as DealerAddress,
+    );
+    return addresses.sort((a, b) => a.created_at.localeCompare(b.created_at));
   }
 
   async createDealerAddress(
@@ -400,7 +407,8 @@ export class DealersPrismaRepository implements DealersRepository {
     input: DealerAddressCreateInput,
   ): Promise<DealerAddress> {
     const address: DealerAddress = {
-      id: await this.redis.incr(
+      id: await redisNextId(
+        this.redis,
         `${REDIS_KEY_PREFIX}:company:${companyId}:addresses:next`,
       ),
       company_id: companyId,
@@ -409,10 +417,11 @@ export class DealersPrismaRepository implements DealersRepository {
       public_listing: input.public_listing ?? null,
       created_at: new Date().toISOString(),
     };
-    await this.redis.hset(
+    await writeHashObject(
+      this.redis,
       companyAddressesKey(companyId),
-      String(address.id),
-      JSON.stringify(address),
+      address.id,
+      address,
     );
     return address;
   }

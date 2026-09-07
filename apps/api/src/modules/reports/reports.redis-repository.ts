@@ -4,6 +4,12 @@ import type { ReportKind, ReportSnapshot } from "@wemo/contracts/platform";
 import { randomUUID } from "node:crypto";
 
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
+import { paginate } from "../../runtime/pagination";
+import {
+  readHashAll,
+  readHashOne,
+  writeHashObject,
+} from "../../runtime/redis-hash";
 import {
   REPORTS_REPOSITORY,
   type ReportDefinition,
@@ -36,13 +42,7 @@ export class ReportsRedisRepository implements ReportsRepository {
     page_size: number;
   }> {
     const definitions = await this.loadDefinitions();
-    const start = (query.page - 1) * query.page_size;
-    return {
-      items: definitions.slice(start, start + query.page_size),
-      total: definitions.length,
-      page: query.page,
-      page_size: query.page_size,
-    };
+    return paginate(definitions, query);
   }
 
   /** 按 id 查询报表定义 */
@@ -60,9 +60,14 @@ export class ReportsRedisRepository implements ReportsRepository {
     if (!definition) {
       throw new NotFoundException(`报表定义 ${id} 不存在`);
     }
-    const existing = await this.redis.hget(RESULTS_KEY, String(id));
+    const existing = await readHashOne<ReportSnapshot>(
+      this.redis,
+      RESULTS_KEY,
+      id,
+      (raw) => JSON.parse(raw) as ReportSnapshot,
+    );
     if (existing) {
-      return JSON.parse(existing) as ReportSnapshot;
+      return existing;
     }
 
     const snapshot: ReportSnapshot = {
@@ -80,7 +85,7 @@ export class ReportsRedisRepository implements ReportsRepository {
       metrics: [{ key: "total", label: "总量", value: 0, unit: "次" }],
       series: [],
     };
-    await this.redis.hset(RESULTS_KEY, String(id), JSON.stringify(snapshot));
+    await writeHashObject(this.redis, RESULTS_KEY, id, snapshot);
     return snapshot;
   }
 
@@ -107,28 +112,27 @@ export class ReportsRedisRepository implements ReportsRepository {
         : typeof record?.definition_id === "number"
           ? record.definition_id
           : 1;
-    await this.redis.hset(
-      RESULTS_KEY,
-      String(id),
-      JSON.stringify(record ?? {}),
-    );
+    await writeHashObject(this.redis, RESULTS_KEY, id, record ?? {});
     return { id };
   }
 
   private async loadDefinitions(): Promise<ReportDefinition[]> {
-    const existing = await this.redis.hgetall(DEFINITIONS_KEY);
-    if (Object.keys(existing).length === 0) {
+    const existing = await readHashAll<ReportDefinition>(
+      this.redis,
+      DEFINITIONS_KEY,
+      (raw) => JSON.parse(raw) as ReportDefinition,
+    );
+    if (existing.length === 0) {
       for (const definition of DEFAULT_DEFINITIONS) {
-        await this.redis.hset(
+        await writeHashObject(
+          this.redis,
           DEFINITIONS_KEY,
-          String(definition.id),
-          JSON.stringify(definition),
+          definition.id,
+          definition,
         );
       }
       return DEFAULT_DEFINITIONS;
     }
-    return Object.entries(existing)
-      .map(([, value]) => JSON.parse(value) as ReportDefinition)
-      .sort((a, b) => a.id - b.id);
+    return existing.sort((a, b) => a.id - b.id);
   }
 }

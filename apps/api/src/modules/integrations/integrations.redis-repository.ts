@@ -3,6 +3,13 @@ import type { Redis } from "ioredis";
 import type { IntegrationAdapter, WebhookDelivery } from "@wemo/contracts";
 
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
+import { paginate } from "../../runtime/pagination";
+import {
+  readHashAll,
+  readHashOne,
+  redisNextId,
+  writeHashObject,
+} from "../../runtime/redis-hash";
 import {
   INTEGRATIONS_REPOSITORY,
   type IntegrationTestResult,
@@ -25,7 +32,7 @@ export class IntegrationsRedisRepository implements IntegrationsRepository {
     metadata?: unknown;
   }): Promise<IntegrationAdapter> {
     const adapter: IntegrationAdapter = {
-      id: await this.redis.incr(`${REDIS_KEY_PREFIX}:integrations:next`),
+      id: await redisNextId(this.redis, `${REDIS_KEY_PREFIX}:integrations:next`),
       code: input.code ?? `integration-${Date.now()}`,
       kind: (input.kind ?? "webhook") as IntegrationAdapter["kind"],
       provider: input.provider ?? "local",
@@ -35,18 +42,18 @@ export class IntegrationsRedisRepository implements IntegrationsRepository {
       capabilities: [],
       metadata: (input.metadata ?? {}) as IntegrationAdapter["metadata"],
     };
-    await this.redis.hset(
-      CONFIGS_KEY,
-      String(adapter.id),
-      JSON.stringify(adapter),
-    );
+    await writeHashObject(this.redis, CONFIGS_KEY, adapter.id, adapter);
     return adapter;
   }
 
   /** 按 id 查询集成配置 */
   async getIntegrationById(id: number): Promise<IntegrationAdapter | null> {
-    const raw = await this.redis.hget(CONFIGS_KEY, String(id));
-    return raw ? (JSON.parse(raw) as IntegrationAdapter) : null;
+    return readHashOne<IntegrationAdapter>(
+      this.redis,
+      CONFIGS_KEY,
+      id,
+      (raw) => JSON.parse(raw) as IntegrationAdapter,
+    );
   }
 
   /** 分页列出集成配置 */
@@ -56,17 +63,12 @@ export class IntegrationsRedisRepository implements IntegrationsRepository {
     page: number;
     page_size: number;
   }> {
-    const raw = await this.redis.hgetall(CONFIGS_KEY);
-    const items = Object.entries(raw)
-      .map(([, value]) => JSON.parse(value) as IntegrationAdapter)
-      .sort((a, b) => a.id - b.id);
-    const start = (query.page - 1) * query.page_size;
-    return {
-      items: items.slice(start, start + query.page_size),
-      total: items.length,
-      page: query.page,
-      page_size: query.page_size,
-    };
+    const items = await readHashAll<IntegrationAdapter>(
+      this.redis,
+      CONFIGS_KEY,
+      (raw) => JSON.parse(raw) as IntegrationAdapter,
+    );
+    return paginate(items, query, { sortBy: (a, b) => a.id - b.id });
   }
 
   /** 更新集成配置并刷新最近检查时间 */
@@ -93,7 +95,7 @@ export class IntegrationsRedisRepository implements IntegrationsRepository {
         : {}),
       last_checked_at: new Date().toISOString(),
     };
-    await this.redis.hset(CONFIGS_KEY, String(id), JSON.stringify(updated));
+    await writeHashObject(this.redis, CONFIGS_KEY, id, updated);
     return updated;
   }
 
@@ -114,7 +116,8 @@ export class IntegrationsRedisRepository implements IntegrationsRepository {
     completed_at: string | null;
   }): Promise<WebhookDelivery> {
     const delivery: WebhookDelivery = {
-      id: await this.redis.incr(
+      id: await redisNextId(
+        this.redis,
         `${REDIS_KEY_PREFIX}:integrations:webhook-deliveries:next`,
       ),
       integration_id: input.integration_id,
@@ -131,10 +134,11 @@ export class IntegrationsRedisRepository implements IntegrationsRepository {
       updated_at: input.updated_at,
       completed_at: input.completed_at,
     };
-    await this.redis.hset(
+    await writeHashObject(
+      this.redis,
       WEBHOOK_DELIVERIES_KEY,
-      String(delivery.id),
-      JSON.stringify(delivery),
+      delivery.id,
+      delivery,
     );
     return delivery;
   }
@@ -150,20 +154,15 @@ export class IntegrationsRedisRepository implements IntegrationsRepository {
     page: number;
     page_size: number;
   }> {
-    const raw = await this.redis.hgetall(WEBHOOK_DELIVERIES_KEY);
-    let deliveries = Object.entries(raw)
-      .map(([, value]) => JSON.parse(value) as WebhookDelivery)
-      .sort((a, b) => b.created_at.localeCompare(a.created_at));
-    if (query.provider !== undefined) {
-      deliveries = deliveries.filter((d) => d.provider === query.provider);
-    }
-    const start = (query.page - 1) * query.page_size;
-    return {
-      items: deliveries.slice(start, start + query.page_size),
-      total: deliveries.length,
-      page: query.page,
-      page_size: query.page_size,
-    };
+    const deliveries = await readHashAll<WebhookDelivery>(
+      this.redis,
+      WEBHOOK_DELIVERIES_KEY,
+      (raw) => JSON.parse(raw) as WebhookDelivery,
+    );
+    return paginate(deliveries, query, {
+      exact: { provider: query.provider },
+      sortBy: (a, b) => b.created_at.localeCompare(a.created_at),
+    });
   }
 
   /** 测试集成连接 按当前状态返回健康结果 */

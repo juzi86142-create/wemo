@@ -20,6 +20,13 @@ import { randomUUID } from "node:crypto";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
+import { paginate } from "../../runtime/pagination";
+import {
+  readHashAll,
+  readHashOne,
+  redisNextId,
+  writeHashObject,
+} from "../../runtime/redis-hash";
 import {
   type CreateDataRequestInput,
   type CreateRoleInput,
@@ -93,10 +100,12 @@ export class IdentityPrismaRepository implements IdentityRepository {
   }
 
   async listAddresses(userId: number): Promise<IdentityAddress[]> {
-    const raw = await this.redis.hgetall(userAddressesKey(userId));
-    return Object.entries(raw)
-      .map(([, value]) => JSON.parse(value) as IdentityAddress)
-      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+    const addresses = await readHashAll<IdentityAddress>(
+      this.redis,
+      userAddressesKey(userId),
+      (raw) => JSON.parse(raw) as IdentityAddress,
+    );
+    return addresses.sort((a, b) => a.created_at.localeCompare(b.created_at));
   }
 
   async upsertAddress(
@@ -105,7 +114,8 @@ export class IdentityPrismaRepository implements IdentityRepository {
   ): Promise<IdentityAddress> {
     const now = new Date().toISOString();
     const address: IdentityAddress = {
-      id: await this.redis.incr(
+      id: await redisNextId(
+        this.redis,
         `${REDIS_KEY_PREFIX}:user:${userId}:addresses:next`,
       ),
       user_id: userId,
@@ -113,10 +123,11 @@ export class IdentityPrismaRepository implements IdentityRepository {
       payload: input.payload,
       created_at: now,
     };
-    await this.redis.hset(
+    await writeHashObject(
+      this.redis,
       userAddressesKey(userId),
-      String(address.id),
-      JSON.stringify(address),
+      address.id,
+      address,
     );
     return address;
   }
@@ -133,29 +144,36 @@ export class IdentityPrismaRepository implements IdentityRepository {
   }
 
   async listSubscriptions(userId: number): Promise<IdentitySubscription[]> {
-    const raw = await this.redis.hgetall(userSubscriptionsKey(userId));
-    return Object.entries(raw)
-      .map(([, value]) => JSON.parse(value) as IdentitySubscription)
-      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+    const subscriptions = await readHashAll<IdentitySubscription>(
+      this.redis,
+      userSubscriptionsKey(userId),
+      (raw) => JSON.parse(raw) as IdentitySubscription,
+    );
+    return subscriptions.sort((a, b) =>
+      a.created_at.localeCompare(b.created_at),
+    );
   }
 
   async upsertSubscription(
     userId: number,
     input: IdentitySubscriptionUpsertInput,
   ): Promise<IdentitySubscription> {
-    const existing = await this.redis.hget(
+    const existing = await readHashOne<IdentitySubscription>(
+      this.redis,
       userSubscriptionsKey(userId),
       input.channel,
+      (raw) => JSON.parse(raw) as IdentitySubscription,
     );
     const now = new Date().toISOString();
     const subscription: IdentitySubscription = existing
       ? {
-          ...(JSON.parse(existing) as IdentitySubscription),
+          ...existing,
           status: input.status,
           consent_at: input.consent_at ?? now,
         }
       : {
-          id: await this.redis.incr(
+          id: await redisNextId(
+            this.redis,
             `${REDIS_KEY_PREFIX}:user:${userId}:subscriptions:next`,
           ),
           user_id: userId,
@@ -164,10 +182,11 @@ export class IdentityPrismaRepository implements IdentityRepository {
           consent_at: input.consent_at ?? now,
           created_at: now,
         };
-    await this.redis.hset(
+    await writeHashObject(
+      this.redis,
       userSubscriptionsKey(userId),
       input.channel,
-      JSON.stringify(subscription),
+      subscription,
     );
     return subscription;
   }
@@ -278,7 +297,8 @@ export class IdentityPrismaRepository implements IdentityRepository {
   ): Promise<IdentityDataRequest> {
     const now = new Date().toISOString();
     const request: IdentityDataRequest = {
-      id: await this.redis.incr(
+      id: await redisNextId(
+        this.redis,
         `${REDIS_KEY_PREFIX}:user:${userId}:data-requests:next`,
       ),
       user_id: userId,
@@ -289,19 +309,22 @@ export class IdentityPrismaRepository implements IdentityRepository {
       created_at: now,
       completed_at: null,
     };
-    await this.redis.hset(
+    await writeHashObject(
+      this.redis,
       userDataRequestsKey(userId),
-      String(request.id),
-      JSON.stringify(request),
+      request.id,
+      request,
     );
     return request;
   }
 
   async listDataRequests(userId: number): Promise<IdentityDataRequest[]> {
-    const raw = await this.redis.hgetall(userDataRequestsKey(userId));
-    return Object.entries(raw)
-      .map(([, value]) => JSON.parse(value) as IdentityDataRequest)
-      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const requests = await readHashAll<IdentityDataRequest>(
+      this.redis,
+      userDataRequestsKey(userId),
+      (raw) => JSON.parse(raw) as IdentityDataRequest,
+    );
+    return requests.sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
   async setUserPermissions(
@@ -366,33 +389,20 @@ export class IdentityPrismaRepository implements IdentityRepository {
   async listNotifications(
     query: IdentityNotificationListQuery,
   ): Promise<IdentityNotificationListResult> {
-    const raw = await this.redis.hgetall(notificationDeliveriesKey());
-    let items = Object.entries(raw)
-      .map(([, value]) => JSON.parse(value) as IdentityNotification)
-      .sort((a, b) => b.created_at.localeCompare(a.created_at));
-
-    if (query.recipient_user_id !== undefined) {
-      items = items.filter(
-        (item) => item.recipient_user_id === query.recipient_user_id,
-      );
-    }
-    if (query.company_id !== undefined) {
-      items = items.filter((item) => item.company_id === query.company_id);
-    }
-    if (query.audience !== undefined) {
-      items = items.filter((item) => item.audience === query.audience);
-    }
-    if (query.status !== undefined) {
-      items = items.filter((item) => item.status === query.status);
-    }
-
-    const start = (query.page - 1) * query.page_size;
-    return {
-      items: items.slice(start, start + query.page_size),
-      total: items.length,
-      page: query.page,
-      page_size: query.page_size,
-    };
+    const items = await readHashAll<IdentityNotification>(
+      this.redis,
+      notificationDeliveriesKey(),
+      (raw) => JSON.parse(raw) as IdentityNotification,
+    );
+    return paginate(items, query, {
+      exact: {
+        recipient_user_id: query.recipient_user_id,
+        company_id: query.company_id,
+        audience: query.audience,
+        status: query.status,
+      },
+      sortBy: (a, b) => b.created_at.localeCompare(a.created_at),
+    });
   }
 
   private mapUser(user: UserRow): IdentityUser {

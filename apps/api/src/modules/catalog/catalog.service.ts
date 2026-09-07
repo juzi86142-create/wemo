@@ -178,8 +178,6 @@ export class CatalogService {
 
   async listVariants() {
     const items = await this.repository.listVariants();
-    return CatalogVariantListResponseSchema.parse(
-      listResponse(items, 1, Math.max(items.length, 1)),
-    );
+    return CatalogVariantListResponseSchema.parse(listResponse(items, 1));
   }
 }

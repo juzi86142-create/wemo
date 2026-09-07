@@ -15,6 +15,13 @@ import type {
 } from "@wemo/contracts";
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
+import { paginate } from "../../runtime/pagination";
+import {
+  readHashAll,
+  readHashOne,
+  redisNextId,
+  writeHashObject,
+} from "../../runtime/redis-hash";
 
 const RESERVATIONS_KEY = `${REDIS_KEY_PREFIX}:inventory:reservations`;
 
@@ -64,35 +71,20 @@ export class InventoryPrismaRepository implements InventoryRepository {
     page: number;
     page_size: number;
   }> {
-    const raw = await this.redis.hgetall(RESERVATIONS_KEY);
-    let reservations = Object.entries(raw)
-      .map(([, value]) => JSON.parse(value) as InventoryReservation)
-      .sort((a, b) => b.created_at.localeCompare(a.created_at));
-
-    if (query.inventory_balance_id !== undefined) {
-      reservations = reservations.filter(
-        (r) => r.inventory_balance_id === query.inventory_balance_id,
-      );
-    }
-    if (query.owner_type !== undefined) {
-      reservations = reservations.filter(
-        (r) => r.owner_type === query.owner_type,
-      );
-    }
-    if (query.owner_id !== undefined) {
-      reservations = reservations.filter((r) => r.owner_id === query.owner_id);
-    }
-    if (query.status !== undefined) {
-      reservations = reservations.filter((r) => r.status === query.status);
-    }
-
-    const start = (query.page - 1) * query.page_size;
-    return {
-      items: reservations.slice(start, start + query.page_size),
-      total: reservations.length,
-      page: query.page,
-      page_size: query.page_size,
-    };
+    const reservations = await readHashAll<InventoryReservation>(
+      this.redis,
+      RESERVATIONS_KEY,
+      (raw) => JSON.parse(raw) as InventoryReservation,
+    );
+    return paginate(reservations, query, {
+      exact: {
+        inventory_balance_id: query.inventory_balance_id,
+        owner_type: query.owner_type,
+        owner_id: query.owner_id,
+        status: query.status,
+      },
+      sortBy: (a, b) => b.created_at.localeCompare(a.created_at),
+    });
   }
 
   async createReservation(
@@ -102,9 +94,14 @@ export class InventoryPrismaRepository implements InventoryRepository {
       `${RESERVATIONS_KEY}:idem:${input.idempotency_key}`,
     );
     if (existingByKey !== null) {
-      const existing = await this.redis.hget(RESERVATIONS_KEY, existingByKey);
+      const existing = await readHashOne<InventoryReservation>(
+        this.redis,
+        RESERVATIONS_KEY,
+        existingByKey,
+        (raw) => JSON.parse(raw) as InventoryReservation,
+      );
       if (existing) {
-        return JSON.parse(existing) as InventoryReservation;
+        return existing;
       }
     }
 
@@ -132,7 +129,7 @@ export class InventoryPrismaRepository implements InventoryRepository {
 
       const now = new Date().toISOString();
       return {
-        id: await this.redis.incr(`${RESERVATIONS_KEY}:next`),
+        id: await redisNextId(this.redis, `${RESERVATIONS_KEY}:next`),
         inventory_balance_id: balance.id,
         owner_type: input.owner_type,
         owner_id: input.owner_id,
@@ -145,10 +142,11 @@ export class InventoryPrismaRepository implements InventoryRepository {
       } satisfies InventoryReservation;
     });
 
-    await this.redis.hset(
+    await writeHashObject(
+      this.redis,
       RESERVATIONS_KEY,
-      String(reservation.id),
-      JSON.stringify(reservation),
+      reservation.id,
+      reservation,
     );
     await this.redis.set(
       `${RESERVATIONS_KEY}:idem:${input.idempotency_key}`,
@@ -158,9 +156,13 @@ export class InventoryPrismaRepository implements InventoryRepository {
   }
 
   async releaseReservation(reservationId: number): Promise<void> {
-    const raw = await this.redis.hget(RESERVATIONS_KEY, String(reservationId));
-    if (!raw) return;
-    const reservation = JSON.parse(raw) as InventoryReservation;
+    const reservation = await readHashOne<InventoryReservation>(
+      this.redis,
+      RESERVATIONS_KEY,
+      reservationId,
+      (raw) => JSON.parse(raw) as InventoryReservation,
+    );
+    if (!reservation) return;
     if (reservation.status !== "active") return;
 
     await this.database.$transaction(async (tx) => {
@@ -179,11 +181,7 @@ export class InventoryPrismaRepository implements InventoryRepository {
       updated_at: new Date().toISOString(),
     };
 
-    await this.redis.hset(
-      RESERVATIONS_KEY,
-      String(reservationId),
-      JSON.stringify(released),
-    );
+    await writeHashObject(this.redis, RESERVATIONS_KEY, reservationId, released);
   }
 
   private mapBalance(balance: any): InventoryBalance {

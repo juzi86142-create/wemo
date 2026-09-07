@@ -4,6 +4,13 @@ import type { JobRun, JobStatus } from "@wemo/contracts/platform";
 import { randomUUID } from "node:crypto";
 
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
+import { paginate } from "../../runtime/pagination";
+import {
+  readHashAll,
+  readHashOne,
+  redisNextId,
+  writeHashObject,
+} from "../../runtime/redis-hash";
 import {
   JOBS_REPOSITORY,
   type JobExecutionPage,
@@ -20,16 +27,22 @@ export class JobsRedisRepository implements JobsRepository {
 
   /** 列出全部作业运行记录 */
   async listDefinitions(): Promise<JobRun[]> {
-    const raw = await this.redis.hgetall(RUNS_KEY);
-    return Object.entries(raw)
-      .map(([, value]) => JSON.parse(value) as JobRun)
-      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const runs = await readHashAll<JobRun>(
+      this.redis,
+      RUNS_KEY,
+      (raw) => JSON.parse(raw) as JobRun,
+    );
+    return runs.sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
   /** 按 id 查询作业运行记录 */
   async getDefinition(id: number): Promise<JobRun | null> {
-    const raw = await this.redis.hget(RUNS_KEY, String(id));
-    return raw ? (JSON.parse(raw) as JobRun) : null;
+    return readHashOne<JobRun>(
+      this.redis,
+      RUNS_KEY,
+      id,
+      (raw) => JSON.parse(raw) as JobRun,
+    );
   }
 
   /** 创建新的作业运行记录 初始状态 queued */
@@ -41,7 +54,7 @@ export class JobsRedisRepository implements JobsRepository {
   }): Promise<JobRun> {
     const now = new Date().toISOString();
     const run: JobRun = {
-      id: await this.redis.incr(`${REDIS_KEY_PREFIX}:jobs:next`),
+      id: await redisNextId(this.redis, `${REDIS_KEY_PREFIX}:jobs:next`),
       kind: (input.kind ?? "settings") as JobRun["kind"],
       status: "queued",
       idempotency_key: input.idempotency_key ?? randomUUID(),
@@ -61,7 +74,7 @@ export class JobsRedisRepository implements JobsRepository {
       updated_at: now,
       attempts_history: [],
     };
-    await this.redis.hset(RUNS_KEY, String(run.id), JSON.stringify(run));
+    await writeHashObject(this.redis, RUNS_KEY, run.id, run);
     return run;
   }
 
@@ -90,33 +103,26 @@ export class JobsRedisRepository implements JobsRepository {
         },
       ],
     };
-    await this.redis.hset(RUNS_KEY, String(jobId), JSON.stringify(updated));
+    await writeHashObject(this.redis, RUNS_KEY, jobId, updated);
     return updated;
   }
 
   /** 按类型 状态 请求号 执行人过滤分页查询执行记录 */
   async listExecutions(query: JobListQuery): Promise<JobExecutionPage> {
-    const raw = await this.redis.hgetall(RUNS_KEY);
-    let runs = Object.entries(raw)
-      .map(([, value]) => JSON.parse(value) as JobRun)
-      .sort((a, b) => b.created_at.localeCompare(a.created_at));
-
-    if (query.kind !== undefined)
-      runs = runs.filter((r) => r.kind === query.kind);
-    if (query.status !== undefined)
-      runs = runs.filter((r) => r.status === query.status);
-    if (query.request_id !== undefined)
-      runs = runs.filter((r) => r.request_id === query.request_id);
-    if (query.actor_id !== undefined)
-      runs = runs.filter((r) => r.actor_id === query.actor_id);
-
-    const start = (query.page - 1) * query.page_size;
-    return {
-      items: runs.slice(start, start + query.page_size),
-      total: runs.length,
-      page: query.page,
-      page_size: query.page_size,
-    };
+    const runs = await readHashAll<JobRun>(
+      this.redis,
+      RUNS_KEY,
+      (raw) => JSON.parse(raw) as JobRun,
+    );
+    return paginate(runs, query, {
+      exact: {
+        kind: query.kind,
+        status: query.status,
+        request_id: query.request_id,
+        actor_id: query.actor_id,
+      },
+      sortBy: (a, b) => b.created_at.localeCompare(a.created_at),
+    });
   }
 
   /** 更新执行状态 终态写入完成时间与失败原因 */
@@ -158,11 +164,7 @@ export class JobsRedisRepository implements JobsRepository {
       updated_at: now,
       attempts_history: history,
     };
-    await this.redis.hset(
-      RUNS_KEY,
-      String(executionId),
-      JSON.stringify(updated),
-    );
+    await writeHashObject(this.redis, RUNS_KEY, executionId, updated);
     return updated;
   }
 }
