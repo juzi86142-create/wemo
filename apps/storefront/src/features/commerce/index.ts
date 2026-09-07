@@ -3,6 +3,7 @@ export * from "./cart-line-item";
 export * from "./cart-summary";
 export * from "./cart-view";
 export * from "./checkout-adapter";
+export * from "./checkout-form";
 export * from "./checkout-validation";
 export * from "./order-success-snapshot";
 export * from "./quantity-control";
