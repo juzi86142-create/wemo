@@ -447,8 +447,6 @@ export const SearchQuerySchema = z
   .object({
     q: z.string().min(1),
     type: z.string().min(1).optional(),
-    market: z.string().min(1).optional(),
-    locale: z.string().min(1).optional(),
     page: z.coerce.number().int().min(1).default(1),
     page_size: z.coerce.number().int().min(1).max(100).default(20),
   })

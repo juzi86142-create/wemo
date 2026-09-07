@@ -195,6 +195,7 @@ export class CatalogPrismaRepository implements CatalogRepository {
 
   async listProducts(
     query: CatalogProductListQuery,
+    context: { market: string; locale: string },
   ): Promise<Page<CatalogProduct>> {
     const page = query.page;
     const pageSize = query.page_size;
@@ -215,10 +216,7 @@ export class CatalogPrismaRepository implements CatalogRepository {
       this.database.product.count({ where }),
     ]);
 
-    const items = await this.assembleProducts(products, {
-      ...(query.market !== undefined ? { market: query.market } : {}),
-      ...(query.locale !== undefined ? { locale: query.locale } : {}),
-    });
+    const items = await this.assembleProducts(products, context);
     return { items, total, page, page_size: pageSize };
   }
 

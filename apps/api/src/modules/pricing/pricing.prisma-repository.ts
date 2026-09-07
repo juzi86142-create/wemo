@@ -46,7 +46,7 @@ export class PricingPrismaRepository implements PricingRepository {
       where: {
         variantId: { in: variantIds },
         ...(input.market !== undefined ? { market: input.market } : {}),
-        ...(input.currency !== undefined ? { currency: input.currency } : {}),
+        currency: input.currency,
         ...(input.dealer_company_id !== undefined
           ? { dealerCompanyId: input.dealer_company_id }
           : {}),
@@ -78,7 +78,8 @@ export class PricingPrismaRepository implements PricingRepository {
       return {
         variant_id: item.variant_id,
         quantity: item.quantity,
-        currency: price?.currency ?? input.currency ?? "USD",
+        // 币种以请求为准 价格记录仅在同币种内筛选
+        currency: input.currency,
         price_type: price?.priceType ?? "default",
         price_record_id: price?.id ?? 0,
         dealer_company_id: price?.dealerCompanyId ?? null,
@@ -102,8 +103,7 @@ export class PricingPrismaRepository implements PricingRepository {
     });
 
     return {
-      // 请求未指定币种时以命中的价格记录为准，仍为空时兜底 USD（正常应由调用方带 currency）。
-      currency: input.currency ?? items[0]?.currency ?? "USD",
+      currency: input.currency,
       subtotal_minor: items.reduce((sum, item) => sum + item.line_total_minor, 0),
       source: "price_table",
       items,
@@ -214,13 +214,14 @@ export class PricingPrismaRepository implements PricingRepository {
     input: PriceRecordCreateInput,
     existing?: PriceRow | null,
   ) {
-    // create 必填字段始终存在；update 时缺失字段回落到 existing 保留原值。
+    // 契约要求 market/currency/variant_id 必填 update 直接覆盖写入
     return {
-      variantId: input.variant_id ?? existing?.variantId ?? 0,
-      market: input.market ?? existing?.market ?? "",
-      currency: input.currency ?? existing?.currency ?? "USD",
-      priceType: input.price_type ?? existing?.priceType ?? "default",
-      amountMinor: input.amount_minor ?? existing?.amountMinor ?? 0,
+      variantId: input.variant_id,
+      market: input.market,
+      currency: input.currency,
+      priceType: input.price_type,
+      amountMinor: input.amount_minor,
+      // update 未携带的字段保留原值 这是明确的 upsert 语义
       minQuantity: input.min_quantity ?? existing?.minQuantity ?? 1,
       rules:
         input.rules !== undefined

@@ -12,6 +12,7 @@ import {
 
 import { AppModule } from "./app.module";
 import { configureApplication } from "./http/configure-application";
+import { loadEnvFile } from "./runtime/env";
 
 export interface CreateApiAppOptions {
   logger?: boolean;
@@ -21,6 +22,7 @@ export interface CreateApiAppOptions {
 export async function createApiApp(
   options: CreateApiAppOptions = {},
 ): Promise<NestFastifyApplication> {
+  loadEnvFile();
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({

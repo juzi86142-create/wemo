@@ -8,6 +8,9 @@ import {
 
 import { AppModule } from "./app.module";
 import { configureApplication } from "./http/configure-application";
+import { loadEnvFile } from "./runtime/env";
+
+loadEnvFile();
 
 const port = Number(process.env.API_PORT ?? 4000);
 

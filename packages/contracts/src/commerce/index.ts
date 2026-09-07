@@ -262,7 +262,7 @@ export const PricingPreviewRequestSchema = z
       )
       .min(1),
     market: z.string().min(1).optional(),
-    currency: z.string().length(3).optional(),
+    currency: z.string().length(3),
     dealer_company_id: EntityIdSchema.optional(),
     dealer_tier_id: EntityIdSchema.optional(),
     price_list_id: EntityIdSchema.optional(),

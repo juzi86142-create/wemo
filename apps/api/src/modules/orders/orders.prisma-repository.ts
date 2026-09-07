@@ -123,130 +123,13 @@ export class OrdersPrismaRepository implements OrdersRepository {
     return order ? this.toOrder(order) : null;
   }
 
-  async updateOrderStatus(
-    id: number,
-    status: OrderStatus,
-    note?: string,
-  ): Promise<Order> {
-    const order = await this.database.order.update({
-      where: { id },
-      data: { status },
-    });
-
-    await this.writeStatusAuditLog(id, status, "system", note);
-
-    return this.toOrder(order);
-  }
-
-  async reserveInventory(input: {
-    variant_id: number;
-    quantity: number;
-    owner_type: string;
-    owner_id: number;
-    idempotency_key: string;
-    market: string;
-  }): Promise<{ id: number }> {
-    const existingByKey = await this.redis.get(
-      `${RESERVATIONS_KEY}:idem:${input.idempotency_key}`,
-    );
-    if (existingByKey !== null) {
-      return { id: Number(existingByKey) };
-    }
-
-    const reservationId = await this.database.$transaction(async (tx) => {
-      const balance = await tx.inventoryBalance.findFirst({
-        where: {
-          variantId: input.variant_id,
-          market: input.market,
-        },
-      });
-
-      if (!balance || balance.available < input.quantity) {
-        throw new Error("Insufficient inventory");
-      }
-
-      await tx.inventoryBalance.update({
-        where: { id: balance.id },
-        data: {
-          available: { decrement: input.quantity },
-          reserved: { increment: input.quantity },
-        },
-      });
-
-      return this.redis.incr(`${RESERVATIONS_KEY}:next`);
-    });
-
-    const now = new Date().toISOString();
-    await this.redis.hset(
-      RESERVATIONS_KEY,
-      String(reservationId),
-      JSON.stringify({
-        id: reservationId,
-        inventory_balance_id: reservationId,
-        owner_type: input.owner_type,
-        owner_id: input.owner_id,
-        quantity: input.quantity,
-        status: "active",
-        expires_at: null,
-        idempotency_key: input.idempotency_key,
-        created_at: now,
-        updated_at: now,
-      }),
-    );
-
-    await this.redis.set(
-      `${RESERVATIONS_KEY}:idem:${input.idempotency_key}`,
-      String(reservationId),
-    );
-    return { id: reservationId };
-  }
-
-  async releaseInventory(
-    reservationId: number,
-    requestId: string,
-    reason: string,
-  ): Promise<void> {
-    const raw = await this.redis.hget(RESERVATIONS_KEY, String(reservationId));
-    if (!raw) return;
-    const reservation = JSON.parse(raw) as {
-      inventory_balance_id: number;
-      quantity: number;
-      status: string;
-    };
-    if (reservation.status !== "active") return;
-
-    await this.database.$transaction(async (tx) => {
-      await tx.inventoryBalance.update({
-        where: { id: reservation.inventory_balance_id },
-        data: {
-          available: { increment: reservation.quantity },
-          reserved: { decrement: reservation.quantity },
-        },
-      });
-    });
-
-    await this.redis.hset(
-      RESERVATIONS_KEY,
-      String(reservationId),
-      JSON.stringify({
-        ...reservation,
-        status: "released",
-        updated_at: new Date().toISOString(),
-      }),
-    );
-
-    await this.writeStatusAuditLog(
-      reservationId,
-      "released" as OrderStatus,
-      requestId,
-      reason,
-    );
-  }
+  // 库存预占由 inventory 模块的 createReservation 承担 本模块不再重复实现
 
   async transitionOrder(
     orderId: number,
     status: OrderStatus,
     requestId: string,
+    actorId: number | null,
     note?: string,
   ): Promise<Order> {
     const order = await this.database.order.update({
@@ -254,7 +137,7 @@ export class OrdersPrismaRepository implements OrdersRepository {
       data: { status },
     });
 
-    await this.writeStatusAuditLog(orderId, status, requestId, note);
+    await this.writeStatusAuditLog(orderId, status, requestId, actorId, note);
 
     return this.toOrder(order);
   }
@@ -263,10 +146,11 @@ export class OrdersPrismaRepository implements OrdersRepository {
     orderId: number,
     status: OrderStatus,
     requestId: string,
+    actorId: number | null,
     note?: string,
   ): Promise<void> {
     await this.audit.recordLog({
-      actor_id: null,
+      actor_id: actorId,
       action: `order.status.${status}`,
       entity: "order",
       entity_id: orderId,

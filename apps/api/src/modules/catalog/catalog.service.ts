@@ -136,12 +136,10 @@ export class CatalogService {
   async listProducts(query: unknown) {
     const parsed = parseInput(CatalogProductListQuerySchema, query);
     const context = this.requestContext.requireContext();
-    const list = await this.repository.listProducts({
-      ...parsed,
-      status: "active",
-      market: parsed.market ?? context.market,
-      locale: parsed.locale ?? context.locale,
-    });
+    const list = await this.repository.listProducts(
+      { ...parsed, status: "active" },
+      { market: context.market, locale: context.locale },
+    );
     return CatalogProductListResponseSchema.parse(list);
   }
 
@@ -150,10 +148,9 @@ export class CatalogService {
     const parsed = parseInput(CatalogProductListQuerySchema, query);
     const context = this.requestContext.requireContext();
     return CatalogProductListResponseSchema.parse(
-      await this.repository.listProducts({
-        ...parsed,
-        market: parsed.market ?? context.market,
-        locale: parsed.locale ?? context.locale,
+      await this.repository.listProducts(parsed, {
+        market: context.market,
+        locale: context.locale,
       }),
     );
   }

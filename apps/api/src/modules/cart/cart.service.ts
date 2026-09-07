@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import {
   CartItemUpsertSchema,
   CartListQuerySchema,
@@ -19,11 +19,6 @@ import { parseInput } from "../../runtime/validation";
 
 const CartIdParamSchema = z.object({
   id: EntityIdSchema,
-});
-
-const CartContextSchema = z.object({
-  market: z.string().min(1).optional(),
-  currency: z.string().length(3).optional(),
 });
 
 type CartRuntimeContext = {
@@ -48,8 +43,7 @@ export class CartService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  private resolveContext(query?: unknown): CartRuntimeContext {
-    const parsed = parseInput(CartContextSchema, query ?? {});
+  private resolveContext(): CartRuntimeContext {
     const context = this.requestContext.requireContext();
     const actor = context.actor;
     const channel =
@@ -62,8 +56,8 @@ export class CartService {
       channel,
       user_id: actor?.audience === "staff" ? null : actor?.user_id ?? null,
       company_id: actor?.company_id ?? null,
-      market: parsed.market ?? context.market,
-      currency: parsed.currency ?? context.currency,
+      market: context.market,
+      currency: context.currency,
       dealer_company_id:
         actor?.audience === "dealer" && actor.company_id
           ? actor.company_id
@@ -72,7 +66,8 @@ export class CartService {
   }
 
   async getCurrent(query: unknown) {
-    const ctx = this.resolveContext(query);
+    void query;
+    const ctx = this.resolveContext();
     const item = await this.cartRepository.getOrCreateCart(ctx);
     return CartMutationResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,
@@ -90,21 +85,28 @@ export class CartService {
 
   async addItem(body: unknown) {
     const context = this.requestContext.requireContext();
-    const ctx = this.resolveContext({});
+    const ctx = this.resolveContext();
     const input = parseInput(CartItemUpsertSchema, body);
-    const price = (await this.pricingRepository.previewPricing?.({
+    const preview = await this.pricingRepository.previewPricing({
       items: [{ variant_id: input.variant_id, quantity: input.quantity }],
       market: ctx.market,
       currency: ctx.currency,
       dealer_company_id: ctx.dealer_company_id,
-    })) ?? { items: [{ unit_price_minor: 0, line_total_minor: 0 }] };
+    });
+    // 取价响应与请求行一一对应 缺失即视为变体不可售
+    const previewItem = preview.items.find(
+      (item) => item.variant_id === input.variant_id,
+    );
+    if (!previewItem) {
+      throw new NotFoundException("变体不可售");
+    }
     const cart = await this.cartRepository.getOrCreateCart(ctx);
     const item = await this.cartRepository.upsertCartItem(cart.id, {
       variant_id: input.variant_id,
       quantity: input.quantity,
-      unit_price_minor: price?.items?.[0]?.unit_price_minor ?? 0,
-      currency: price?.items?.[0]?.currency ?? ctx.currency,
-      snapshot: price?.items?.[0]?.snapshot ?? {},
+      unit_price_minor: previewItem.unit_price_minor,
+      currency: previewItem.currency,
+      snapshot: previewItem.snapshot,
     });
     return CartMutationResponseSchema.parse({
       request_id: context.request_id,

@@ -158,8 +158,6 @@ export const CatalogProductUpdateSchema = z
 export const CatalogProductListQuerySchema = PaginationSchema.extend({
   status: ProductStatusSchema.optional(),
   category_id: EntityIdSchema.optional(),
-  market: z.string().min(1).optional(),
-  locale: z.string().min(1).optional(),
   q: z.string().min(1).optional(),
   sort: z.enum(["name_asc", "name_desc", "newest"]).optional(),
 });

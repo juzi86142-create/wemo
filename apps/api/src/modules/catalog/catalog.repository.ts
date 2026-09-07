@@ -42,7 +42,10 @@ export interface CatalogRepository {
   upsertCategory(
     input: CatalogCategoryCreateInput & { id?: number },
   ): Promise<CatalogCategory>;
-  listProducts(query: CatalogProductListQuery): Promise<Page<CatalogProduct>>;
+  listProducts(
+    query: CatalogProductListQuery,
+    context: { market: string; locale: string },
+  ): Promise<Page<CatalogProduct>>;
   getProductBySlug(slug: string): Promise<CatalogProduct | null>;
   getProductById(id: number): Promise<CatalogProduct | null>;
   upsertProduct(

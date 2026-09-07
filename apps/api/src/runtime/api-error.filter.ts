@@ -148,14 +148,10 @@ export class ApiErrorFilter implements ExceptionFilter {
     const http = host.switchToHttp();
     const reply = http.getResponse<FastifyReply>();
     const request = http.getRequest<{ id?: string }>();
-    // 监听模式下异常链可能脱离拦截器的 ALS 绑定 回退使用 Fastify 请求 ID
-    const fromContext = this.requestContext.getRequestId();
+    // 异常链可能脱离拦截器的 ALS 绑定 无上下文时以 Fastify 请求 ID 为准
     const requestId =
-      fromContext !== "unknown-request"
-        ? fromContext
-        : typeof request?.id === "string" && request.id
-          ? request.id
-          : fromContext;
+      this.requestContext.getRequestId() ??
+      (typeof request?.id === "string" ? request.id : "unknown-request");
     const { status, body } = normalizeApiError(exception, requestId);
 
     reply.header("x-request-id", requestId).status(status).send(body);

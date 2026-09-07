@@ -5,6 +5,7 @@ import {
   NotificationDeliveryListResponseSchema,
   NotificationDeliveryMutationResponseSchema,
   NotificationDeliveryRetrySchema,
+  NotificationTemplateCreateSchema,
   NotificationTemplateListResponseSchema,
   NotificationTemplateMutationResponseSchema,
   NotificationTemplateUpdateSchema,
@@ -46,12 +47,15 @@ export class NotificationsService {
   async upsertTemplate(id: unknown, body: unknown) {
     this.authorization.requireStaffPermission("notifications:write");
     const context = this.requestContext.requireContext();
-    const input = parseInput(NotificationTemplateUpdateSchema, body);
-    const payload =
+    // 新建按必填契约校验 更新按可选契约校验 两种读取来源各自明确
+    const input =
       id === undefined
-        ? input
-        : { ...(input as any), id: parseInput(NotificationTemplateIdParamSchema, { id }).id };
-    const item = await this.repository.upsertTemplate(payload as any);
+        ? parseInput(NotificationTemplateCreateSchema, body)
+        : {
+            ...parseInput(NotificationTemplateUpdateSchema, body),
+            id: parseInput(NotificationTemplateIdParamSchema, { id }).id,
+          };
+    const item = await this.repository.upsertTemplate(input);
 
     return NotificationTemplateMutationResponseSchema.parse({
       request_id: context.request_id,

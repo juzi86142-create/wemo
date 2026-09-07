@@ -78,8 +78,6 @@ describe("content contracts", () => {
     expect(
       SearchQuerySchema.parse({
         q: "demo",
-        market: "global",
-        locale: "en-US",
         page_size: 10,
       }),
     ).toMatchObject({

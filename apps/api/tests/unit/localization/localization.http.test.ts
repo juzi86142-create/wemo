@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { RedisModule } from "../../../src/database/redis.module";
 import { configureApplication } from "../../../src/http/configure-application";
 import { ApiHttpModule } from "../../../src/http/api-http.module";
+import { loadEnvFile } from "../../../src/runtime/env";
 import { LocalizationController } from "../../../src/modules/localization/localization.controller";
 import {
   LOCALIZATION_REPOSITORY,
@@ -17,6 +18,9 @@ import {
 } from "../../../src/modules/localization/localization.repository";
 import { LocalizationService } from "../../../src/modules/localization/localization.service";
 import { RuntimeModule } from "../../../src/runtime/runtime.module";
+
+// 请求上下文的市场语言币种来自环境配置 测试与真实应用同一来源
+loadEnvFile();
 
 const language: Language = {
   id: 1,

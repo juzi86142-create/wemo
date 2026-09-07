@@ -11,8 +11,8 @@ export interface SearchRepository {
 export interface SearchQuery {
   q: string;
   type?: string;
-  market?: string;
-  locale?: string;
+  market: string;
+  locale: string;
   page: number;
   page_size: number;
 }

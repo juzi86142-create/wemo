@@ -15,8 +15,6 @@ import { parseInput } from "../../runtime/validation";
 
 const SeoMetadataQuerySchema = z.object({
   path: z.string().min(1),
-  market: z.string().min(1).optional(),
-  locale: z.string().min(2).optional(),
 });
 
 @Injectable()
@@ -33,8 +31,8 @@ export class SeoService {
   async getMetadata(query: unknown) {
     const parsed = parseInput(SeoMetadataQuerySchema, query);
     const result = await this.repository.getPageSeo({
-      market: parsed.market ?? this.requestContext.getMarket(),
-      locale: parsed.locale ?? this.requestContext.getLocale(),
+      market: this.requestContext.getMarket(),
+      locale: this.requestContext.getLocale(),
       slug: parsed.path,
     });
     return (

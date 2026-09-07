@@ -4,7 +4,6 @@ import {
   type RequestContext,
   type RequestActor,
 } from "@wemo/contracts/platform";
-import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { FastifyRequest } from "fastify";
 
@@ -42,23 +41,20 @@ export function createRequestContext(
   actor: RequestActor | null = null,
   sessionToken: string | null = null,
 ): RequestContext {
-  const requestId = request.id || randomUUID();
   const rawContext = {
-    request_id: requestId,
+    // 市场语言币种来源唯一：环境配置 请求头仅作显式覆盖
+    request_id: request.id,
     method: request.method,
     path: request.url,
     market:
       headerValue(request.headers, "x-wemo-market") ??
-      process.env.WEMO_DEFAULT_MARKET ??
-      "US",
+      process.env.WEMO_DEFAULT_MARKET,
     locale:
       headerValue(request.headers, "x-wemo-locale") ??
-      process.env.WEMO_DEFAULT_LOCALE ??
-      "en-US",
+      process.env.WEMO_DEFAULT_LOCALE,
     currency:
       headerValue(request.headers, "x-wemo-currency") ??
-      process.env.WEMO_DEFAULT_CURRENCY ??
-      "USD",
+      process.env.WEMO_DEFAULT_CURRENCY,
     ip: request.ip ?? null,
     user_agent: headerValue(request.headers, "user-agent") ?? null,
     session_token: sessionToken,
@@ -97,8 +93,8 @@ export class RequestContextStore {
     return context;
   }
 
-  getRequestId(): string {
-    return this.getContext()?.request_id ?? "unknown-request";
+  getRequestId(): string | null {
+    return this.getContext()?.request_id ?? null;
   }
 
   getActor(): RequestActor | null {
@@ -110,15 +106,15 @@ export class RequestContextStore {
   }
 
   getMarket(): string {
-    return this.getContext()?.market ?? "global";
+    return this.requireContext().market;
   }
 
   getLocale(): string {
-    return this.getContext()?.locale ?? "en-US";
+    return this.requireContext().locale;
   }
 
   getCurrency(): string {
-    return this.getContext()?.currency ?? "USD";
+    return this.requireContext().currency;
   }
 
   getIp(): string | null {

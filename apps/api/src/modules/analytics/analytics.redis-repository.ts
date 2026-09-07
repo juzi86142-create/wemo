@@ -5,7 +5,6 @@ import type {
   AnalyticsEventRecord,
   RequestContext,
 } from "@wemo/contracts/platform";
-import { randomUUID } from "node:crypto";
 
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
 import {
@@ -45,13 +44,14 @@ export class AnalyticsRedisRepository implements AnalyticsRepository {
       const record: AnalyticsEventRecord = {
         id: await this.redis.incr(`${REDIS_KEY_PREFIX}:analytics:next`),
         name: input.name,
-        request_id: context.request_id ?? randomUUID(),
+        request_id: context.request_id,
         user_id: context.actor?.user_id ?? null,
         company_id: context.actor?.company_id ?? null,
-        market: input.market ?? context.market,
-        locale: input.locale ?? context.locale,
+        // 市场语言设备与角色是客户端上报的事件事实 来源就是事件输入本身
+        market: input.market ?? null,
+        locale: input.locale ?? null,
         device: input.device ?? null,
-        role: input.role ?? context.actor?.audience ?? null,
+        role: input.role ?? null,
         payload: input.payload,
         dedupe_key: input.dedupe_key ?? null,
         occurred_at: new Date().toISOString(),

@@ -85,8 +85,9 @@ export class NotificationsRedisRepository implements NotificationsRepository {
         this.redis,
         `${REDIS_KEY_PREFIX}:notifications:templates:next`,
       ),
+      // 新建模板的必填字段由 NotificationTemplateCreateSchema 保证 此处直读输入
       code: input.code ?? "",
-      audience: (input.audience ?? "user") as NotificationTemplate["audience"],
+      audience: input.audience ?? "user",
       channel: input.channel ?? "",
       locale: input.locale ?? "en-US",
       subject: input.subject ?? "",
@@ -96,7 +97,7 @@ export class NotificationsRedisRepository implements NotificationsRepository {
       active: input.active ?? true,
       created_at: now,
       updated_at: now,
-    } as NotificationTemplate;
+    };
     await writeHashObject(this.redis, TEMPLATES_KEY, template.id, template);
     return template;
   }

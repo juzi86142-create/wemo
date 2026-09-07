@@ -27,8 +27,8 @@ export class SearchService {
       page: parsed.page,
       page_size: parsed.page_size,
       ...(parsed.type !== undefined ? { type: parsed.type } : {}),
-      market: parsed.market ?? context.market,
-      locale: parsed.locale ?? context.locale,
+      market: context.market,
+      locale: context.locale,
     });
     return SearchResponseSchema.parse(result);
   }
@@ -36,10 +36,7 @@ export class SearchService {
   async suggest(query: unknown) {
     const parsed = parseInput(SearchQuerySchema, query);
     const context = this.requestContext.requireContext();
-    const suggestions = await this.repository.suggest(
-      parsed.q,
-      parsed.locale ?? context.locale,
-    );
+    const suggestions = await this.repository.suggest(parsed.q, context.locale);
     return SearchSuggestionResponseSchema.parse({
       q: parsed.q,
       suggestions,

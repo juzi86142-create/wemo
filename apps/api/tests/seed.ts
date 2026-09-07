@@ -1,6 +1,9 @@
 import { createDatabase } from "@wemo/database";
 
 import { hashPassword } from "../src/modules/auth/password";
+import { loadEnvFile } from "../src/runtime/env";
+
+loadEnvFile();
 
 const database = createDatabase();
 
@@ -297,6 +300,29 @@ async function seedUsers() {
         data: { passwordHash: demoPasswordHash },
       });
     }
+    // 存量演示公司补全读取侧必填的 terms 字段 其余数据不动
+    const existingCompany = await database.dealerCompany.findFirst({
+      where: { displayName: "Demo Sports" },
+    });
+    if (existingCompany) {
+      const terms = (existingCompany.terms ?? {}) as Record<string, unknown>;
+      const missing: Record<string, unknown> = {};
+      if (typeof terms.business_type !== "string") {
+        missing.business_type = "general";
+      }
+      if (typeof terms.payment_terms !== "string") {
+        missing.payment_terms = "net30";
+      }
+      if (!Array.isArray(terms.sales_territories)) {
+        missing.sales_territories = ["US"];
+      }
+      if (Object.keys(missing).length > 0) {
+        await database.dealerCompany.update({
+          where: { id: existingCompany.id },
+          data: { terms: { ...terms, ...missing } as never },
+        });
+      }
+    }
   } else {
     const dealerUser = await database.user.create({
       data: {
@@ -322,7 +348,12 @@ async function seedUsers() {
         displayName: "Demo Sports",
         country: "US",
         currency: "USD",
-        terms: { payment_terms: "net30" },
+        terms: {
+          business_type: "general",
+          payment_terms: "net30",
+          sales_territories: ["US"],
+          authorized_categories: [],
+        },
         publicListing: true,
         status: "active",
       },
