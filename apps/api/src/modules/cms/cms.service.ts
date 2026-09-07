@@ -11,6 +11,7 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
+import { listResponse } from "../../runtime/list-response";
 import { CmsPrismaRepository } from "./cms.prisma-repository";
 import { CMS_REPOSITORY } from "./cms.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
@@ -130,11 +131,6 @@ export class CmsService {
       this.requestContext.getMarket(),
       this.requestContext.getLocale(),
     );
-    return ContentNavigationListResponseSchema.parse({
-      items,
-      page: 1,
-      page_size: Math.max(items.length, 1),
-      total: items.length,
-    });
+    return ContentNavigationListResponseSchema.parse(listResponse(items));
   }
 }

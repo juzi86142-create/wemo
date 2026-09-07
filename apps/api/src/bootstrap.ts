@@ -11,6 +11,7 @@ import {
 } from "@nestjs/platform-fastify";
 
 import { AppModule } from "./app.module";
+import { configureApplication } from "./http/configure-application";
 
 export interface CreateApiAppOptions {
   logger?: boolean;
@@ -35,11 +36,7 @@ export async function createApiApp(
     }),
   );
 
-  app.setGlobalPrefix("api/v1");
-  app.enableCors({
-    credentials: true,
-    origin: [process.env.STOREFRONT_URL ?? "http://localhost:3000"],
-  });
+  configureApplication(app);
 
   return app;
 }

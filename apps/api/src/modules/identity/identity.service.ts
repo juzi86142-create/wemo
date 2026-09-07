@@ -30,6 +30,7 @@ import type { IdentityNotificationListQuery } from "@wemo/contracts/identity";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
+import { listResponse } from "../../runtime/list-response";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 import { IdentityPrismaRepository } from "./identity.prisma-repository";
@@ -38,20 +39,6 @@ import { IDENTITY_REPOSITORY } from "./identity.repository";
 const UserIdParamSchema = z.object({
   id: EntityIdSchema,
 });
-
-function listResponse<T>(items: T[]): {
-  items: T[];
-  page: number;
-  page_size: number;
-  total: number;
-} {
-  return {
-    items,
-    page: 1,
-    page_size: Math.max(items.length, 1),
-    total: items.length,
-  };
-}
 
 @Injectable()
 export class IdentityService {
