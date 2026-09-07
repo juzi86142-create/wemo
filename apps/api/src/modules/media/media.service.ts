@@ -14,6 +14,7 @@ import {
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
+import { AUDIT_REPOSITORY, type AuditRepository } from "../audit/audit.repository";
 import { AuthorizationService } from "../../runtime/authorization.service";
 import { parseInput } from "../../runtime/validation";
 import { MEDIA_REPOSITORY, type MediaRepository } from "./media.repository";
@@ -52,6 +53,8 @@ export class MediaService {
     private readonly repository: MediaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
+    @Inject(AUDIT_REPOSITORY)
+    private readonly auditRepository: AuditRepository,
     @Inject(RequestContextStore)
     private readonly requestContext: RequestContextStore,
   ) {}
@@ -126,10 +129,18 @@ export class MediaService {
   }
 
   async createAsset(body: unknown) {
-    this.authorization.requireStaffPermission("media:write");
+    const actor = this.authorization.requireStaffPermission("media:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(MediaAssetCreateSchema, body);
     const item = await this.repository.createAsset(input);
+    await this.auditRepository.recordLog({
+      actor_id: actor.user_id,
+      action: "media.create",
+      entity: "media_asset",
+      entity_id: item.id,
+      after: { file_key: item.file_key, visibility: item.visibility },
+      request_id: context.request_id,
+    });
 
     return MediaAssetMutationResponseSchema.parse({
       request_id: context.request_id,

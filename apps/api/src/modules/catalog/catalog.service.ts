@@ -22,6 +22,7 @@ import {
 import { EntityIdSchema, PaginationSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
+import { AUDIT_REPOSITORY, type AuditRepository } from "../audit/audit.repository";
 import { AuthorizationService } from "../../runtime/authorization.service";
 import { paginate } from "../../runtime/pagination";
 import { CatalogPrismaRepository } from "./catalog.prisma-repository";
@@ -82,6 +83,8 @@ export class CatalogService {
     private readonly pricingRepository: PricingPrismaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
+    @Inject(AUDIT_REPOSITORY)
+    private readonly auditRepository: AuditRepository,
     @Inject(RequestContextStore)
     private readonly requestContext: RequestContextStore,
   ) {}
@@ -386,13 +389,21 @@ export class CatalogService {
   }
 
   async publishProduct(id: unknown) {
-    this.authorization.requireStaffPermission("catalog:write");
+    const actor = this.authorization.requireStaffPermission("catalog:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(CatalogIdParamSchema, { id });
     const item = await this.repository.upsertProduct({
       id: parsedId.id,
       status: "active",
     } as any);
+    await this.auditRepository.recordLog({
+      actor_id: actor.user_id,
+      action: "catalog.publish",
+      entity: "product",
+      entity_id: parsedId.id,
+      after: { status: "published" },
+      request_id: context.request_id,
+    });
 
     return CatalogProductMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -401,13 +412,21 @@ export class CatalogService {
   }
 
   async archiveProduct(id: unknown) {
-    this.authorization.requireStaffPermission("catalog:write");
+    const actor = this.authorization.requireStaffPermission("catalog:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(CatalogIdParamSchema, { id });
     const item = await this.repository.upsertProduct({
       id: parsedId.id,
       status: "archived",
     } as any);
+    await this.auditRepository.recordLog({
+      actor_id: actor.user_id,
+      action: "catalog.archive",
+      entity: "product",
+      entity_id: parsedId.id,
+      after: { status: "archived" },
+      request_id: context.request_id,
+    });
 
     return CatalogProductMutationResponseSchema.parse({
       request_id: context.request_id,

@@ -14,6 +14,7 @@ import type { JsonValue } from "@wemo/contracts/common";
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
+import { ANALYTICS_REPOSITORY, type AnalyticsRepository } from "../analytics/analytics.repository";
 import { AuthorizationService } from "../../runtime/authorization.service";
 import { listResponse } from "../../runtime/list-response";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -46,6 +47,8 @@ export class OrdersService {
     private readonly pricingRepository: PricingPrismaRepository,
     @Inject(COUPON_REPOSITORY)
     private readonly couponRepository: CouponRepository,
+    @Inject(ANALYTICS_REPOSITORY)
+    private readonly analyticsRepository: AnalyticsRepository,
     @Inject(NotificationsService)
     private readonly notifications: NotificationsService,
     @Inject(AuthorizationService)
@@ -302,6 +305,25 @@ export class OrdersService {
     if (discount.coupon_id !== null) {
       await this.couponRepository.recordUsage(discount.coupon_id);
     }
+
+    await this.analyticsRepository.recordEvents(
+      [
+        {
+          name: "purchase",
+          payload: {
+            order_id: item.id,
+            order_no: item.order_no,
+            channel: item.channel,
+            revenue_minor: item.total_minor,
+          },
+          market: context.market,
+          locale: context.locale,
+          role: channel === "b2b" ? "dealer" : "user",
+          dedupe_key: `purchase:${context.request_id}`,
+        },
+      ],
+      context,
+    );
 
     await this.notifications.emitBusinessNotification({
       template_code:

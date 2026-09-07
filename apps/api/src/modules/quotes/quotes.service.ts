@@ -12,6 +12,7 @@ import {
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
+import { ANALYTICS_REPOSITORY, type AnalyticsRepository } from "../analytics/analytics.repository";
 import { AuthorizationService } from "../../runtime/authorization.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { QuotesPrismaRepository } from "./quotes.prisma-repository";
@@ -30,6 +31,8 @@ export class QuotesService {
     private readonly repository: QuotesPrismaRepository,
     @Inject(NotificationsService)
     private readonly notifications: NotificationsService,
+    @Inject(ANALYTICS_REPOSITORY)
+    private readonly analyticsRepository: AnalyticsRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -86,6 +89,24 @@ export class QuotesService {
       request_id: context.request_id,
     };
     const item = await this.repository.createQuote(payload);
+
+    await this.analyticsRepository.recordEvents(
+      [
+        {
+          name: "request_quote",
+          payload: {
+            quote_id: item.id,
+            company_id: companyId,
+            items_count: input.items.length,
+          },
+          market: context.market,
+          locale: context.locale,
+          role: "dealer",
+          dedupe_key: `request_quote:${context.request_id}`,
+        },
+      ],
+      context,
+    );
 
     await this.notifications.emitBusinessNotification({
       template_code: "quote_requested",

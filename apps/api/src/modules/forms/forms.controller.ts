@@ -38,4 +38,21 @@ export class FormsController {
   updateSubmission(@Param("id") id: string, @Body() body: unknown) {
     return this.formsService.updateSubmission(id, body);
   }
+
+  @Get("admin/forms/definitions")
+  listFormDefinitions(@Query() query: unknown) {
+    return this.formsService.listFormDefinitions(query);
+  }
+
+  @Post("admin/forms/definitions")
+  @HttpCode(200)
+  createFormDefinition(@Body() body: unknown) {
+    return this.formsService.createFormDefinition(body);
+  }
+
+  @Patch("admin/forms/definitions/:id")
+  @HttpCode(200)
+  updateFormDefinition(@Param("id") id: string, @Body() body: unknown) {
+    return this.formsService.updateFormDefinition(id, body);
+  }
 }

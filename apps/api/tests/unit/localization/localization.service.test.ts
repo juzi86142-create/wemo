@@ -11,6 +11,7 @@ import type {
   LocalizationRepository,
   PageResult,
 } from "../../../src/modules/localization/localization.repository";
+import { RequestContextStore } from "../../../src/runtime/request-context.store";
 import { LocalizationService } from "../../../src/modules/localization/localization.service";
 
 const english: Language = {
@@ -75,6 +76,7 @@ describe("LocalizationService", () => {
   it("通过公开应用服务返回统一分页结果", async () => {
     const service = new LocalizationService(
       repositoryFor(market("default_locale")),
+      new RequestContextStore(),
     );
     const pagination: Pagination = { page: 1, page_size: 20 };
 
@@ -92,6 +94,7 @@ describe("LocalizationService", () => {
   it("按市场默认语言完整回退并返回对应路径", async () => {
     const service = new LocalizationService(
       repositoryFor(market("default_locale")),
+      new RequestContextStore(),
     );
 
     await expect(
@@ -110,7 +113,10 @@ describe("LocalizationService", () => {
 
   it("快照优先使用运行态公开市场数据", async () => {
     const repository = repositoryFor(market("default_locale"));
-    const service = new LocalizationService(repository);
+    const service = new LocalizationService(
+      repository,
+      new RequestContextStore(),
+    );
 
     await expect(service.snapshot("req-snapshot-1")).resolves.toMatchObject({
       request_id: "req-snapshot-1",
@@ -125,6 +131,7 @@ describe("LocalizationService", () => {
   it("hide_untranslated 策略拒绝不存在的 locale", async () => {
     const service = new LocalizationService(
       repositoryFor(market("hide_untranslated")),
+      new RequestContextStore(),
     );
 
     await expect(
@@ -135,6 +142,7 @@ describe("LocalizationService", () => {
   it("拒绝不存在的市场", async () => {
     const service = new LocalizationService(
       repositoryFor(market("default_locale")),
+      new RequestContextStore(),
     );
 
     await expect(
@@ -144,7 +152,10 @@ describe("LocalizationService", () => {
 
   it("管理写入要求 staff 身份和 localization:manage 权限", async () => {
     const repository = repositoryFor(market("default_locale"));
-    const service = new LocalizationService(repository);
+    const service = new LocalizationService(
+      repository,
+      new RequestContextStore(),
+    );
     const languageInput: UpsertLanguageInput = {
       code: "zh",
       label: "Chinese",

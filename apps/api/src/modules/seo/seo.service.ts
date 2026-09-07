@@ -45,11 +45,12 @@ export class SeoService {
     );
   }
 
-  getSitemap() {
+  async getSitemap() {
     const context = this.requestContext.requireContext();
+    const entries = await this.repository.listSitemapEntries();
     return SeoSitemapResponseSchema.parse({
       request_id: context.request_id,
-      item: [],
+      item: entries,
     });
   }
 

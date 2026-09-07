@@ -32,6 +32,7 @@ import {
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
+import { ANALYTICS_REPOSITORY, type AnalyticsRepository } from "../analytics/analytics.repository";
 import { AuthorizationService } from "../../runtime/authorization.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { listResponse } from "../../runtime/list-response";
@@ -54,6 +55,8 @@ export class DealersService {
     private readonly repository: DealersRepository,
     @Inject(NotificationsService)
     private readonly notifications: NotificationsService,
+    @Inject(ANALYTICS_REPOSITORY)
+    private readonly analyticsRepository: AnalyticsRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -151,6 +154,23 @@ export class DealersService {
       context.request_id,
       actor?.user_id ?? null,
       input.note,
+    );
+
+    await this.analyticsRepository.recordEvents(
+      [
+        {
+          name: "dealer_apply_submit",
+          payload: {
+            application_id: item.id,
+            application_no: item.application_no,
+          },
+          market: context.market,
+          locale: context.locale,
+          role: actor?.audience ?? "dealer",
+          dedupe_key: `dealer_apply_submit:${context.request_id}`,
+        },
+      ],
+      context,
     );
 
     await this.notifications.emitBusinessNotification({

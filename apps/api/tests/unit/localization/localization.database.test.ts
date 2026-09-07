@@ -2,6 +2,7 @@ import { createDatabase, type DatabaseClient } from "@wemo/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { LocalizationPrismaRepository } from "../../../src/modules/localization/localization.prisma-repository";
+import { RequestContextStore } from "../../../src/runtime/request-context.store";
 import { LocalizationService } from "../../../src/modules/localization/localization.service";
 
 const runIntegration = process.env.RUN_DATABASE_INTEGRATION === "1";
@@ -15,6 +16,7 @@ describeDatabase("Localization PostgreSQL 集成", () => {
     database = createDatabase();
     service = new LocalizationService(
       new LocalizationPrismaRepository(database),
+      new RequestContextStore(),
     );
   });
 

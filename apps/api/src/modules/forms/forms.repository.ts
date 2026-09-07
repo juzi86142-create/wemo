@@ -20,16 +20,16 @@ export type FormDefinition = {
 
 export type FormDefinitionCreateInput = {
   name: string;
-  description?: string;
-  fields?: unknown[];
-  is_active?: boolean;
+  description?: string | undefined;
+  fields?: unknown[] | undefined;
+  is_active?: boolean | undefined;
 };
 
 export type FormDefinitionUpdateInput = {
-  name?: string;
-  description?: string | null;
-  fields?: unknown[];
-  is_active?: boolean;
+  name?: string | undefined;
+  description?: string | null | undefined;
+  fields?: unknown[] | undefined;
+  is_active?: boolean | undefined;
 };
 
 export type FormDefinitionListQuery = {

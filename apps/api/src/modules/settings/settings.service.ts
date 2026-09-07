@@ -5,6 +5,7 @@ import {
   PlatformSettingsSnapshotSchema,
 } from "@wemo/contracts/platform";
 
+import { AUDIT_REPOSITORY, type AuditRepository } from "../audit/audit.repository";
 import { AuthorizationService } from "../../runtime/authorization.service";
 import { SettingsPrismaRepository } from "./settings.prisma-repository";
 import { SETTINGS_REPOSITORY } from "./settings.repository";
@@ -18,6 +19,8 @@ export class SettingsService {
     private readonly repository: SettingsPrismaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
+    @Inject(AUDIT_REPOSITORY)
+    private readonly auditRepository: AuditRepository,
     @Inject(RequestContextStore)
     private readonly requestContext: RequestContextStore,
   ) {}
@@ -35,10 +38,18 @@ export class SettingsService {
   }
 
   async updateSetting(body: unknown) {
-    this.authorization.requireStaffPermission("settings:write");
+    const actor = this.authorization.requireStaffPermission("settings:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(PlatformSettingMutationSchema, body);
     const item = await this.repository.upsertSetting(input);
+    await this.auditRepository.recordLog({
+      actor_id: actor.user_id,
+      action: "settings.update",
+      entity: "system_setting",
+      entity_id: item.id ?? 0,
+      after: { group_name: input.group_name, key: input.key },
+      request_id: context.request_id,
+    });
 
     return PlatformSettingMutationResponseSchema.parse({
       request_id: context.request_id,

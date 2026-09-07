@@ -16,6 +16,6 @@ import { AnalyticsService } from "./analytics.service";
       useClass: AnalyticsRedisRepository,
     },
   ],
-  exports: [AnalyticsService],
+  exports: [AnalyticsService, ANALYTICS_REPOSITORY],
 })
 export class AnalyticsModule {}

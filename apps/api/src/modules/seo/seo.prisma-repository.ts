@@ -1,6 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { DatabaseClient } from "@wemo/database";
-import type { SeoRedirect, SeoRedirectCreateInput } from "@wemo/contracts";
+import type {
+  SeoRedirect,
+  SeoRedirectCreateInput,
+  SeoSitemapEntry,
+} from "@wemo/contracts";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import {
@@ -97,5 +101,59 @@ export class SeoPrismaRepository implements SeoRepository {
       created_at: row.createdAt.toISOString(),
       updated_at: row.createdAt.toISOString(),
     };
+  }
+
+  /** 站点地图真实条目 需求 SEO-004 仅收录已发布产品分类与内容 */
+  async listSitemapEntries(): Promise<SeoSitemapEntry[]> {
+    const [products, translations, categories, entries] = await Promise.all([
+      this.database.product.findMany({ where: { status: "active" } }),
+      this.database.productTranslation.findMany(),
+      this.database.category.findMany({ where: { status: "active" } }),
+      this.database.contentEntry.findMany({
+        where: { status: { in: ["published", "scheduled"] } },
+      }),
+    ]);
+    const productIds = new Set(products.map((product) => product.id));
+    const baseUrl = process.env.STOREFRONT_URL ?? "http://localhost:3000";
+
+    const productEntries = translations
+      .filter(
+        (translation) =>
+          productIds.has(translation.productId) &&
+          translation.translationStatus === "published",
+      )
+      .map((translation) => ({
+        url: `${baseUrl}/${translation.market.toLowerCase()}/products/${translation.slug}`,
+        lastmod: new Date().toISOString().slice(0, 10),
+        locale: translation.locale,
+        market: translation.market,
+        changefreq: "weekly" as const,
+        priority: 0.8,
+      }));
+
+    const categoryEntries = categories.map((category) => ({
+      url: `${baseUrl}/categories/${category.slug}`,
+      lastmod: new Date().toISOString().slice(0, 10),
+      locale: "en-US",
+      market: "US",
+      changefreq: "weekly" as const,
+      priority: 0.6,
+    }));
+
+    const contentEntries = entries
+      .filter(
+        (entry) =>
+          entry.publishedAt === null || entry.publishedAt <= new Date(),
+      )
+      .map((entry) => ({
+        url: `${baseUrl}/${entry.market.toLowerCase()}/${entry.locale.toLowerCase()}/${entry.slug}`,
+        lastmod: entry.updatedAt.toISOString().slice(0, 10),
+        locale: entry.locale,
+        market: entry.market,
+        changefreq: "monthly" as const,
+        priority: 0.5,
+      }));
+
+    return [...productEntries, ...categoryEntries, ...contentEntries];
   }
 }

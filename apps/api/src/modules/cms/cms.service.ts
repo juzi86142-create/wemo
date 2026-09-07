@@ -14,6 +14,7 @@ import {
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
+import { AUDIT_REPOSITORY, type AuditRepository } from "../audit/audit.repository";
 import { AuthorizationService } from "../../runtime/authorization.service";
 import { listResponse } from "../../runtime/list-response";
 import { CmsPrismaRepository } from "./cms.prisma-repository";
@@ -36,6 +37,8 @@ export class CmsService {
     private readonly repository: CmsPrismaRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
+    @Inject(AUDIT_REPOSITORY)
+    private readonly auditRepository: AuditRepository,
     @Inject(RequestContextStore)
     private readonly requestContext: RequestContextStore,
   ) {}
@@ -104,11 +107,19 @@ export class CmsService {
 
   /** 发布支持定时发布与定时下线 需求 ADM-C-003 */
   async publishEntry(id: unknown, body: unknown) {
-    this.authorization.requireStaffPermission("content:write");
+    const actor = this.authorization.requireStaffPermission("content:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ContentIdParamSchema, { id });
     const input = parseInput(ContentEntryPublishSchema, body);
     const item = await this.repository.publishContentEntry(parsedId.id, input);
+    await this.auditRepository.recordLog({
+      actor_id: actor.user_id,
+      action: "cms.publish",
+      entity: "content_entry",
+      entity_id: parsedId.id,
+      after: { ...input, status: item.status } as unknown as import("@wemo/contracts/common").JsonValue,
+      request_id: context.request_id,
+    });
 
     return ContentEntryMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -159,11 +170,19 @@ export class CmsService {
   }
 
   async archiveEntry(id: unknown) {
-    this.authorization.requireStaffPermission("content:write");
+    const actor = this.authorization.requireStaffPermission("content:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ContentIdParamSchema, { id });
     const item = await this.repository.updateContentEntry(parsedId.id, {
       status: "archived",
+    });
+    await this.auditRepository.recordLog({
+      actor_id: actor.user_id,
+      action: "cms.archive",
+      entity: "content_entry",
+      entity_id: parsedId.id,
+      after: { status: "archived" },
+      request_id: context.request_id,
     });
 
     return ContentEntryMutationResponseSchema.parse({

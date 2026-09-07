@@ -16,6 +16,7 @@ import {
 } from "@wemo/contracts";
 
 import { parseInput, WemoHttpException } from "../../runtime/validation";
+import { RequestContextStore } from "../../runtime/request-context.store";
 import {
   LOCALIZATION_REPOSITORY,
   type LocalizationRepository,
@@ -33,6 +34,8 @@ export class LocalizationService {
   constructor(
     @Inject(LOCALIZATION_REPOSITORY)
     private readonly repository: LocalizationRepository,
+    @Inject(RequestContextStore)
+    private readonly requestContext: RequestContextStore,
   ) {}
 
   async listLanguages(input: unknown) {
@@ -98,7 +101,7 @@ export class LocalizationService {
   }
 
   async upsertLanguage(
-    input: UpsertLanguageInput,
+    input: unknown,
     context: LocalizationManagementContext,
   ) {
     const authorizedContext = this.authorizeManagement(context);
@@ -110,7 +113,7 @@ export class LocalizationService {
   }
 
   async saveMarket(
-    input: SaveMarketInput,
+    input: unknown,
     context: LocalizationManagementContext,
   ) {
     const authorizedContext = this.authorizeManagement(context);
@@ -119,6 +122,33 @@ export class LocalizationService {
     );
     this.logManagementChange("market_saved", saved.code, authorizedContext);
     return saved;
+  }
+
+  /** 管理路由入口 从请求上下文构建管理上下文 */
+  async adminUpsertLanguage(body: unknown) {
+    const context = this.requireManagementContext();
+    const item = await this.upsertLanguage(body, context);
+    return { request_id: context.request_id, item };
+  }
+
+  async adminSaveMarket(body: unknown) {
+    const context = this.requireManagementContext();
+    const item = await this.saveMarket(body, context);
+    return { request_id: context.request_id, item };
+  }
+
+  private requireManagementContext(): LocalizationManagementContext {
+    const context = this.requestContext.requireContext();
+    const actor = context.actor;
+    if (!actor) {
+      throw new WemoHttpException(
+        "LOCALIZATION_FORBIDDEN",
+        "缺少认证上下文",
+        [],
+        401,
+      );
+    }
+    return { actor, request_id: context.request_id };
   }
 
   private authorizeManagement(
