@@ -20,9 +20,7 @@ import {
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
 
-function nowIso(): string {
-  return new Date().toISOString();
-}
+import { nowIso } from "../../runtime/time";
 
 /** users 表行的最小形状（无 relation，纯标量字段） */
 interface UserRow {

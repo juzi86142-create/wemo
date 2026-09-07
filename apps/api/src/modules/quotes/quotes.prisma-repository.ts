@@ -1,8 +1,14 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { DatabaseClient } from "@wemo/database";
-import type { JsonValue, Quote, QuoteListQuery, QuoteVersion } from "@wemo/contracts";
+import type {
+  JsonValue,
+  Quote,
+  QuoteListQuery,
+  QuoteVersion,
+} from "@wemo/contracts";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
+import { generateBusinessNo } from "../../runtime/ids";
 
 import {
   QUOTES_REPOSITORY,
@@ -12,8 +18,12 @@ import {
   type QuotesRepository,
 } from "./quotes.repository";
 
-type QuoteRow = NonNullable<Awaited<ReturnType<DatabaseClient["quote"]["findUnique"]>>>;
-type QuoteVersionRow = Awaited<ReturnType<DatabaseClient["quoteVersion"]["findMany"]>>[number];
+type QuoteRow = NonNullable<
+  Awaited<ReturnType<DatabaseClient["quote"]["findUnique"]>>
+>;
+type QuoteVersionRow = Awaited<
+  ReturnType<DatabaseClient["quoteVersion"]["findMany"]>
+>[number];
 type QuoteWhereInput = NonNullable<
   Parameters<DatabaseClient["quote"]["findMany"]>[0]
 >["where"];
@@ -41,27 +51,20 @@ function readSnapshot(raw: unknown): StoredSnapshot {
   return (raw ?? {}) as unknown as StoredSnapshot;
 }
 
-function nextQuoteNo(): string {
-  const suffix = Math.floor(Math.random() * 1_000_000)
-    .toString()
-    .padStart(6, "0");
-  return `QUO-${Date.now()}${suffix}`;
-}
-
-function nextOrderNo(): string {
-  const suffix = Math.floor(Math.random() * 1_000_000)
-    .toString()
-    .padStart(6, "0");
-  return `ORD-${Date.now()}${suffix}`;
-}
-
 @Injectable()
 export class QuotesPrismaRepository implements QuotesRepository {
-  constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
+  constructor(
+    @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
+  ) {}
 
   async listQuotes(
     query: QuoteListQuery,
-  ): Promise<{ items: Quote[]; total: number; page: number; page_size: number }> {
+  ): Promise<{
+    items: Quote[];
+    total: number;
+    page: number;
+    page_size: number;
+  }> {
     const where: QuoteWhereInput = {};
     if (query.company_id !== undefined) where.companyId = query.company_id;
     if (query.status !== undefined) where.status = query.status;
@@ -79,7 +82,9 @@ export class QuotesPrismaRepository implements QuotesRepository {
     const versionRows = await this.fetchVersionsForQuotes(
       rows.map((row) => row.id),
     );
-    const items = rows.map((row) => this.mapQuote(row, versionRows.get(row.id) ?? []));
+    const items = rows.map((row) =>
+      this.mapQuote(row, versionRows.get(row.id) ?? []),
+    );
 
     return { items, total, page: query.page, page_size: query.page_size };
   }
@@ -89,7 +94,9 @@ export class QuotesPrismaRepository implements QuotesRepository {
   }
 
   async listVersions(quoteId: number): Promise<QuoteVersion[]> {
-    const quote = await this.database.quote.findUnique({ where: { id: quoteId } });
+    const quote = await this.database.quote.findUnique({
+      where: { id: quoteId },
+    });
     if (!quote) {
       throw new NotFoundException(`报价 ${quoteId} 不存在`);
     }
@@ -108,7 +115,7 @@ export class QuotesPrismaRepository implements QuotesRepository {
     await this.database.$transaction(async (tx) => {
       const quote = await tx.quote.create({
         data: {
-          quoteNo: nextQuoteNo(),
+          quoteNo: generateBusinessNo("QUO"),
           companyId: input.company_id,
           currentVersion: 1,
           status: "requested",
@@ -188,7 +195,10 @@ export class QuotesPrismaRepository implements QuotesRepository {
                 ? input.terms_snapshot
                 : (prevSnapshot.terms_snapshot ?? {}),
             status: input.decision,
-            valid_until: validUntil?.toISOString() ?? prevSnapshot.valid_until ?? now.toISOString(),
+            valid_until:
+              validUntil?.toISOString() ??
+              prevSnapshot.valid_until ??
+              now.toISOString(),
             requested_by_user_id: prevSnapshot.requested_by_user_id ?? null,
             ...(input.note !== undefined ? { note: input.note } : {}),
           } as unknown as SnapshotWrite,
@@ -209,7 +219,9 @@ export class QuotesPrismaRepository implements QuotesRepository {
     actorId: number,
     requestId: string,
   ): Promise<Quote> {
-    const current = await this.database.quote.findUnique({ where: { id: quoteId } });
+    const current = await this.database.quote.findUnique({
+      where: { id: quoteId },
+    });
     if (!current) {
       throw new NotFoundException(`报价 ${quoteId} 不存在`);
     }
@@ -222,7 +234,10 @@ export class QuotesPrismaRepository implements QuotesRepository {
     const prevSnapshot = readSnapshot(previous?.snapshot);
 
     // 金额信息来自当前版本快照的 pricing_snapshot（契约中为自由 Json）。
-    const pricing = (prevSnapshot.pricing_snapshot ?? {}) as Record<string, unknown>;
+    const pricing = (prevSnapshot.pricing_snapshot ?? {}) as Record<
+      string,
+      unknown
+    >;
     const readMoney = (key: string): number =>
       typeof pricing[key] === "number" ? (pricing[key] as number) : 0;
     const currency =
@@ -233,7 +248,7 @@ export class QuotesPrismaRepository implements QuotesRepository {
     await this.database.$transaction(async (tx) => {
       const order = await tx.order.create({
         data: {
-          orderNo: nextOrderNo(),
+          orderNo: generateBusinessNo("ORD"),
           requestId,
           channel: input.channel,
           userId: null,
@@ -243,7 +258,8 @@ export class QuotesPrismaRepository implements QuotesRepository {
           taxMinor: readMoney("tax_minor"),
           shippingMinor: readMoney("shipping_minor"),
           totalMinor: readMoney("total_minor"),
-          status: input.channel === "b2b" ? "pending_review" : "pending_payment",
+          status:
+            input.channel === "b2b" ? "pending_review" : "pending_payment",
           addressSnapshot: {},
           pricingSnapshot: {
             quote_id: current.id,

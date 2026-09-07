@@ -18,9 +18,7 @@ import { AUTH_REPOSITORY } from "./auth.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
-function nowIso(): string {
-  return new Date().toISOString();
-}
+import { nowIso } from "../../runtime/time";
 
 @Injectable()
 export class AuthService {
@@ -88,7 +86,10 @@ export class AuthService {
     const context = this.requestContext.requireContext();
     const input = parseInput(AuthLoginSchema, body);
     const user = await this.repository.authenticate(input);
-    const item = await this.repository.issueSession(user.id, context.request_id);
+    const item = await this.repository.issueSession(
+      user.id,
+      context.request_id,
+    );
 
     return AuthSessionMutationResponseSchema.parse({
       request_id: context.request_id,

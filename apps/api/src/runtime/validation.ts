@@ -42,7 +42,7 @@ export function parseInput<T extends ZodTypeAny>(
 
   throw new WemoHttpException(
     options?.code ?? "VALIDATION_ERROR",
-    options?.message ?? "请求参数有误",
+    options?.message ?? "请求参数无效",
     toFieldErrors(result.error.issues),
     options?.status ?? HttpStatus.BAD_REQUEST,
   );

@@ -11,6 +11,7 @@ import type { DatabaseClient } from "@wemo/database";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
+import { generateBusinessNo } from "../../runtime/ids";
 import type {
   FormDefinition,
   FormDefinitionCreateInput,
@@ -103,7 +104,7 @@ export class FormsPrismaRepository implements FormsRepository {
   async submitForm(input: FormSubmissionCreateInput): Promise<FormSubmission> {
     const row = await this.database.formSubmission.create({
       data: {
-        submissionNo: this.buildSubmissionNo(),
+        submissionNo: generateBusinessNo("FS"),
         type: input.type,
         source: input.source,
         payload: input.payload as never,
@@ -171,12 +172,6 @@ export class FormsPrismaRepository implements FormsRepository {
       where: { id },
     });
     return row ? this.mapSubmission(row) : null;
-  }
-
-  private buildSubmissionNo(): string {
-    const stamp = Date.now().toString(36).toUpperCase();
-    const random = Math.random().toString(36).slice(2, 6).toUpperCase();
-    return `FS-${stamp}-${random}`;
   }
 
   private mapSubmission(row: FormSubmissionRow): FormSubmission {

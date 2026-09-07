@@ -32,9 +32,11 @@ function userIndexKey(userId: number): string {
   return `${PREFIX}:by-user:${userId}`;
 }
 
-function nowIso(): string {
-  return new Date().toISOString();
+function cartIndexKey(): string {
+  return `${PREFIX}:index`;
 }
+
+import { nowIso } from "../../runtime/time";
 
 function expiresIso(days = 7): string {
   return new Date(Date.now() + days * 86_400_000).toISOString();
@@ -76,6 +78,7 @@ export class CartRedisRepository implements CartRepository {
       created_at: created,
     };
     await this.saveCart(cart);
+    await this.redis.sadd(cartIndexKey(), String(id));
     if (ctx.user_id !== null) {
       await this.redis.set(userIndexKey(ctx.user_id), String(id));
     }
@@ -110,15 +113,8 @@ export class CartRedisRepository implements CartRepository {
       };
     }
 
-    const keys = await this.redis.keys(`${PREFIX}:*:items`);
-    const cartIds = [
-      ...new Set(
-        keys
-          .map((key) => key.match(/^wemo:cart:(\d+):items$/)?.at(1))
-          .filter((raw): raw is string => raw !== undefined)
-          .map(Number),
-      ),
-    ];
+    const members = await this.redis.smembers(cartIndexKey());
+    const cartIds = members.map(Number);
     const carts = (
       await Promise.all(cartIds.map((id) => this.loadCart(id)))
     ).filter((cart): cart is Cart => cart !== null);
@@ -300,29 +296,36 @@ export class CartRedisRepository implements CartRepository {
   }
 
   private async loadCart(id: number): Promise<Cart | null> {
-    const header = await this.redis.hgetall(cartKey(id));
-    if (!header || !header.id) return null;
-    const itemRaw = await this.redis.hgetall(itemsKey(id));
-    const items = Object.entries(itemRaw)
-      .map(([, raw]) => JSON.parse(raw) as StoredCartItem)
+    const results = await this.redis
+      .pipeline()
+      .hgetall(cartKey(id))
+      .hgetall(itemsKey(id))
+      .exec();
+    if (!results) return null;
+    const headerMap = results[0]?.[1] as Record<string, string> | undefined;
+    if (!headerMap || !headerMap.id) return null;
+    const itemRaw = results[1]?.[1] as Record<string, string> | undefined;
+    const items = Object.entries(itemRaw ?? {})
+      .map(([, raw]) => JSON.parse(raw as string) as StoredCartItem)
       .sort((a, b) => a.added_at.localeCompare(b.added_at));
     return {
-      id: Number(header.id),
-      user_id: header.user_id === "" ? null : Number(header.user_id),
-      company_id: header.company_id === "" ? null : Number(header.company_id),
-      channel: header.channel as Cart["channel"],
-      market: header.market ?? "",
-      currency: header.currency ?? "USD",
-      status: header.status as Cart["status"],
+      id: Number(headerMap.id),
+      user_id: headerMap.user_id === "" ? null : Number(headerMap.user_id),
+      company_id:
+        headerMap.company_id === "" ? null : Number(headerMap.company_id),
+      channel: headerMap.channel as Cart["channel"],
+      market: headerMap.market ?? "",
+      currency: headerMap.currency ?? "USD",
+      status: headerMap.status as Cart["status"],
       items,
-      subtotal_minor: Number(header.subtotal_minor ?? 0),
-      total_minor: Number(header.total_minor ?? 0),
-      updated_at: header.updated_at ?? new Date().toISOString(),
+      subtotal_minor: Number(headerMap.subtotal_minor ?? 0),
+      total_minor: Number(headerMap.total_minor ?? 0),
+      updated_at: headerMap.updated_at ?? new Date().toISOString(),
       expires_at:
-        header.expires_at === "" || header.expires_at === undefined
+        headerMap.expires_at === "" || headerMap.expires_at === undefined
           ? null
-          : header.expires_at,
-      created_at: header.created_at ?? new Date().toISOString(),
+          : headerMap.expires_at,
+      created_at: headerMap.created_at ?? new Date().toISOString(),
     };
   }
 

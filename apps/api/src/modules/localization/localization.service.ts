@@ -1,10 +1,4 @@
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  Logger,
-  Optional,
-} from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import {
   LanguageListResponseSchema,
   MarketContextSchema,
@@ -21,7 +15,7 @@ import {
   type UpsertLanguageInput,
 } from "@wemo/contracts";
 
-import { WemoHttpException } from "../../runtime/validation";
+import { parseInput, WemoHttpException } from "../../runtime/validation";
 import {
   LOCALIZATION_REPOSITORY,
   type LocalizationRepository,
@@ -42,13 +36,13 @@ export class LocalizationService {
   ) {}
 
   async listLanguages(input: unknown) {
-    const pagination = PaginationSchema.parse(input);
+    const pagination = parseInput(PaginationSchema, input);
     const result = await this.repository.listPublicLanguages(pagination);
     return LanguageListResponseSchema.parse({ ...pagination, ...result });
   }
 
   async listMarkets(input: unknown) {
-    const pagination = PaginationSchema.parse(input);
+    const pagination = parseInput(PaginationSchema, input);
     const result = await this.repository.listPublicMarkets(pagination);
     return MarketListResponseSchema.parse({ ...pagination, ...result });
   }
@@ -57,18 +51,21 @@ export class LocalizationService {
     const snapshot = await this.buildRepositorySnapshot();
 
     return LocalizationSnapshotSchema.parse({
-      request_id: RequestIdSchema.parse(requestId),
+      request_id: parseInput(RequestIdSchema, requestId),
       item: snapshot,
     });
   }
 
   async resolveMarketContext(input: unknown) {
-    const query = ResolveMarketContextQuerySchema.parse(input);
+    const query = parseInput(ResolveMarketContextQuerySchema, input);
     const market = await this.repository.findPublicMarket(query.market);
     if (!market) {
       throw new WemoHttpException(
         "MARKET_NOT_FOUND",
-        "市场不存在或尚未启用", [], 404);
+        "市场不存在或尚未启用",
+        [],
+        404,
+      );
     }
 
     const requested = market.locales.find(
@@ -82,7 +79,10 @@ export class LocalizationService {
     if (!resolved) {
       throw new WemoHttpException(
         "LOCALE_NOT_AVAILABLE",
-        "该市场未提供请求的语言版本", [], 404);
+        "该市场未提供请求的语言版本",
+        [],
+        404,
+      );
     }
 
     return MarketContextSchema.parse({
@@ -103,7 +103,7 @@ export class LocalizationService {
   ) {
     const authorizedContext = this.authorizeManagement(context);
     const saved = await this.repository.upsertLanguage(
-      UpsertLanguageSchema.parse(input),
+      parseInput(UpsertLanguageSchema, input),
     );
     this.logManagementChange("language_saved", saved.code, authorizedContext);
     return saved;
@@ -115,7 +115,7 @@ export class LocalizationService {
   ) {
     const authorizedContext = this.authorizeManagement(context);
     const saved = await this.repository.saveMarket(
-      SaveMarketSchema.parse(input),
+      parseInput(SaveMarketSchema, input),
     );
     this.logManagementChange("market_saved", saved.code, authorizedContext);
     return saved;
@@ -125,18 +125,19 @@ export class LocalizationService {
     context: LocalizationManagementContext,
   ): LocalizationManagementContext {
     const parsed = {
-      actor: SessionActorSchema.parse(context.actor),
-      request_id: RequestIdSchema.parse(context.request_id),
+      actor: parseInput(SessionActorSchema, context.actor),
+      request_id: parseInput(RequestIdSchema, context.request_id),
     };
     if (
       parsed.actor.audience !== "staff" ||
       !parsed.actor.permissions.includes("localization:manage")
     ) {
-      throw new ForbiddenException({
-        code: "LOCALIZATION_FORBIDDEN",
-        message: "缺少本地化配置管理权限",
-        field_errors: [],
-      });
+      throw new WemoHttpException(
+        "LOCALIZATION_FORBIDDEN",
+        "缺少本地化配置管理权限",
+        [],
+        403,
+      );
     }
     return parsed;
   }
