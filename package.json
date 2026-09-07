@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "pnpm build:packages && turbo dev",
+    "mock:storefront": "tsx scripts/storefront-contract-mock.ts",
     "build:packages": "turbo build --filter @wemo/contracts --filter @wemo/database --filter @wemo/ui",
     "build": "turbo build",
     "check:architecture": "tsx scripts/check-architecture.ts",
