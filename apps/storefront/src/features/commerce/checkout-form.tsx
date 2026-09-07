@@ -10,6 +10,7 @@ import { ApiError } from "../platform/api-client";
 import { CheckoutCreateSchema } from "@wemo/contracts";
 import { formatMoney } from "./cart-adapter";
 import { createCheckout } from "./checkout-adapter";
+import { isContractMockMode } from "./contract-mock-mode";
 import { writeOrderSuccessSnapshot } from "./order-success-snapshot";
 import { validateCheckoutFields, type CheckoutFormValues } from "./checkout-validation";
 
@@ -62,6 +63,7 @@ export function CheckoutForm({
   addresses: AccountAddresses;
 }) {
   const router = useRouter();
+  const contractMock = isContractMockMode(process.env.NEXT_PUBLIC_WEMO_CONTRACT_MOCK);
   const [values, setValues] = useState(() => initialValues(profile, addresses));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | undefined>();
@@ -135,6 +137,7 @@ export function CheckoutForm({
           <p className="eyebrow">CHECKOUT</p>
           <h1 id="checkout-title">Make room for the next move.</h1>
           <p>Tell us where to send your collection. Final price, stock, and order status come from the live service.</p>
+          {contractMock ? <p className="contract-mock-banner" role="status">CONTRACT MOCK ONLY. No live order will be created.</p> : null}
         </div>
         <form className="checkout-form" onSubmit={submit} noValidate>
           <fieldset className="checkout-section">

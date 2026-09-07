@@ -7,6 +7,7 @@ import { ApiError } from "../platform/api-client";
 import { CartLineItem } from "./cart-line-item";
 import { CartSummary } from "./cart-summary";
 import { removeCartItem, removePreviewItem, replacePreviewQuantity, updateCartItem } from "./cart-adapter";
+import { isContractMockMode } from "./contract-mock-mode";
 
 export function CartView({ initialCart, preview }: { initialCart: Cart; preview: boolean }) {
   const [cart, setCart] = useState(initialCart);
@@ -47,5 +48,6 @@ export function CartView({ initialCart, preview }: { initialCart: Cart; preview:
 
   if (cart.items.length === 0) return <section className="empty-cart"><p className="eyebrow">YOUR CART</p><h1>Nothing here yet.</h1><p>Start with a little movement and build your own collection.</p><a className="button button-dark" href="/products">Explore products <span aria-hidden="true">↗</span></a></section>;
 
-  return <section className="cart-layout"><div className="cart-lines"><div className="cart-section-heading"><div><p className="eyebrow">YOUR CART</p><h1>Ready when you are.</h1></div><span>{cart.items.length} items</span></div>{notice ? <p className="cart-notice" role="alert">{notice}</p> : null}{preview ? <p className="preview-banner"><strong>Preview cart</strong><span>Line changes are local until the live cart service is connected.</span></p> : null}{cart.items.map((item) => <CartLineItem key={item.id} item={item} pending={pendingId === item.id} onQuantity={(quantity) => void update(item.id, quantity)} onRemove={() => void remove(item.id)} />)}</div><CartSummary cart={cart} preview={preview} /></section>;
+  const contractMock = isContractMockMode(process.env.NEXT_PUBLIC_WEMO_CONTRACT_MOCK);
+  return <section className="cart-layout"><div className="cart-lines"><div className="cart-section-heading"><div><p className="eyebrow">YOUR CART</p><h1>Ready when you are.</h1></div><span>{cart.items.length} items</span></div>{notice ? <p className="cart-notice" role="alert">{notice}</p> : null}{preview ? <p className="preview-banner"><strong>Preview cart</strong><span>Line changes are local until the live cart service is connected.</span></p> : null}{!preview && contractMock ? <p className="contract-mock-banner" role="status">CONTRACT MOCK ONLY. No live order will be created.</p> : null}{cart.items.map((item) => <CartLineItem key={item.id} item={item} pending={pendingId === item.id} onQuantity={(quantity) => void update(item.id, quantity)} onRemove={() => void remove(item.id)} />)}</div><CartSummary cart={cart} preview={preview} /></section>;
 }
