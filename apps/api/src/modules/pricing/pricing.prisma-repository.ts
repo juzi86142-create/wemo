@@ -40,6 +40,7 @@ export class PricingPrismaRepository implements PricingRepository {
 
   async previewPricing(input: PricingPreviewRequest): Promise<PricePreview> {
     const variantIds = [...new Set(input.items.map(item => item.variant_id))];
+    const now = new Date();
 
     const prices = await this.database.price.findMany({
       where: {
@@ -55,6 +56,11 @@ export class PricingPrismaRepository implements PricingRepository {
         ...(input.price_list_id !== undefined
           ? { priceListId: input.price_list_id }
           : {}),
+        // 只取当前有效期内的价格记录 未设置起止视为永久有效
+        AND: [
+          { OR: [{ validFrom: null }, { validFrom: { lte: now } }] },
+          { OR: [{ validTo: null }, { validTo: { gte: now } }] },
+        ],
       },
       orderBy: { createdAt: "asc" },
     });
