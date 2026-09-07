@@ -17,16 +17,16 @@
 | 需求第 7 章：管理后台         | `apps/storefront/src/features/admin` 与全部管理 API                                                | A-001 至 A-016 权限化运营能力                           | planned     |
 | 需求第 8 章：状态机           | dealers/catalog/orders/quotes                                                                      | 状态转换、拒绝非法转换、历史记录测试                    | done        |
 | 需求第 9 章：商品价格库存订单 | catalog/pricing/inventory/orders                                                                   | 唯一性、价格优先级、预占与金额快照测试                  | done        |
-| 需求第 10 章：内容媒体资料    | cms/media 与内容前端                                                                               | 内容模型、图片处理、四级文件权限                        | planned     |
-| 需求第 11 章：搜索推荐        | search/analytics 与搜索前端                                                                        | 搜索质量、授权过滤、无结果分析                          | planned     |
+| 需求第 10 章：内容媒体资料    | cms/media 与内容前端                                                                               | 内容模型、图片处理、四级文件权限                        | in-progress |
+| 需求第 11 章：搜索推荐        | search/analytics 与搜索前端                                                                        | 搜索质量、授权过滤、无结果分析                          | in-progress |
 | 需求第 12 章：多语言 SEO 分享 | localization/seo 与 `apps/storefront/src/features/platform`                                        | 翻译状态、URL、hreflang、Schema、Sitemap                | in-progress |
 | 需求第 13 章：UI/UX           | `packages/ui` 与 `apps/storefront`                                                                 | 组件、响应式、表单、WCAG 2.2 AA                         | planned     |
 | 需求第 14 章：数据模型        | `packages/database`、`packages/contracts`                                                          | 核心实体/字段字典（30 张核心/支撑表落 PostgreSQL）；零物理外键；购物车/预占/订阅/地址/通知/分析事件/集成/作业/报表等非核心数据持久化在 Redis（键前缀 `wemo:`，不设 TTL），契约与实现对齐 | in-progress |
-| 需求第 15 章：接口集成        | `apps/api/src/modules/integrations`、`packages/contracts`                                          | Adapter、版本 API、错误结构、幂等任务（集成配置与作业执行记录持久化在 Redis——`integrations`、`jobs:runs`；统一错误结构与 request_id 真实生效） | in-progress |
+| 需求第 15 章：接口集成        | `apps/api/src/modules/integrations`、`packages/contracts`                                          | Adapter、版本 API、错误结构、幂等任务（集成配置与作业执行记录持久化在 Redis——`integrations`、`jobs:runs`；统一错误结构与 request_id 真实生效） | done        |
 | 需求第 16 章：安全隐私合规    | auth/identity/media/payments/forms                                                                 | OWASP、隐私同意、儿童数据禁收、PCI 范围确认             | in-progress |
 | 需求第 17 章：性能可用性运维  | 全部应用、基础设施                                                                                 | CWV、P95、缓存、备份恢复、监控告警                      | in-progress |
 | 需求第 18 章：数据分析        | analytics/reports                                                                                  | 事件字典与六类运营报表                                  | done        |
-| 需求第 19 章：通知            | notifications                                                                                      | 多语言模板、变量校验、追踪重试与收件组（通知模板与投递持久化在 Redis——`notifications:templates`、`notifications:deliveries`） | in-progress |
+| 需求第 19 章：通知            | notifications                                                                                      | 多语言模板、变量校验、追踪重试与收件组（通知模板与投递持久化在 Redis——`notifications:templates`、`notifications:deliveries`） | done        |
 | 需求第 20 章：迁移上线        | 迁移脚本与部署配置                                                                                 | `www.wemovetoy.com` 资产/URL 盘点、映射、环境和上线清单 | planned     |
 | 需求第 21 章：验收            | 全部工作区测试                                                                                     | 功能、兼容性、无障碍、性能、安全证据包                  | done        |
 | 需求第 22 章：技术架构        | 根工程、单前端、单体 API、共享包                                                                   | 前后端分离、SSR、PostgreSQL、Redis、存储、监控          | done        |
