@@ -45,7 +45,9 @@ The visible states verified were:
 
 ## Live API Status
 
-Live checkout was not exercised because the local API and middleware dependencies were not running during this verification. The expected local services were not listening on ports `4000`, `5432`, `6379`, `9000`, or `1025`; Docker startup was unavailable because the `dockerDesktopLinuxEngine` pipe was not present.
+Live checkout was not exercised because the local API and middleware dependencies were not running during this verification. The expected local services were not listening on ports `4000`, `5432`, `6379`, `9000`, or `1025`.
+
+Follow-up startup diagnosis on Windows found that Docker Desktop 4.49.0 crashes during backend initialization with `initializing Inference manager: listening on unix://<HOME>\\AppData\\Local\\Docker\\run\\dockerInference` and `The filename, directory name, or volume label syntax is incorrect.` The engine pipe is consequently removed and `docker info` cannot connect. Disabling Docker Model Runner in the local Docker Desktop settings did not change the error, and the stale `dockerInference` runtime reparse point could not be moved by Windows. No local PostgreSQL, Redis, or MinIO executables/services are installed as an alternative runtime.
 
 The frontend adapter is wired to `POST /api/v1/checkout`, validates `CheckoutCreateSchema` before submission, validates `OrderMutationResponseSchema` after the response, and does not submit client-calculated prices. A real guest checkout, authenticated profile/address prefill, backend order response, and success snapshot still require the local API stack to be started and seeded.
 
