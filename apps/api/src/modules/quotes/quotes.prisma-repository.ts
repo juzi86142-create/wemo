@@ -178,6 +178,7 @@ export class QuotesPrismaRepository implements QuotesRepository {
         where: { id },
         data: {
           status: input.decision,
+          currentVersion: { increment: 1 },
           ...(input.decision === "quoted" && validUntil ? { validUntil } : {}),
         },
       });
@@ -271,9 +272,42 @@ export class QuotesPrismaRepository implements QuotesRepository {
         },
       });
 
+      const orderItems = (prevSnapshot.items ?? []).map((item, index) => {
+        const raw = item as Record<string, unknown>;
+        const quantity =
+          typeof raw.quantity === "number" && raw.quantity > 0
+            ? (raw.quantity as number)
+            : 1;
+        const unitPrice =
+          typeof raw.unit_price_minor === "number"
+            ? (raw.unit_price_minor as number)
+            : 0;
+        return {
+          orderId: order.id,
+          variantId: Number(raw.variant_id),
+          skuSnapshot: String(raw.sku ?? raw.variant_id),
+          nameSnapshot: String(raw.name ?? raw.variant_id),
+          quantity,
+          unitPriceMinor: unitPrice,
+          taxMinor: 0,
+          shippingMinor: 0,
+          totalMinor: unitPrice * quantity,
+          detailSnapshot: {
+            quote_version_item: index + 1,
+          } as unknown as never,
+        };
+      });
+      if (orderItems.length > 0) {
+        await tx.orderItem.createMany({ data: orderItems });
+      }
+
       await tx.quote.update({
         where: { id: quoteId },
-        data: { status: "converted", convertedOrderId: order.id },
+        data: {
+          status: "converted",
+          convertedOrderId: order.id,
+          currentVersion: { increment: 1 },
+        },
       });
 
       await tx.quoteVersion.create({

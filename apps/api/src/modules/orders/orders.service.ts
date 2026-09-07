@@ -134,21 +134,41 @@ export class OrdersService {
         total_minor: 0,
         currency: context.currency,
       };
-    const orderItems = pricing.items?.map((item: any, index: number) => ({
-      id: index + 1,
-      variant_id: item.variant_id,
-      sku_snapshot: String((item.snapshot as any)?.variant?.sku ?? item.variant_id),
-      name_snapshot: String((item.snapshot as any)?.variant?.product_name ?? item.variant_id),
-      quantity: item.quantity,
-      unit_price_minor: item.unit_price_minor,
-      tax_minor: 0,
-      shipping_minor: 0,
-      total_minor: item.line_total_minor,
-      detail_snapshot: {
-        preview: item,
-        request_id: context.request_id,
-      } as JsonValue,
-    })) || [];
+    // 变体真实标识与库存 缺价不静默成交 库存不足在提交节点拦截（需求 5.2）
+    const variantIds = input.items.map((item) => item.variant_id);
+    const [identityByVariant, stockByVariant] = await Promise.all([
+      this.repository.getVariantIdentity(variantIds),
+      this.repository.getAvailableStock(variantIds, context.market),
+    ]);
+    for (const item of input.items) {
+      if (!identityByVariant.has(item.variant_id)) {
+        throw new NotFoundException(`变体 ${item.variant_id} 不存在`);
+      }
+      const available = stockByVariant.get(item.variant_id) ?? 0;
+      if (item.quantity > available) {
+        throw new ForbiddenException(
+          `变体 ${item.variant_id} 库存不足 可订 ${available}`,
+        );
+      }
+    }
+    const orderItems = pricing.items?.map((item: any, index: number) => {
+      const identity = identityByVariant.get(item.variant_id);
+      return {
+        id: index + 1,
+        variant_id: item.variant_id,
+        sku_snapshot: identity?.sku ?? String(item.variant_id),
+        name_snapshot: identity?.name ?? String(item.variant_id),
+        quantity: item.quantity,
+        unit_price_minor: item.unit_price_minor,
+        tax_minor: 0,
+        shipping_minor: 0,
+        total_minor: item.line_total_minor,
+        detail_snapshot: {
+          preview: item,
+          request_id: context.request_id,
+        } as JsonValue,
+      };
+    }) || [];
 
     const subtotal_minor = orderItems.reduce((sum, item) => sum + item.total_minor, 0);
     const status =

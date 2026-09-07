@@ -30,4 +30,8 @@ export interface OrdersRepository {
   reserveInventory(input: { variant_id: number; quantity: number; owner_type: string; owner_id: number; idempotency_key: string; market: string }): Promise<{ id: number }>;
   releaseInventory(reservationId: number, requestId: string, reason: string): Promise<void>;
   transitionOrder(orderId: number, status: OrderStatus, requestId: string, note?: string): Promise<Order>;
+  /** 变体标识快照 订单行固化 SKU 与商品名 */
+  getVariantIdentity(variantIds: number[]): Promise<Map<number, { sku: string; name: string }>>;
+  /** 变体可售库存合计 */
+  getAvailableStock(variantIds: number[], market: string): Promise<Map<number, number>>;
 }

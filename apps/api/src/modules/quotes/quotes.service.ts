@@ -167,6 +167,13 @@ export class QuotesService {
     if (!["quoted", "accepted"].includes(before.status)) {
       throw new ConflictException("报价不能转单");
     }
+    // QTE-005 过期报价不可直接转订单
+    if (
+      before.valid_until !== null &&
+      new Date(before.valid_until) < new Date()
+    ) {
+      throw new ConflictException("报价已过期不能转订单");
+    }
     const item = await this.repository.convertToOrder(
       parsedId.id,
       {

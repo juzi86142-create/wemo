@@ -176,7 +176,7 @@ export class PricingPrismaRepository implements PricingRepository {
   }
 
   /**
-   * 确定性取价：企业专属 > 企业价格表 > 经销商等级价 > 默认 B2B（三个维度均为空）> 任意一条。
+   * 确定性取价 需求 6.4/9.2：企业专属 > 企业价格表 > 经销商等级价 > 默认 B2B（三个维度均为空）> 任意一条。
    * dealer_company_id / dealer_tier_id / price_list_id 未提供时，对应档位不作为候选。
    */
   private pickPrice(
@@ -193,11 +193,11 @@ export class PricingPrismaRepository implements PricingRepository {
         input.dealer_company_id !== undefined &&
         price.dealerCompanyId === input.dealer_company_id,
       price =>
-        input.dealer_tier_id !== undefined &&
-        price.dealerTierId === input.dealer_tier_id,
-      price =>
         input.price_list_id !== undefined &&
         price.priceListId === input.price_list_id,
+      price =>
+        input.dealer_tier_id !== undefined &&
+        price.dealerTierId === input.dealer_tier_id,
       price =>
         price.dealerCompanyId === null &&
         price.dealerTierId === null &&

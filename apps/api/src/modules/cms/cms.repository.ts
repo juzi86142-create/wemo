@@ -1,5 +1,10 @@
-import type { ContentEntry, ContentEntryCreateInput, ContentEntryListQuery, ContentEntryUpdateInput, ContentNavigation, FormSubmission, FormSubmissionCreateInput, FormSubmissionListQuery } from "@wemo/contracts";
-import type { DatabaseClient } from "@wemo/database";
+import type {
+  ContentEntry,
+  ContentEntryCreateInput,
+  ContentEntryListQuery,
+  ContentEntryUpdateInput,
+  ContentNavigation,
+} from "@wemo/contracts";
 
 export const CMS_REPOSITORY = Symbol("CMS_REPOSITORY");
 
@@ -9,6 +14,4 @@ export interface CmsRepository {
   createContentEntry(input: ContentEntryCreateInput): Promise<ContentEntry>;
   updateContentEntry(id: number, input: ContentEntryUpdateInput): Promise<ContentEntry>;
   getNavigation(market: string, locale: string): Promise<ContentNavigation[]>;
-  listFormSubmissions(query: FormSubmissionListQuery): Promise<{ items: FormSubmission[]; total: number; page: number; page_size: number }>;
-  createFormSubmission(input: FormSubmissionCreateInput): Promise<FormSubmission>;
 }

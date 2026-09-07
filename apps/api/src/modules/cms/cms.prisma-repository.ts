@@ -6,9 +6,6 @@ import type {
   ContentEntryListQuery,
   ContentEntryUpdateInput,
   ContentNavigation,
-  FormSubmission,
-  FormSubmissionCreateInput,
-  FormSubmissionListQuery,
   JsonValue,
 } from "@wemo/contracts";
 
@@ -17,9 +14,6 @@ import { CMS_REPOSITORY, type CmsRepository } from "./cms.repository";
 
 type ContentEntryRow = NonNullable<
   Awaited<ReturnType<DatabaseClient["contentEntry"]["findFirst"]>>
->;
-type FormSubmissionRow = NonNullable<
-  Awaited<ReturnType<DatabaseClient["formSubmission"]["findFirst"]>>
 >;
 
 const NO_TIMESTAMP_ISO = "1970-01-01T00:00:00.000Z";
@@ -167,59 +161,6 @@ export class CmsPrismaRepository implements CmsRepository {
     }));
   }
 
-  async listFormSubmissions(
-    query: FormSubmissionListQuery,
-  ): Promise<{
-    items: FormSubmission[];
-    total: number;
-    page: number;
-    page_size: number;
-  }> {
-    const where = {
-      ...(query.type !== undefined ? { type: query.type } : {}),
-      ...(query.status !== undefined ? { status: query.status } : {}),
-      ...(query.assignee_id !== undefined
-        ? { assigneeId: query.assignee_id }
-        : {}),
-    };
-
-    const [submissions, total] = await Promise.all([
-      this.database.formSubmission.findMany({
-        where,
-        skip: (query.page - 1) * query.page_size,
-        take: query.page_size,
-        orderBy: { createdAt: "desc" },
-      }),
-      this.database.formSubmission.count({ where }),
-    ]);
-
-    return {
-      items: submissions.map((submission) =>
-        this.mapFormSubmission(submission),
-      ),
-      total,
-      page: query.page,
-      page_size: query.page_size,
-    };
-  }
-
-  async createFormSubmission(
-    input: FormSubmissionCreateInput,
-  ): Promise<FormSubmission> {
-    const submissionNo = `SUB-${Date.now()}`;
-    const submission = await this.database.formSubmission.create({
-      data: {
-        submissionNo,
-        type: input.type,
-        source: input.source,
-        payload: input.payload as never,
-        status: "new",
-      },
-    });
-
-    return this.mapFormSubmission(submission);
-  }
-
   private mapContentEntry(entry: ContentEntryRow): ContentEntry {
     return {
       id: entry.id,
@@ -241,23 +182,4 @@ export class CmsPrismaRepository implements CmsRepository {
     };
   }
 
-  private mapFormSubmission(submission: FormSubmissionRow): FormSubmission {
-    return {
-      id: submission.id,
-      submission_no: submission.submissionNo,
-      type: submission.type,
-      source: submission.source,
-      payload: submission.payload as JsonValue,
-      attachments: [],
-      assignee_id: submission.assigneeId,
-      priority: "normal",
-      tags: [],
-      internal_note: null,
-      status: submission.status as FormSubmission["status"],
-      request_id: submission.submissionNo,
-      created_at: submission.createdAt.toISOString(),
-      updated_at: submission.updatedAt.toISOString(),
-      history: [],
-    };
-  }
 }

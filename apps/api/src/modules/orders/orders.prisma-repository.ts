@@ -19,6 +19,7 @@ import type {
 } from "@wemo/contracts";
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
+import { generateBusinessNo } from "../../runtime/ids";
 
 const RESERVATIONS_KEY = `${REDIS_KEY_PREFIX}:inventory:reservations`;
 
@@ -71,7 +72,7 @@ export class OrdersPrismaRepository implements OrdersRepository {
   }
 
   async createOrder(input: OrderCreateCommand): Promise<Order> {
-    const orderNo = `ORD-${Date.now()}`;
+    const orderNo = generateBusinessNo("ORD");
 
     const order = await this.database.$transaction(async (tx) => {
       const created = await tx.order.create({
@@ -322,5 +323,49 @@ export class OrdersPrismaRepository implements OrdersRepository {
       total_minor: item.totalMinor,
       detail_snapshot: item.detailSnapshot ?? {},
     };
+  }
+
+  async getVariantIdentity(
+    variantIds: number[],
+  ): Promise<Map<number, { sku: string; name: string }>> {
+    if (variantIds.length === 0) return new Map();
+    const variants = await this.database.variant.findMany({
+      where: { id: { in: variantIds } },
+    });
+    const translations = await this.database.productTranslation.findMany({
+      where: { productId: { in: variants.map((v) => v.productId) } },
+    });
+    const nameByProduct = new Map<number, string>();
+    for (const translation of translations) {
+      if (!nameByProduct.has(translation.productId)) {
+        nameByProduct.set(translation.productId, translation.name);
+      }
+    }
+    const identity = new Map<number, { sku: string; name: string }>();
+    for (const variant of variants) {
+      identity.set(variant.id, {
+        sku: variant.sku,
+        name: nameByProduct.get(variant.productId) ?? `Variant ${variant.id}`,
+      });
+    }
+    return identity;
+  }
+
+  async getAvailableStock(
+    variantIds: number[],
+    market: string,
+  ): Promise<Map<number, number>> {
+    if (variantIds.length === 0) return new Map();
+    const balances = await this.database.inventoryBalance.findMany({
+      where: { variantId: { in: variantIds }, market },
+    });
+    const stock = new Map<number, number>();
+    for (const balance of balances) {
+      stock.set(
+        balance.variantId,
+        (stock.get(balance.variantId) ?? 0) + balance.available,
+      );
+    }
+    return stock;
   }
 }
