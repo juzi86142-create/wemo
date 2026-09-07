@@ -39,12 +39,14 @@ export class IntegrationsService {
   async listDeliveries(query: unknown) {
     this.authorization.requireStaffPermission("integrations:read");
     const parsed = parseInput(WebhookDeliveryListQuerySchema, query);
-    return WebhookDeliveryListResponseSchema.parse({
-      items: [],
-      total: 0,
+    const page = await this.repository.listWebhookDeliveries({
       page: parsed.page,
       page_size: parsed.page_size,
+      ...(parsed.provider !== undefined
+        ? { provider: parsed.provider }
+        : {}),
     });
+    return WebhookDeliveryListResponseSchema.parse(page);
   }
 
   async ingestWebhook(provider: unknown, body: unknown, signature: string | null) {
@@ -58,28 +60,29 @@ export class IntegrationsService {
     }
 
     const now = new Date().toISOString();
-    return WebhookDeliveryMutationResponseSchema.parse({
+    const item = await this.repository.recordWebhookDelivery({
+      integration_id: 1,
+      provider: parsedProvider.provider,
+      event: payload.event,
+      status: "accepted",
+      idempotency_key: payload.idempotency_key,
       request_id: context.request_id,
-      item: {
-        id: Date.now(),
-        integration_id: 1,
+      attempt_count: 0,
+      failure_reason: null,
+      payload: payload.payload,
+      response: {
+        accepted: true,
         provider: parsedProvider.provider,
         event: payload.event,
-        status: "accepted",
-        idempotency_key: payload.idempotency_key,
-        request_id: context.request_id,
-        attempt_count: 0,
-        failure_reason: null,
-        payload: payload.payload,
-        response: {
-          accepted: true,
-          provider: parsedProvider.provider,
-          event: payload.event,
-        },
-        created_at: now,
-        updated_at: now,
-        completed_at: null,
       },
+      created_at: now,
+      updated_at: now,
+      completed_at: null,
+    });
+
+    return WebhookDeliveryMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item,
     });
   }
 

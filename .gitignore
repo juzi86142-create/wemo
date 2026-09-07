@@ -24,9 +24,7 @@ coverage/
 .vite/
 
 # Local environment and runtime data
-.env
-.env.*
-!.env.example
+# 本项目为本地开发环境 env 文件直接入库无需隐藏
 data/
 uploads/
 

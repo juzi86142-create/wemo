@@ -1,6 +1,6 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { Redis } from "ioredis";
-import type { IntegrationAdapter } from "@wemo/contracts";
+import type { IntegrationAdapter, WebhookDelivery } from "@wemo/contracts";
 
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
 import {
@@ -10,6 +10,7 @@ import {
 } from "./integrations.repository";
 
 const CONFIGS_KEY = `${REDIS_KEY_PREFIX}:integrations`;
+const WEBHOOK_DELIVERIES_KEY = `${REDIS_KEY_PREFIX}:integrations:webhook-deliveries`;
 
 /** 外部集成配置持久化在 Redis hash */
 @Injectable()
@@ -94,6 +95,75 @@ export class IntegrationsRedisRepository implements IntegrationsRepository {
     };
     await this.redis.hset(CONFIGS_KEY, String(id), JSON.stringify(updated));
     return updated;
+  }
+
+  /** 持久化一条 Webhook 投递记录 */
+  async recordWebhookDelivery(input: {
+    integration_id: number;
+    provider: string;
+    event: string;
+    status: WebhookDelivery["status"];
+    idempotency_key: string;
+    request_id: string;
+    attempt_count: number;
+    failure_reason: string | null;
+    payload: unknown;
+    response: unknown;
+    created_at: string;
+    updated_at: string;
+    completed_at: string | null;
+  }): Promise<WebhookDelivery> {
+    const delivery: WebhookDelivery = {
+      id: await this.redis.incr(
+        `${REDIS_KEY_PREFIX}:integrations:webhook-deliveries:next`,
+      ),
+      integration_id: input.integration_id,
+      provider: input.provider,
+      event: input.event,
+      status: input.status,
+      idempotency_key: input.idempotency_key,
+      request_id: input.request_id,
+      attempt_count: input.attempt_count,
+      failure_reason: input.failure_reason,
+      payload: input.payload as WebhookDelivery["payload"],
+      response: input.response as WebhookDelivery["response"],
+      created_at: input.created_at,
+      updated_at: input.updated_at,
+      completed_at: input.completed_at,
+    };
+    await this.redis.hset(
+      WEBHOOK_DELIVERIES_KEY,
+      String(delivery.id),
+      JSON.stringify(delivery),
+    );
+    return delivery;
+  }
+
+  /** 分页查询 Webhook 投递记录 */
+  async listWebhookDeliveries(query: {
+    page: number;
+    page_size: number;
+    provider?: string | undefined;
+  }): Promise<{
+    items: WebhookDelivery[];
+    total: number;
+    page: number;
+    page_size: number;
+  }> {
+    const raw = await this.redis.hgetall(WEBHOOK_DELIVERIES_KEY);
+    let deliveries = Object.entries(raw)
+      .map(([, value]) => JSON.parse(value) as WebhookDelivery)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    if (query.provider !== undefined) {
+      deliveries = deliveries.filter((d) => d.provider === query.provider);
+    }
+    const start = (query.page - 1) * query.page_size;
+    return {
+      items: deliveries.slice(start, start + query.page_size),
+      total: deliveries.length,
+      page: query.page,
+      page_size: query.page_size,
+    };
   }
 
   /** 测试集成连接 按当前状态返回健康结果 */
