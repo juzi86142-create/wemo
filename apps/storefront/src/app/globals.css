@@ -345,6 +345,18 @@ summary { cursor: pointer; font-size: 14px; font-weight: 600; }
 .checkout-item { display: flex; justify-content: space-between; gap: 15px; padding: 15px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
 .checkout-item strong { white-space: nowrap; font-weight: 600; }
 .checkout-summary .summary-total { margin-top: 22px; }
+.order-success { max-width: 950px; margin: 0 auto; padding: 78px var(--gutter) 110px; }
+.order-success-heading { max-width: 720px; margin-bottom: 42px; }
+.order-success-heading h1 { font-size: 58px; font-weight: 800; }
+.order-success-heading > p:last-child { margin: 20px 0 0; color: var(--muted); font-size: 17px; }
+.order-success-panel { border-top: 1px solid var(--line); }
+.order-success-total { display: flex; justify-content: space-between; align-items: end; padding: 22px 0; border-bottom: 2px solid var(--ink); }
+.order-success-total span { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.order-success-total strong { font-size: 28px; font-weight: 700; }
+.order-success-lines { display: grid; }
+.order-success-line { display: grid; grid-template-columns: 1fr auto auto; gap: 20px; padding: 18px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.order-success-line strong { font-weight: 600; }
+.order-success-actions { display: flex; align-items: center; gap: 22px; margin-top: 30px; }
 
 @media (max-width: 960px) {
   :root { --gutter: 24px; }
@@ -447,6 +459,12 @@ summary { cursor: pointer; font-size: 14px; font-weight: 600; }
   .checkout-actions { align-items: start; flex-direction: column; }
   .checkout-actions .button { width: 100%; }
   .checkout-summary { padding: 22px; }
+  .order-success { padding-top: 54px; }
+  .order-success-heading h1 { font-size: 44px; }
+  .order-success-line { grid-template-columns: 1fr auto; gap: 8px; }
+  .order-success-line strong { grid-column: 2; grid-row: 1; }
+  .order-success-actions { align-items: start; flex-direction: column; }
+  .order-success-actions .button { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

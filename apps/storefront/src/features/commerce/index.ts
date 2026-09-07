@@ -6,5 +6,6 @@ export * from "./checkout-adapter";
 export * from "./checkout-form";
 export * from "./checkout-validation";
 export * from "./order-success-snapshot";
+export * from "./order-success-view";
 export * from "./quantity-control";
 export * from "./quantity-control-view";
