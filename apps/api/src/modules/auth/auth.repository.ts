@@ -4,7 +4,6 @@ import type {
   AuthSession,
   AuthSessionListQuery,
   AuthVerifyEmailInput,
-  IdentityNotification,
   IdentityUser,
 } from "@wemo/contracts";
 
@@ -15,18 +14,6 @@ export interface CreateUserInput {
   password: string;
   name: string;
   audience: AccountAudience;
-}
-
-export interface RecordNotificationInput {
-  recipient_user_id: number | null;
-  company_id: number | null;
-  audience: string;
-  kind: string;
-  channel: string;
-  template_key: string;
-  request_id: string;
-  payload: unknown;
-  status: string;
 }
 
 export interface AuthSessionListResult {
@@ -74,5 +61,4 @@ export interface AuthRepository {
     userId: number,
     input: { channel: string; status: string; consent_at: string },
   ): Promise<void>;
-  recordNotification(input: RecordNotificationInput): Promise<IdentityNotification>;
 }

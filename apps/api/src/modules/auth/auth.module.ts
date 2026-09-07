@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 
 import { DatabaseModule } from "../../database/database.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { AuthController } from "./auth.controller";
 import { AuthPrismaRepository } from "./auth.prisma-repository";
 import { AUTH_REPOSITORY } from "./auth.repository";
@@ -8,7 +9,7 @@ import { AuthService } from "./auth.service";
 import { SessionActorResolver } from "./session-actor-resolver";
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, NotificationsModule],
   controllers: [AuthController],
   providers: [
     AuthService,

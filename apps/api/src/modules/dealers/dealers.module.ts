@@ -1,13 +1,14 @@
 import { Module } from "@nestjs/common";
 
 import { DatabaseModule } from "../../database/database.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { DealersController } from "./dealers.controller";
 import { DealersPrismaRepository } from "./dealers.prisma-repository";
 import { DEALERS_REPOSITORY } from "./dealers.repository";
 import { DealersService } from "./dealers.service";
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, NotificationsModule],
   controllers: [DealersController],
   providers: [
     DealersService,

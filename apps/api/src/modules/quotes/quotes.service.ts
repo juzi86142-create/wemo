@@ -12,6 +12,7 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { QuotesPrismaRepository } from "./quotes.prisma-repository";
 import { QUOTES_REPOSITORY } from "./quotes.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
@@ -26,6 +27,8 @@ export class QuotesService {
   constructor(
     @Inject(QUOTES_REPOSITORY)
     private readonly repository: QuotesPrismaRepository,
+    @Inject(NotificationsService)
+    private readonly notifications: NotificationsService,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -80,6 +83,16 @@ export class QuotesService {
     };
     const item = await this.repository.createQuote(payload);
 
+    await this.notifications.emitBusinessNotification({
+      template_code: "quote_requested",
+      recipient_user_id: payload.requested_by_user_id,
+      company_id: companyId,
+      audience: "dealer",
+      channel: "email",
+      request_id: context.request_id,
+      payload: { quote_id: item.id, status: item.status },
+    });
+
     return QuoteMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
@@ -106,6 +119,20 @@ export class QuotesService {
       actor.user_id,
       context.request_id,
     );
+
+    await this.notifications.emitBusinessNotification({
+      template_code: "quote_reviewed",
+      recipient_user_id: item.requested_by_user_id,
+      company_id: item.company_id,
+      audience: "dealer",
+      channel: "email",
+      request_id: context.request_id,
+      payload: {
+        quote_id: item.id,
+        status: item.status,
+        decision: payload.decision,
+      },
+    });
 
     return QuoteMutationResponseSchema.parse({
       request_id: context.request_id,

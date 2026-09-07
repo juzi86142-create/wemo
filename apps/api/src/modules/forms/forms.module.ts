@@ -1,13 +1,14 @@
 import { Module } from "@nestjs/common";
 
 import { DatabaseModule } from "../../database/database.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { FormsController } from "./forms.controller";
 import { FormsPrismaRepository } from "./forms.prisma-repository";
 import { FORMS_REPOSITORY } from "./forms.repository";
 import { FormsService } from "./forms.service";
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, NotificationsModule],
   controllers: [FormsController],
   providers: [
     FormsService,

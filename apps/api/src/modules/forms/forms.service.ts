@@ -10,6 +10,7 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 import { FORMS_REPOSITORY, type FormsRepository } from "./forms.repository";
@@ -23,6 +24,8 @@ export class FormsService {
   constructor(
     @Inject(FORMS_REPOSITORY)
     private readonly repository: FormsRepository,
+    @Inject(NotificationsService)
+    private readonly notifications: NotificationsService,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -33,6 +36,21 @@ export class FormsService {
     const context = this.requestContext.requireContext();
     const input = parseInput(FormSubmissionCreateSchema, body);
     const item = await this.repository.submitForm(input);
+
+    const actor = this.requestContext.getActor();
+    await this.notifications.emitBusinessNotification({
+      template_code: "contact_submission",
+      recipient_user_id: actor?.user_id ?? null,
+      company_id: actor?.company_id ?? null,
+      audience: actor?.audience ?? "user",
+      channel: "email",
+      request_id: context.request_id,
+      payload: {
+        submission_no: item.submission_no,
+        type: item.type,
+        source: item.source,
+      },
+    });
 
     return FormSubmissionMutationResponseSchema.parse({
       request_id: context.request_id,

@@ -16,5 +16,6 @@ import { NotificationsService } from "./notifications.service";
       useClass: NotificationsRedisRepository,
     },
   ],
+  exports: [NotificationsService],
 })
 export class NotificationsModule {}

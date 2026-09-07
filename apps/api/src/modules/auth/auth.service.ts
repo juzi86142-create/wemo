@@ -15,12 +15,13 @@ import {
   AuthSessionMutationResponseSchema,
   AuthSessionRevokeSchema,
   AuthVerifyEmailSchema,
-  IdentityNotificationMutationResponseSchema,
   IdentityUserMutationResponseSchema,
 } from "@wemo/contracts/identity";
+import { NotificationDeliveryMutationResponseSchema } from "@wemo/contracts/content";
 import { randomBytes } from "node:crypto";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { AuthPrismaRepository } from "./auth.prisma-repository";
 import { AUTH_REPOSITORY } from "./auth.repository";
 import { verifyPassword } from "./password";
@@ -34,6 +35,8 @@ export class AuthService {
   constructor(
     @Inject(AUTH_REPOSITORY)
     private readonly repository: AuthPrismaRepository,
+    @Inject(NotificationsService)
+    private readonly notifications: NotificationsService,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -69,16 +72,14 @@ export class AuthService {
       });
     }
 
-    await this.repository.recordNotification({
+    await this.notifications.emitBusinessNotification({
+      template_code: "account_email_verification",
       recipient_user_id: item.id,
       company_id: null,
       audience: item.audience,
-      kind: "account.email_verification.requested",
       channel: "email",
-      template_key: "account_email_verification",
       request_id: context.request_id,
       payload: { email: item.email, token: verificationToken },
-      status: "queued",
     });
 
     return IdentityUserMutationResponseSchema.parse({
@@ -121,19 +122,17 @@ export class AuthService {
     const input = parseInput(AuthForgotPasswordSchema, body);
     const user = await this.repository.getUserByEmail(input.email);
     const resetToken = user ? randomBytes(24).toString("hex") : null;
-    const item = await this.repository.recordNotification({
+    const item = await this.notifications.emitBusinessNotification({
+      template_code: "account_password_reset",
       recipient_user_id: user?.id ?? null,
       company_id: null,
       audience: user?.audience ?? "user",
-      kind: "account.password_reset.requested",
       channel: "email",
-      template_key: "account_password_reset",
       request_id: context.request_id,
       payload: { email: input.email, token: resetToken, accepted: true },
-      status: "queued",
     });
 
-    return IdentityNotificationMutationResponseSchema.parse({
+    return NotificationDeliveryMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
     });

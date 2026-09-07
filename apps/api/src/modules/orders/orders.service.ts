@@ -12,6 +12,7 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { OrdersPrismaRepository } from "./orders.prisma-repository";
 import { ORDERS_REPOSITORY } from "./orders.repository";
 import { PricingPrismaRepository } from "../pricing/pricing.prisma-repository";
@@ -35,6 +36,8 @@ export class OrdersService {
     private readonly repository: OrdersPrismaRepository,
     @Inject(PRICING_REPOSITORY)
     private readonly pricingRepository: PricingPrismaRepository,
+    @Inject(NotificationsService)
+    private readonly notifications: NotificationsService,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -173,6 +176,22 @@ export class OrdersService {
       items: orderItems,
       request_id: context.request_id,
       note: input.note ?? null,
+    });
+
+    await this.notifications.emitBusinessNotification({
+      template_code:
+        channel === "b2b" ? "order_pending_review" : "order_confirmation",
+      recipient_user_id: userId,
+      company_id: companyId,
+      audience: channel === "b2b" ? "dealer" : "user",
+      channel: "email",
+      request_id: context.request_id,
+      payload: {
+        order_id: item.id,
+        order_no: item.order_no,
+        status: item.status,
+        total_minor: item.total_minor,
+      },
     });
 
     return OrderMutationResponseSchema.parse({

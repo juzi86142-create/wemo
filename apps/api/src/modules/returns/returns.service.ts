@@ -10,6 +10,7 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { ReturnsPrismaRepository } from "./returns.prisma-repository";
 import { RETURNS_REPOSITORY } from "./returns.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
@@ -24,6 +25,8 @@ export class ReturnsService {
   constructor(
     @Inject(RETURNS_REPOSITORY)
     private readonly repository: ReturnsPrismaRepository,
+    @Inject(NotificationsService)
+    private readonly notifications: NotificationsService,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -56,6 +59,16 @@ export class ReturnsService {
       user_id: actor?.audience === "staff" ? null : actor?.user_id ?? null,
       company_id: actor?.company_id ?? null,
       request_id: context.request_id,
+    });
+
+    await this.notifications.emitBusinessNotification({
+      template_code: "return_requested",
+      recipient_user_id: item.user_id,
+      company_id: item.company_id,
+      audience: item.company_id ? "dealer" : "user",
+      channel: "email",
+      request_id: context.request_id,
+      payload: { return_id: item.id, status: item.status },
     });
 
     return ReturnMutationResponseSchema.parse({

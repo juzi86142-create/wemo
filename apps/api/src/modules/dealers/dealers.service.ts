@@ -30,6 +30,7 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { listResponse } from "../../runtime/list-response";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
@@ -48,6 +49,8 @@ export class DealersService {
   constructor(
     @Inject(DEALERS_REPOSITORY)
     private readonly repository: DealersRepository,
+    @Inject(NotificationsService)
+    private readonly notifications: NotificationsService,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -147,6 +150,16 @@ export class DealersService {
       input.note,
     );
 
+    await this.notifications.emitBusinessNotification({
+      template_code: "dealer_application_submitted",
+      recipient_user_id: actor?.user_id ?? null,
+      company_id: null,
+      audience: actor?.audience === "staff" ? "staff" : "dealer",
+      channel: "email",
+      request_id: context.request_id,
+      payload: { application_id: item.id, application_no: item.application_no },
+    });
+
     return DealerApplicationMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
@@ -164,6 +177,20 @@ export class DealersService {
       actor.user_id,
       context.request_id,
     );
+
+    await this.notifications.emitBusinessNotification({
+      template_code: "dealer_application_reviewed",
+      recipient_user_id: result.application.applicant_user_id,
+      company_id: result.company?.id ?? null,
+      audience: "dealer",
+      channel: "email",
+      request_id: context.request_id,
+      payload: {
+        application_id: result.application.id,
+        application_no: result.application.application_no,
+        status: result.application.status,
+      },
+    });
 
     return DealerApplicationReviewResultSchema.parse({
       request_id: context.request_id,

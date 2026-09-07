@@ -9,7 +9,7 @@ import {
   NotificationTemplateMutationResponseSchema,
   NotificationTemplateUpdateSchema,
 } from "@wemo/contracts/content";
-import { EntityIdSchema } from "@wemo/contracts/common";
+import { EntityIdSchema, type JsonValue } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
@@ -92,6 +92,23 @@ export class NotificationsService {
     return NotificationDeliveryMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
+    });
+  }
+
+  /** 业务事件通知 供各业务服务在订单/报价/申请等状态变化时调用 无鉴权属服务端内部能力 */
+  async emitBusinessNotification(input: {
+    template_code: string;
+    recipient_user_id: number | null;
+    company_id: number | null;
+    audience: "user" | "dealer" | "staff";
+    channel: string;
+    request_id: string;
+    payload: unknown;
+  }) {
+    return this.repository.recordDelivery({
+      ...input,
+      payload: input.payload as JsonValue,
+      request_id: input.request_id,
     });
   }
 }

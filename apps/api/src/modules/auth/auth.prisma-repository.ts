@@ -12,9 +12,7 @@ import type {
   AuthSession,
   AuthSessionListQuery,
   AuthVerifyEmailInput,
-  IdentityNotification,
   IdentityUser,
-  JsonValue,
 } from "@wemo/contracts";
 import { randomBytes } from "node:crypto";
 
@@ -22,7 +20,6 @@ import {
   type AuthRepository,
   type AuthSessionListResult,
   type CreateUserInput,
-  type RecordNotificationInput,
   type RevokeOthersResult,
 } from "./auth.repository";
 import { hashPassword, verifyPassword } from "./password";
@@ -329,37 +326,6 @@ export class AuthPrismaRepository implements AuthRepository {
           created_at: now,
         };
     await writeHashObject(this.redis, key, input.channel, subscription);
-  }
-
-  async recordNotification(
-    input: RecordNotificationInput,
-  ): Promise<IdentityNotification> {
-    const now = nowIso();
-    const notification: IdentityNotification = {
-      id: await redisNextId(
-        this.redis,
-        `${REDIS_KEY_PREFIX}:notifications:deliveries:next`,
-      ),
-      recipient_user_id: input.recipient_user_id,
-      company_id: input.company_id,
-      audience: input.audience as IdentityNotification["audience"],
-      kind: input.kind,
-      channel: input.channel,
-      template_key: input.template_key,
-      status: input.status as IdentityNotification["status"],
-      request_id: input.request_id,
-      payload: input.payload as JsonValue,
-      failure_reason: null,
-      created_at: now,
-      sent_at: null,
-    };
-    await writeHashObject(
-      this.redis,
-      `${REDIS_KEY_PREFIX}:notifications:deliveries`,
-      notification.id,
-      notification,
-    );
-    return notification;
   }
 
   private mapUser(user: UserRow): IdentityUser {
