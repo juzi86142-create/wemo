@@ -353,6 +353,47 @@ export const InventoryBalanceListQuerySchema = PageListSchema.extend({
   warehouse_code: z.string().min(1).optional(),
 });
 
+/** 折扣码 需求 ADM-PR-004 与 5.2 结算优惠码 */
+export const CouponKindSchema = z.enum(["percent", "fixed", "free_shipping"]);
+
+export const CouponSchema = z
+  .object({
+    id: EntityIdSchema,
+    code: z.string().trim().min(1),
+    kind: CouponKindSchema,
+    value_minor: z.number().int().nonnegative(),
+    min_amount_minor: z.number().int().nonnegative().nullable(),
+    market: z.string().min(1).nullable(),
+    product_ids: z.array(EntityIdSchema),
+    usage_limit: z.number().int().positive().nullable(),
+    usage_count: z.number().int().nonnegative(),
+    valid_from: z.string().datetime().nullable(),
+    valid_to: z.string().datetime().nullable(),
+    active: z.boolean(),
+    created_at: z.string().datetime(),
+    updated_at: z.string().datetime(),
+  })
+  .strict()
+  .passthrough();
+
+export const CouponUpsertSchema = z
+  .object({
+    code: z.string().trim().min(1),
+    kind: CouponKindSchema,
+    value_minor: z.number().int().nonnegative(),
+    min_amount_minor: z.number().int().nonnegative().nullable().optional(),
+    market: z.string().min(1).nullable().optional(),
+    product_ids: z.array(EntityIdSchema).default([]),
+    usage_limit: z.number().int().positive().nullable().optional(),
+    valid_from: z.string().datetime().nullable().optional(),
+    valid_to: z.string().datetime().nullable().optional(),
+    active: z.boolean().optional(),
+  })
+  .strict();
+
+export const CouponListResponseSchema = createListResponseSchema(CouponSchema);
+export const CouponMutationResponseSchema = createItemResponseSchema(CouponSchema);
+
 export const InventoryBalanceListResponseSchema =
   createListResponseSchema(InventoryBalanceSchema);
 
@@ -469,6 +510,7 @@ export const OrderCreateSchema = z
     address_snapshot: JsonValueSchema,
     cart_id: EntityIdSchema.optional(),
     quote_id: EntityIdSchema.optional(),
+    coupon_code: z.string().trim().min(1).optional(),
     note: z.string().min(1).optional(),
   })
   .strict();
@@ -760,6 +802,8 @@ export type PaymentListQuery = z.infer<typeof PaymentListQuerySchema>;
 export type PricingPreviewItem = z.infer<typeof PricingPreviewItemSchema>;
 export type PricingPreviewRequest = z.infer<typeof PricingPreviewRequestSchema>;
 export type PricingRecord = z.infer<typeof PricingRecordSchema>;
+export type Coupon = z.infer<typeof CouponSchema>;
+export type CouponUpsertInput = z.infer<typeof CouponUpsertSchema>;
 export type PricingRecordListQuery = z.infer<typeof PricingRecordListQuerySchema>;
 export type Quote = z.infer<typeof QuoteSchema>;
 export type QuoteCreateInput = z.infer<typeof QuoteCreateSchema>;

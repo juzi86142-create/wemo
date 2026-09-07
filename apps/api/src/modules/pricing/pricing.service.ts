@@ -5,6 +5,9 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import {
+  CouponListResponseSchema,
+  CouponMutationResponseSchema,
+  CouponUpsertSchema,
   PricingPreviewRequestSchema,
   PricingPreviewResponseSchema,
   PricingRecordListQuerySchema,
@@ -16,12 +19,21 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
+import { listResponse } from "../../runtime/list-response";
 import { PricingPrismaRepository } from "./pricing.prisma-repository";
 import { PRICING_REPOSITORY } from "./pricing.repository";
+import {
+  COUPON_REPOSITORY,
+  type CouponRepository,
+} from "./coupon.redis-repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
 const PricingRecordIdParamSchema = z.object({
+  id: EntityIdSchema,
+});
+
+const CouponIdParamSchema = z.object({
   id: EntityIdSchema,
 });
 
@@ -30,11 +42,39 @@ export class PricingService {
   constructor(
     @Inject(PRICING_REPOSITORY)
     private readonly repository: PricingPrismaRepository,
+    @Inject(COUPON_REPOSITORY)
+    private readonly couponRepository: CouponRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
     private readonly requestContext: RequestContextStore,
   ) {}
+
+  /** 折扣码管理 需求 ADM-PR-004 */
+  async listCoupons() {
+    this.authorization.requireStaffPermission("pricing:read");
+    const coupons = await this.couponRepository.listCoupons();
+    return CouponListResponseSchema.parse(listResponse(coupons));
+  }
+
+  async upsertCoupon(id: unknown, body: unknown) {
+    this.authorization.requireStaffPermission("pricing:write");
+    const context = this.requestContext.requireContext();
+    const input = parseInput(CouponUpsertSchema, body);
+    const payload =
+      id === undefined
+        ? input
+        : {
+            ...input,
+            id: parseInput(CouponIdParamSchema, { id }).id,
+          };
+    const item = await this.couponRepository.upsertCoupon(payload);
+
+    return CouponMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item,
+    });
+  }
 
   listRecords(query: unknown) {
     this.authorization.requireStaffPermission("pricing:read");

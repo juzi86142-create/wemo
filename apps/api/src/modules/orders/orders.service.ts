@@ -17,6 +17,10 @@ import { OrdersPrismaRepository } from "./orders.prisma-repository";
 import { ORDERS_REPOSITORY } from "./orders.repository";
 import { PricingPrismaRepository } from "../pricing/pricing.prisma-repository";
 import { PRICING_REPOSITORY } from "../pricing/pricing.repository";
+import {
+  COUPON_REPOSITORY,
+  type CouponRepository,
+} from "../pricing/coupon.redis-repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
@@ -36,6 +40,8 @@ export class OrdersService {
     private readonly repository: OrdersPrismaRepository,
     @Inject(PRICING_REPOSITORY)
     private readonly pricingRepository: PricingPrismaRepository,
+    @Inject(COUPON_REPOSITORY)
+    private readonly couponRepository: CouponRepository,
     @Inject(NotificationsService)
     private readonly notifications: NotificationsService,
     @Inject(AuthorizationService)
@@ -90,11 +96,79 @@ export class OrdersService {
         shipping_address: input.shipping_address,
         billing_address: input.billing_address ?? null,
         shipping_method: input.shipping_method ?? null,
-        coupon_code: input.coupon_code ?? null,
         payment_method: input.payment_method ?? null,
       },
+      ...(input.coupon_code !== undefined
+        ? { coupon_code: input.coupon_code }
+        : {}),
       note: input.note,
     });
+  }
+
+  /** 折扣码校验 未提供时零折扣 无效即拒绝 */
+  private async resolveCouponDiscount(
+    couponCode: string | undefined,
+    subtotalMinor: number,
+    market: string,
+    identityByVariant: Map<
+      number,
+      { sku: string; name: string; product_id: number }
+    >,
+  ): Promise<{
+    discount_minor: number;
+    coupon_code: string | null;
+    coupon_id: number | null;
+  }> {
+    if (couponCode === undefined) {
+      return { discount_minor: 0, coupon_code: null, coupon_id: null };
+    }
+    const coupon = await this.couponRepository.getCouponByCode(couponCode);
+    if (!coupon) {
+      throw new NotFoundException("折扣码不存在");
+    }
+    if (!coupon.active) {
+      throw new ForbiddenException("折扣码已停用");
+    }
+    const now = new Date();
+    if (coupon.valid_from !== null && new Date(coupon.valid_from) > now) {
+      throw new ForbiddenException("折扣码尚未生效");
+    }
+    if (coupon.valid_to !== null && new Date(coupon.valid_to) < now) {
+      throw new ForbiddenException("折扣码已过期");
+    }
+    if (coupon.market !== null && coupon.market !== market) {
+      throw new ForbiddenException("折扣码不适用于当前市场");
+    }
+    if (coupon.min_amount_minor !== null && subtotalMinor < coupon.min_amount_minor) {
+      throw new ForbiddenException("订单金额未达到折扣码门槛");
+    }
+    if (coupon.product_ids.length > 0) {
+      const inScope = [...identityByVariant.values()].some((identity) =>
+        coupon.product_ids.includes(identity.product_id),
+      );
+      if (!inScope) {
+        throw new ForbiddenException("折扣码不适用于订单中的商品");
+      }
+    }
+    if (
+      coupon.usage_limit !== null &&
+      coupon.usage_count >= coupon.usage_limit
+    ) {
+      throw new ForbiddenException("折扣码使用次数已达上限");
+    }
+
+    const discountMinor =
+      coupon.kind === "percent"
+        ? Math.floor((subtotalMinor * coupon.value_minor) / 10_000)
+        : coupon.kind === "fixed"
+          ? Math.min(coupon.value_minor, subtotalMinor)
+          : 0;
+
+    return {
+      discount_minor: discountMinor,
+      coupon_code: coupon.code,
+      coupon_id: coupon.id,
+    };
   }
 
   async createOrder(body: unknown) {
@@ -119,21 +193,13 @@ export class OrdersService {
         : actor?.company_id ?? null;
     const userId =
       actor?.audience === "staff" ? null : actor?.user_id ?? null;
-    const preview = await this.pricingRepository.previewPricing?.({
+    const preview = await this.pricingRepository.previewPricing({
       items: input.items,
       market: context.market,
       currency: context.currency,
       ...(channel === "b2b" && companyId !== null ? { dealer_company_id: companyId } : {}),
     });
-    const pricing =
-      preview ?? {
-        items: [],
-        subtotal_minor: 0,
-        tax_minor: 0,
-        shipping_minor: 0,
-        total_minor: 0,
-        currency: context.currency,
-      };
+    const pricing = preview;
     // 变体真实标识与库存 缺价不静默成交 库存不足在提交节点拦截（需求 5.2）
     const variantIds = input.items.map((item) => item.variant_id);
     const [identityByVariant, stockByVariant] = await Promise.all([
@@ -175,6 +241,15 @@ export class OrdersService {
     });
 
     const subtotal_minor = orderItems.reduce((sum, item) => sum + item.total_minor, 0);
+
+    // 折扣码校验与计算 需求 ADM-PR-004/5.2 仅结算时核销
+    const discount = await this.resolveCouponDiscount(
+      input.coupon_code,
+      subtotal_minor,
+      context.market,
+      identityByVariant,
+    );
+
     const status =
       channel === "b2b" ? "pending_review" : "pending_payment";
 
@@ -186,11 +261,14 @@ export class OrdersService {
       subtotal_minor,
       tax_minor: 0,
       shipping_minor: 0,
-      total_minor: subtotal_minor,
+      total_minor: subtotal_minor - discount.discount_minor,
       status,
       address_snapshot: input.address_snapshot,
       pricing_snapshot: {
         ...pricing,
+        discount_minor: discount.discount_minor,
+        coupon_code: discount.coupon_code,
+        coupon_id: discount.coupon_id,
         cart_id: input.cart_id ?? null,
         quote_id: input.quote_id ?? null,
         note: input.note ?? null,
@@ -199,6 +277,10 @@ export class OrdersService {
       request_id: context.request_id,
       note: input.note ?? null,
     });
+
+    if (discount.coupon_id !== null) {
+      await this.couponRepository.recordUsage(discount.coupon_id);
+    }
 
     await this.notifications.emitBusinessNotification({
       template_code:

@@ -211,7 +211,7 @@ export class OrdersPrismaRepository implements OrdersRepository {
 
   async getVariantIdentity(
     variantIds: number[],
-  ): Promise<Map<number, { sku: string; name: string }>> {
+  ): Promise<Map<number, { sku: string; name: string; product_id: number }>> {
     if (variantIds.length === 0) return new Map();
     const variants = await this.database.variant.findMany({
       where: { id: { in: variantIds } },
@@ -225,11 +225,15 @@ export class OrdersPrismaRepository implements OrdersRepository {
         nameByProduct.set(translation.productId, translation.name);
       }
     }
-    const identity = new Map<number, { sku: string; name: string }>();
+    const identity = new Map<
+      number,
+      { sku: string; name: string; product_id: number }
+    >();
     for (const variant of variants) {
       identity.set(variant.id, {
         sku: variant.sku,
         name: nameByProduct.get(variant.productId) ?? `Variant ${variant.id}`,
+        product_id: variant.productId,
       });
     }
     return identity;

@@ -33,8 +33,10 @@ export interface OrdersRepository {
     actorId: number | null,
     note?: string,
   ): Promise<Order>;
-  /** 变体标识快照 订单行固化 SKU 与商品名 */
-  getVariantIdentity(variantIds: number[]): Promise<Map<number, { sku: string; name: string }>>;
+  /** 变体标识快照 订单行固化 SKU 与商品名 并携带所属商品用于折扣码商品范围校验 */
+  getVariantIdentity(
+    variantIds: number[],
+  ): Promise<Map<number, { sku: string; name: string; product_id: number }>>;
   /** 变体可售库存合计 */
   getAvailableStock(variantIds: number[], market: string): Promise<Map<number, number>>;
 }
