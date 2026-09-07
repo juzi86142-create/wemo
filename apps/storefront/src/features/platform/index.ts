@@ -5,3 +5,9 @@ export const platformModule = {
   routeScope: "all routes",
   purpose: "应用壳、国际化、SEO、同意、分析、权限与质量能力",
 } satisfies FrontendModuleManifest;
+
+export * from "./analytics";
+export * from "./api-client";
+export * from "./pagination";
+export * from "./site-shell";
+export * from "./status-panel";
