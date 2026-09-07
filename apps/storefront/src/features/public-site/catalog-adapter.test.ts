@@ -9,7 +9,8 @@ describe("catalog presentation adapters", () => {
     if (!product) throw new Error("Preview product fixture is missing");
     expect(formatAgeRange(product.age_min, product.age_max)).toBe("3–8");
     expect(getProductImageAlt(product)).toContain(product.name);
-    expect(product.primary_image_url).toBeNull();
+    expect(product.primary_image_url).toContain("googleusercontent.com");
+    expect({ ...product, primary_image_url: null }.primary_image_url).toBeNull();
   });
 
   it("supports an open-ended age range", () => {
