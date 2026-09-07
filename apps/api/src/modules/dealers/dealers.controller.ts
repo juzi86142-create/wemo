@@ -103,4 +103,21 @@ export class DealersController {
   listAdminMembers(@Query() query: unknown) {
     return this.dealersService.listAdminMembers(query);
   }
+
+  @Get("admin/dealer-tiers")
+  listTiers() {
+    return this.dealersService.listTiers();
+  }
+
+  @Post("admin/dealer-tiers")
+  @HttpCode(200)
+  createTier(@Body() body: unknown) {
+    return this.dealersService.upsertTier(undefined, body);
+  }
+
+  @Patch("admin/dealer-tiers/:id")
+  @HttpCode(200)
+  updateTier(@Param("id") id: string, @Body() body: unknown) {
+    return this.dealersService.upsertTier(id, body);
+  }
 }

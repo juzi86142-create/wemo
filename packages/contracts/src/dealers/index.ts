@@ -249,6 +249,35 @@ export const DealerAddressListResponseSchema =
 export const DealerPublicListingListResponseSchema =
   createListResponseSchema(DealerPublicListingSchema);
 
+/** 经销商等级主数据 需求 6.4 名称后台可配置 */
+export const DealerTierSchema = z
+  .object({
+    id: EntityIdSchema,
+    code: z.string().min(1),
+    name: z.string().min(1),
+    sort_order: z.number().int(),
+    status: z.enum(["active", "inactive"]),
+    created_at: z.string().datetime(),
+  })
+  .strict()
+  .passthrough();
+
+export const DealerTierUpsertSchema = z
+  .object({
+    code: z.string().min(1),
+    name: z.string().min(1),
+    sort_order: z.number().int().optional(),
+    status: z.enum(["active", "inactive"]).optional(),
+  })
+  .strict();
+
+export const DealerTierListResponseSchema = createListResponseSchema(
+  DealerTierSchema,
+);
+export const DealerTierMutationResponseSchema = createItemResponseSchema(
+  DealerTierSchema,
+);
+
 export type DealerApplicationStatus = z.infer<
   typeof DealerApplicationStatusSchema
 >;
@@ -260,6 +289,8 @@ export type DealerCompany = z.infer<typeof DealerCompanySchema>;
 export type DealerMember = z.infer<typeof DealerMemberSchema>;
 export type DealerAddress = z.infer<typeof DealerAddressSchema>;
 export type DealerPublicListing = z.infer<typeof DealerPublicListingSchema>;
+export type DealerTier = z.infer<typeof DealerTierSchema>;
+export type DealerTierUpsertInput = z.infer<typeof DealerTierUpsertSchema>;
 export type DealerApplicationCreateInput = z.infer<
   typeof DealerApplicationCreateSchema
 >;

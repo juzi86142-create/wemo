@@ -254,6 +254,17 @@ model PriceList {
   @@map("price_lists")
 }
 
+model DealerTier {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("dealer_tiers")
+}
+
 model InventoryBalance {
   id            Int       @id @default(autoincrement())
   variantId     Int       @map("variant_id")

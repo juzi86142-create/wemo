@@ -21,6 +21,7 @@ async function main() {
   await seedMarkets();
   await seedRoles();
   await seedUsers();
+  await seedTiers();
   await seedCategories();
   await seedProducts();
   await seedContent();
@@ -373,6 +374,30 @@ async function seedUsers() {
   console.log(
     `  ✓ 创建 ${created} 个用户 + ${dealerCreated} 个经销商账号（跳过已存在）`,
   );
+}
+
+async function seedTiers() {
+  console.log(" seeding dealer tiers...");
+
+  const tiers = [
+    { code: "distributor", name: "Distributor", sortOrder: 1 },
+    { code: "wholesale", name: "Wholesale", sortOrder: 2 },
+    { code: "retail_partner", name: "Retail Partner", sortOrder: 3 },
+  ];
+
+  let created = 0;
+  for (const tier of tiers) {
+    const existing = await database.dealerTier.findUnique({
+      where: { code: tier.code },
+    });
+    if (existing) continue;
+    await database.dealerTier.create({
+      data: { ...tier, status: "active" },
+    });
+    created += 1;
+  }
+
+  console.log(`  ✓ 创建 ${created} 个经销商等级（跳过 ${tiers.length - created}）`);
 }
 
 async function seedCategories() {

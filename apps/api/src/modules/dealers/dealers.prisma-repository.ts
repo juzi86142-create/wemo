@@ -14,6 +14,8 @@ import type {
   DealerMemberCreateInput,
   DealerMemberStatus,
   DealerPublicListing,
+  DealerTier,
+  DealerTierUpsertInput,
   JsonValue,
 } from "@wemo/contracts";
 import type { DatabaseClient } from "@wemo/database";
@@ -535,5 +537,65 @@ export class DealersPrismaRepository implements DealersRepository {
   ): JsonValue {
     const value = payload[key];
     return Array.isArray(value) ? value : [];
+  }
+
+  async listTiers(): Promise<DealerTier[]> {
+    const tiers = await this.database.dealerTier.findMany({
+      orderBy: { sortOrder: "asc" },
+    });
+    return tiers.map((tier) => ({
+      id: tier.id,
+      code: tier.code,
+      name: tier.name,
+      sort_order: tier.sortOrder,
+      status: tier.status as DealerTier["status"],
+      created_at: tier.createdAt.toISOString(),
+    }));
+  }
+
+  async upsertTier(
+    input: DealerTierUpsertInput & { id?: number },
+  ): Promise<DealerTier> {
+    if (input.id !== undefined) {
+      const existing = await this.database.dealerTier.findUnique({
+        where: { id: input.id },
+      });
+      if (!existing) {
+        throw new NotFoundException(`经销商等级 ${input.id} 不存在`);
+      }
+      const updated = await this.database.dealerTier.update({
+        where: { id: input.id },
+        data: {
+          code: input.code,
+          name: input.name,
+          sortOrder: input.sort_order ?? existing.sortOrder,
+          status: input.status ?? existing.status,
+        },
+      });
+      return {
+        id: updated.id,
+        code: updated.code,
+        name: updated.name,
+        sort_order: updated.sortOrder,
+        status: updated.status as DealerTier["status"],
+        created_at: updated.createdAt.toISOString(),
+      };
+    }
+    const created = await this.database.dealerTier.create({
+      data: {
+        code: input.code,
+        name: input.name,
+        sortOrder: input.sort_order ?? 0,
+        status: input.status ?? "active",
+      },
+    });
+    return {
+      id: created.id,
+      code: created.code,
+      name: created.name,
+      sort_order: created.sortOrder,
+      status: created.status as DealerTier["status"],
+      created_at: created.createdAt.toISOString(),
+    };
   }
 }

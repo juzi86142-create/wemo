@@ -12,6 +12,8 @@ import type {
   DealerMemberCreateInput,
   DealerMemberStatus,
   DealerPublicListing,
+  DealerTier,
+  DealerTierUpsertInput,
 } from "@wemo/contracts";
 
 export const DEALERS_REPOSITORY = Symbol("DEALERS_REPOSITORY");
@@ -90,4 +92,6 @@ export interface DealersRepository {
 
   listDealerAddresses(companyId: number): Promise<DealerAddress[]>;
   createDealerAddress(companyId: number, input: DealerAddressCreateInput): Promise<DealerAddress>;
+  listTiers(): Promise<DealerTier[]>;
+  upsertTier(input: DealerTierUpsertInput & { id?: number }): Promise<DealerTier>;
 }

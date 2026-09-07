@@ -25,6 +25,9 @@ import {
   DealerMemberMutationResponseSchema,
   DealerPublicListingListQuerySchema,
   DealerPublicListingListResponseSchema,
+  DealerTierListResponseSchema,
+  DealerTierMutationResponseSchema,
+  DealerTierUpsertSchema,
 } from "@wemo/contracts/dealers";
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
@@ -316,5 +319,29 @@ export class DealersService {
     return DealerMemberListResponseSchema.parse(
       await this.repository.listDealerMembers(parsed),
     );
+  }
+
+  /** 经销商等级主数据 需求 6.4 名称后台可配置 */
+  async listTiers() {
+    this.authorization.requireStaffPermission("dealers:read");
+    return DealerTierListResponseSchema.parse(
+      listResponse(await this.repository.listTiers()),
+    );
+  }
+
+  async upsertTier(id: unknown, body: unknown) {
+    this.authorization.requireStaffPermission("dealers:write");
+    const context = this.requestContext.requireContext();
+    const input = parseInput(DealerTierUpsertSchema, body);
+    const payload =
+      id === undefined
+        ? input
+        : { ...input, id: parseInput(CompanyIdParamSchema, { id }).id };
+    const item = await this.repository.upsertTier(payload);
+
+    return DealerTierMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item,
+    });
   }
 }
