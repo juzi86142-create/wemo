@@ -10,9 +10,10 @@ process.env.DATABASE_URL ??=
   "postgresql://wemove:wemove@localhost:5432/wemove";
 
 /** 员工登录需两步 MFA 从 Redis 取验证码完成验证 */
-async function loginStaff(server: FastifyInstance, app: {
-  get: <T>(token: unknown) => T;
-}) {
+async function loginStaff(
+  server: FastifyInstance,
+  app: Awaited<ReturnType<typeof createApiApp>>,
+) {
   const login = await server.inject({
     method: "POST",
     url: "/api/v1/auth/login",
