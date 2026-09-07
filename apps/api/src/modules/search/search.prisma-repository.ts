@@ -1,5 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { DatabaseClient } from "@wemo/database";
+import type { SearchHit } from "@wemo/contracts";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import {
@@ -10,6 +11,7 @@ import {
   type SearchableItem,
 } from "./search.repository";
 
+/** 演示级搜索 产品名/短描述与分类名包含匹配 按契约 SearchHit 形状输出 */
 @Injectable()
 export class SearchPrismaRepository implements SearchRepository {
   constructor(
@@ -17,77 +19,99 @@ export class SearchPrismaRepository implements SearchRepository {
   ) {}
 
   async search(query: SearchQuery): Promise<SearchResponse> {
-    const page = query.page || 1;
-    const pageSize = query.page_size || 20;
+    const page = query.page;
+    const pageSize = query.page_size;
+    const type = query.type;
+    const includeProducts = type === undefined || type === "product";
+    const includeCategories = type === undefined || type === "category";
+    const hits: SearchHit[] = [];
 
-    // 产品名/短描述在 product_translations 表；分类名在 categories.localized_content Json。
-    const [translations, categories] = await Promise.all([
-      this.database.productTranslation.findMany({
+    if (includeProducts) {
+      const translations = await this.database.productTranslation.findMany({
         where: {
           OR: [
             { name: { contains: query.q, mode: "insensitive" } },
             { shortDescription: { contains: query.q, mode: "insensitive" } },
           ],
+          ...(query.market !== undefined ? { market: query.market } : {}),
+          ...(query.locale !== undefined ? { locale: query.locale } : {}),
         },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        take: page * pageSize,
         orderBy: { productId: "asc" },
-      }),
-      this.database.category.findMany({
+      });
+
+      const productIds = [...new Set(translations.map((t) => t.productId))];
+      const products =
+        productIds.length > 0
+          ? await this.database.product.findMany({
+              where: { id: { in: productIds }, status: "active" },
+            })
+          : [];
+      const activeIds = new Set(products.map((p) => p.id));
+
+      for (const translation of translations) {
+        if (!activeIds.has(translation.productId)) continue;
+        hits.push({
+          entity_type: "product",
+          entity_id: translation.productId,
+          slug: translation.slug,
+          title: translation.name,
+          snippet: translation.shortDescription.slice(0, 100),
+          url: `/products/${translation.slug}`,
+          market: translation.market,
+          locale: translation.locale,
+          status: "active",
+          score: 0,
+          primary_image_url: null,
+        });
+      }
+    }
+
+    if (includeCategories) {
+      const queryLower = query.q.toLowerCase();
+      const categories = await this.database.category.findMany({
         where: { status: "active" },
         orderBy: { sortOrder: "asc" },
-      }),
-    ]);
+      });
+      for (const category of categories) {
+        if (
+          !JSON.stringify(category.localizedContent)
+            .toLowerCase()
+            .includes(queryLower)
+        ) {
+          continue;
+        }
+        hits.push({
+          entity_type: "category",
+          entity_id: category.id,
+          slug: category.slug,
+          title: category.slug,
+          snippet: "",
+          url: `/products/${category.slug}`,
+          market: query.market ?? "US",
+          locale: query.locale ?? "en-US",
+          status: "active",
+          score: 0,
+          primary_image_url: null,
+        });
+      }
+    }
 
-    const productIds = [...new Set(translations.map((t) => t.productId))];
-    const products =
-      productIds.length > 0
-        ? await this.database.product.findMany({
-            where: { id: { in: productIds }, status: "active" },
-          })
-        : [];
-    const productById = new Map(products.map((p) => [p.id, p]));
-    const productByTranslation = new Map(
-      translations.map((t) => [t.productId, t]),
-    );
-
-    const productItems = translations
-      .filter((t) => productById.get(t.productId)?.status === "active")
-      .map((t) => ({
-        id: `product:${t.productId}`,
-        type: "product" as const,
-        title: t.name,
-        snippet: t.shortDescription.slice(0, 100),
-        score: 0,
-        metadata: { id: t.productId, slug: t.slug, market: t.market },
-      }));
-
-    const queryLower = query.q.toLowerCase();
-    const categoryItems = categories
-      .filter((c) => JSON.stringify(c.localizedContent).toLowerCase().includes(queryLower))
-      .slice(0, pageSize)
-      .map((c) => ({
-        id: `category:${c.id}`,
-        type: "category" as const,
-        title: c.slug,
-        snippet: "",
-        score: 0,
-        metadata: { id: c.id, slug: c.slug },
-      }));
-
-    const items = [...productItems, ...categoryItems];
-
+    const start = (page - 1) * pageSize;
     return {
-      items,
-      total: items.length,
+      items: hits.slice(start, start + pageSize),
+      total: hits.length,
       page,
       page_size: pageSize,
     };
   }
 
-  async suggest(query: string): Promise<string[]> {
+  async suggest(query: string, locale?: string): Promise<string[]> {
     const translations = await this.database.productTranslation.findMany({
-      where: { name: { contains: query, mode: "insensitive" } },
+      where: {
+        name: { contains: query, mode: "insensitive" },
+        ...(locale !== undefined ? { locale } : {}),
+      },
       take: 5,
       orderBy: { productId: "asc" },
     });

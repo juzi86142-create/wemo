@@ -392,8 +392,9 @@ export class CatalogPrismaRepository implements CatalogRepository {
     product: ProductRow,
     translations: TranslationRow[],
     variants: VariantRow[],
+    preferred?: { market?: string; locale?: string },
   ): CatalogProduct {
-    const translation = this.pickTranslation(translations);
+    const translation = this.pickTranslation(translations, preferred);
     const attributes = readAttributes(product.attributes);
     const createdAt = product.createdAt.toISOString();
     const categoryIds = [
@@ -477,12 +478,12 @@ export class CatalogPrismaRepository implements CatalogRepository {
       if (bucket) bucket.push(variant);
       else variantByProduct.set(variant.productId, [variant]);
     }
-    void preferred;
     return products.map(product =>
       this.mapProduct(
         product,
         translationByProduct.get(product.id) ?? [],
         variantByProduct.get(product.id) ?? [],
+        preferred,
       ),
     );
   }

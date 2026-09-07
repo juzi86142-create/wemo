@@ -19,14 +19,30 @@ export class SearchService {
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  search(query: unknown) {
+  async search(query: unknown) {
     const parsed = parseInput(SearchQuerySchema, query);
-    const result = this.repository.search(parsed);
+    const context = this.requestContext.requireContext();
+    const result = await this.repository.search({
+      q: parsed.q,
+      page: parsed.page,
+      page_size: parsed.page_size,
+      ...(parsed.type !== undefined ? { type: parsed.type } : {}),
+      market: parsed.market ?? context.market,
+      locale: parsed.locale ?? context.locale,
+    });
     return SearchResponseSchema.parse(result);
   }
 
-  suggest(query: unknown) {
+  async suggest(query: unknown) {
     const parsed = parseInput(SearchQuerySchema, query);
-    return SearchSuggestionResponseSchema.parse(this.repository.suggest(parsed.q));
+    const context = this.requestContext.requireContext();
+    const suggestions = await this.repository.suggest(
+      parsed.q,
+      parsed.locale ?? context.locale,
+    );
+    return SearchSuggestionResponseSchema.parse({
+      q: parsed.q,
+      suggestions,
+    });
   }
 }
