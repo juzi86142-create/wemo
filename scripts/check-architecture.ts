@@ -173,6 +173,7 @@ const skippedDirectories = new Set([
   ".next",
   ".turbo",
   "dist",
+  "dist-seed",
   "node_modules",
 ]);
 

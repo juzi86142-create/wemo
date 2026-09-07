@@ -7,6 +7,7 @@ import {
 import type { Language, Market } from "@wemo/contracts";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { RedisModule } from "../../../src/database/redis.module";
 import { configureApplication } from "../../../src/http/configure-application";
 import { ApiHttpModule } from "../../../src/http/api-http.module";
 import { LocalizationController } from "../../../src/modules/localization/localization.controller";
@@ -53,7 +54,7 @@ const repository: LocalizationRepository = {
 };
 
 @Module({
-  imports: [ApiHttpModule, RuntimeModule],
+  imports: [RedisModule, ApiHttpModule, RuntimeModule],
   controllers: [LocalizationController],
   providers: [
     LocalizationService,

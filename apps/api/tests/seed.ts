@@ -205,7 +205,19 @@ async function seedRoles() {
     const existing = await database.role.findUnique({
       where: { code: role.code },
     });
-    if (existing) continue;
+    if (existing) {
+      // 存量角色权限为空时补齐为种子定义 其余字段不动
+      if (
+        role.permissions.length > 0 &&
+        (existing.permissions as unknown[]).length === 0
+      ) {
+        await database.role.update({
+          where: { id: existing.id },
+          data: { permissions: role.permissions },
+        });
+      }
+      continue;
+    }
     await database.role.create({ data: role });
     created += 1;
   }
@@ -240,7 +252,16 @@ async function seedUsers() {
     const existing = await database.user.findUnique({
       where: { email: user.email },
     });
-    if (existing) continue;
+    if (existing) {
+      // 存量演示账号使用旧格式哈希时一次性迁移为 scrypt 其余数据不动
+      if (!existing.passwordHash.startsWith("scrypt$")) {
+        await database.user.update({
+          where: { id: existing.id },
+          data: { passwordHash: demoPasswordHash },
+        });
+      }
+      continue;
+    }
     const createdUser = await database.user.create({
       data: {
         email: user.email,
@@ -268,7 +289,15 @@ async function seedUsers() {
   const existingDealer = await database.user.findUnique({
     where: { email: "dealer@example.com" },
   });
-  if (!existingDealer) {
+  if (existingDealer) {
+    // 存量演示账号使用旧格式哈希时一次性迁移为 scrypt 其余数据不动
+    if (!existingDealer.passwordHash.startsWith("scrypt$")) {
+      await database.user.update({
+        where: { id: existingDealer.id },
+        data: { passwordHash: demoPasswordHash },
+      });
+    }
+  } else {
     const dealerUser = await database.user.create({
       data: {
         email: "dealer@example.com",
