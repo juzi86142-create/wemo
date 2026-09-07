@@ -84,6 +84,7 @@ export class ReturnsPrismaRepository implements ReturnsRepository {
     id: number,
     requestId: string,
     decision: ReturnStatus,
+    actorId: number | null,
     note?: string,
   ): Promise<ReturnRequest> {
     const existing = await this.database.returnRequest.findUnique({
@@ -102,7 +103,7 @@ export class ReturnsPrismaRepository implements ReturnsRepository {
       });
 
       await this.audit.recordLog({
-        actor_id: null,
+        actor_id: actorId,
         action: `return.${decision}`,
         entity: "return_request",
         entity_id: id,

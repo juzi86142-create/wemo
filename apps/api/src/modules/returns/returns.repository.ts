@@ -27,6 +27,7 @@ export interface ReturnsRepository {
     id: number,
     requestId: string,
     decision: ReturnStatus,
+    actorId: number | null,
     note?: string,
   ): Promise<ReturnRequest>;
 }

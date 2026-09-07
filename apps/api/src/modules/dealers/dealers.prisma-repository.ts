@@ -202,21 +202,18 @@ export class DealersPrismaRepository implements DealersRepository {
         companyRow = await tx.dealerCompany.create({
           data: {
             legalName: existing.legalName,
-            displayName: this.stringFrom(
-              payload,
-              "display_name",
-              existing.legalName,
-            ),
+            displayName: this.requiredStringFrom(payload, "display_name"),
             country: existing.country,
-            currency: this.currencyFrom(payload),
+            currency: this.requiredCurrencyFrom(payload),
             tierId: input.tier_id ?? null,
             priceListId: input.price_list_id ?? null,
             publicListing: input.public_listing ?? false,
             status: "active",
             terms: {
               ...payload,
-              payment_terms: input.payment_terms ?? "net30",
-              sales_territories: input.sales_territories ?? [],
+              // 通过配置直接写入 无兜底默认
+              payment_terms: input.payment_terms,
+              sales_territories: input.sales_territories,
               authorized_categories: input.authorized_categories ?? [],
               sales_rep: input.sales_rep ?? null,
             },
@@ -434,23 +431,15 @@ export class DealersPrismaRepository implements DealersRepository {
       applicant_user_id: application.applicantUserId ?? null,
       company_id: null,
       legal_name: application.legalName,
-      display_name: this.stringFrom(
-        payload,
-        "display_name",
-        application.legalName,
-      ),
+      display_name: this.requiredStringFrom(payload, "display_name"),
       country: application.country,
       website: this.nullableStringFrom(payload, "website"),
-      business_type: this.stringFrom(payload, "business_type", "general"),
+      business_type: this.requiredStringFrom(payload, "business_type"),
       tax_id: this.nullableStringFrom(payload, "tax_id"),
-      contact_name: this.stringFrom(
-        payload,
-        "contact_name",
-        application.legalName,
-      ),
+      contact_name: this.requiredStringFrom(payload, "contact_name"),
       contact_email: application.contactEmail,
       contact_phone: this.nullableStringFrom(payload, "contact_phone"),
-      currency: this.currencyFrom(payload),
+      currency: this.requiredCurrencyFrom(payload),
       payload: application.payload,
       status: application.status as DealerApplicationStatus,
       submitted_at: application.submittedAt
@@ -473,12 +462,12 @@ export class DealersPrismaRepository implements DealersRepository {
       display_name: company.displayName,
       country: company.country,
       website: this.nullableStringFrom(terms, "website"),
-      business_type: this.stringFrom(terms, "business_type", "general"),
+      business_type: this.requiredStringFrom(terms, "business_type"),
       tax_id: this.nullableStringFrom(terms, "tax_id"),
       tier_id: company.tierId ?? null,
       price_list_id: company.priceListId ?? null,
       currency: company.currency,
-      payment_terms: this.stringFrom(terms, "payment_terms", "net30"),
+      payment_terms: this.requiredStringFrom(terms, "payment_terms"),
       sales_territories: this.jsonArrayFrom(terms, "sales_territories"),
       authorized_categories: this.jsonArrayFrom(terms, "authorized_categories"),
       sales_rep: this.nullableStringFrom(terms, "sales_rep"),
@@ -511,13 +500,16 @@ export class DealersPrismaRepository implements DealersRepository {
     return {};
   }
 
-  private stringFrom(
+  /** 必填字段直读 缺失即视为数据不完整 不伪造兜底值 */
+  private requiredStringFrom(
     payload: Record<string, JsonValue>,
     key: string,
-    fallback: string,
   ): string {
     const value = payload[key];
-    return typeof value === "string" && value.length > 0 ? value : fallback;
+    if (typeof value !== "string" || value.length === 0) {
+      throw new Error(`经销商数据缺少必填字段 ${key}`);
+    }
+    return value;
   }
 
   private nullableStringFrom(
@@ -528,9 +520,13 @@ export class DealersPrismaRepository implements DealersRepository {
     return typeof value === "string" && value.length > 0 ? value : null;
   }
 
-  private currencyFrom(payload: Record<string, JsonValue>): string {
+  /** 币种必填直读 缺失或格式错误即报错 不伪造兜底值 */
+  private requiredCurrencyFrom(payload: Record<string, JsonValue>): string {
     const value = payload["currency"];
-    return typeof value === "string" && value.length === 3 ? value : "USD";
+    if (typeof value !== "string" || value.length !== 3) {
+      throw new Error("经销商数据缺少必填字段 currency");
+    }
+    return value;
   }
 
   private jsonArrayFrom(

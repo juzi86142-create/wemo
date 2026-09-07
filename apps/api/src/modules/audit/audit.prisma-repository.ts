@@ -63,7 +63,7 @@ export class AuditPrismaRepository implements AuditRepository {
   private mapRow(row: AuditLogRow): AuditLog {
     return {
       id: row.id,
-      actor_id: row.actorId ?? 1,
+      actor_id: row.actorId,
       action: row.action,
       entity: row.entity,
       entity_id: row.entityId,

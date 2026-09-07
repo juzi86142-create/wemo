@@ -151,8 +151,9 @@ export const DealerApplicationReviewSchema = z
     reason: z.string().min(1).optional(),
     tier_id: EntityIdSchema.nullable().optional(),
     price_list_id: EntityIdSchema.nullable().optional(),
-    payment_terms: z.string().min(1).optional(),
-    sales_territories: JsonValueSchema.optional(),
+    // 通过配置必填 需求 ADM-D-003：付款条款与销售区域
+    payment_terms: z.string().min(1),
+    sales_territories: JsonValueSchema,
     authorized_categories: JsonValueSchema.optional(),
     sales_rep: z.string().min(1).nullable().optional(),
     public_listing: z.boolean().optional(),

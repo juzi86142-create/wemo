@@ -115,13 +115,14 @@ export class ReturnsService {
 
   async reviewReturn(id: unknown, body: unknown) {
     const context = this.requestContext.requireContext();
-    this.authorization.requireStaffPermission("returns:write");
+    const actor = this.authorization.requireStaffPermission("returns:write");
     const parsedId = parseInput(ReturnIdParamSchema, { id });
     const input = parseInput(ReturnReviewSchema, body);
     const item = await this.repository.reviewReturn(
       parsedId.id,
       context.request_id,
       input.decision,
+      actor.user_id,
       input.note,
     );
 

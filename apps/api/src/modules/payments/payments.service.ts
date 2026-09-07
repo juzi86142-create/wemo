@@ -101,6 +101,7 @@ export class PaymentsService {
       item.order_id,
       "paid",
       context.request_id,
+      context.actor?.user_id ?? null,
       "payment captured",
     );
 
@@ -122,6 +123,7 @@ export class PaymentsService {
           item.order_id,
           "refunded",
           context.request_id,
+          context.actor?.user_id ?? null,
           input.reason,
         );
       } catch {

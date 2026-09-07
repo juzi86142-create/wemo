@@ -46,6 +46,8 @@ describe("dealers contracts", () => {
       DealerApplicationReviewSchema.parse({
         decision: "under_review",
         reason: "waiting for attachment",
+        payment_terms: "net30",
+        sales_territories: ["US"],
       }),
     ).toMatchObject({
       decision: "under_review",
