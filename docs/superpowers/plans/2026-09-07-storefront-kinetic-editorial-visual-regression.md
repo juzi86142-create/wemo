@@ -36,15 +36,16 @@
 
 - [ ] **Step 1: Write the failing shell contract test**
 
-Assert that the shell renders the WEMOVE brand, Products, Play & Learn, Support, account, cart, a mobile menu button, and a footer link group. Assert that the mobile button exposes `aria-expanded` and `aria-controls`.
+Use `renderToStaticMarkup` from `react-dom/server` so the test stays within the existing Vitest toolchain. Assert that the shell HTML contains the WEMOVE brand, Products, Play & Learn, Support, account, cart, a mobile menu button, a footer link group, and `aria-controls="mobile-navigation"`.
 
 ```tsx
 it("renders the editorial shell landmarks and real links", () => {
-  render(<SiteShell><main>content</main></SiteShell>);
-  expect(screen.getByRole("link", { name: /WEMOVE SPORTS home/i })).toHaveAttribute("href", "/");
-  expect(screen.getByRole("link", { name: "Products" })).toHaveAttribute("href", "/products");
-  expect(screen.getByRole("button", { name: /menu/i })).toHaveAttribute("aria-controls", "mobile-navigation");
-  expect(screen.getByRole("contentinfo")).toBeInTheDocument();
+  const html = renderToStaticMarkup(<SiteShell><main>content</main></SiteShell>);
+  expect(html).toContain('aria-label="WEMOVE SPORTS home"');
+  expect(html).toContain('href="/products"');
+  expect(html).toContain('aria-controls="mobile-navigation"');
+  expect(html).toContain("Play &amp; Learn");
+  expect(html).toContain("<footer");
 });
 ```
 
@@ -91,7 +92,7 @@ git commit -m "feat: restore kinetic editorial storefront shell"
 
 - [ ] **Step 1: Add tests for real media and safe fallback**
 
-Cover a product with `primary_image_url`, a product with `null` media, nullable ages, and a long backend-provided name. Assert the image alt text comes from the product name and no brace-style prototype token is rendered.
+Cover a product with `primary_image_url`, a product with `null` media, nullable ages, and a long backend-provided name in the existing adapter tests. Assert the image alt text comes from the product name and no brace-style prototype token is rendered by the static route HTML check.
 
 - [ ] **Step 2: Run the focused tests and confirm the current presentation is incomplete**
 
@@ -124,29 +125,24 @@ git commit -m "feat: align product media with editorial cards"
 - Modify: `apps/storefront/src/app/(public)/page.tsx`
 - Modify: `apps/storefront/src/app/globals.css`
 - Modify: `apps/storefront/src/features/public-site/product-card.tsx`
-- Test: `apps/storefront/src/app/(public)/page.test.tsx`
 
 **Interfaces:**
 - Home continues to call `getPublicProducts({ page: 1, page_size: 3, sort: "featured" })`.
 - Home continues to render a preview banner only when the adapter reports preview mode.
 
-- [ ] **Step 1: Test server-rendered home landmarks**
+- [ ] **Step 1: Define the server-rendered home HTML check**
 
-Assert the page contains the main product call to action, the editorial sections, a product collection heading, and a support link. Assert that the preview state is labeled when the adapter returns preview data.
+Use the existing server HTML request check rather than adding a component test renderer. Assert the page contains the main product call to action, the editorial sections, a product collection heading, a support link, and preview labeling when the adapter returns preview data.
 
 - [ ] **Step 2: Run the focused page test and confirm the current geometry is different from the source screenshots**
 
-Run: `pnpm --filter @wemo/storefront test -- src/app/(public)/page.test.tsx`
-
-Expected: the new section labels/structure assertions fail before the page is rebuilt.
+Run after implementation: `Invoke-WebRequest http://localhost:3000/ | Select-Object -ExpandProperty Content` and assert the source-aligned section labels and primary links are present.
 
 - [ ] **Step 3: Implement the source-aligned home structure**
 
 Build a split hero with a warm editorial media panel, a text-led “play that gets everyone moving” block, category cards with restrained accents, a three-card product collection, a lifestyle/support panel, an active-play benefits row, and a multi-column content footer supplied by `SiteShell`. Keep all product and link text dynamic or explicitly authored, never prototype brace tokens.
 
 - [ ] **Step 4: Run focused tests, typecheck, and inspect the home route**
-
-Run: `pnpm --filter @wemo/storefront test -- src/app/(public)/page.test.tsx`
 
 Run: `pnpm --filter @wemo/storefront typecheck`
 
@@ -155,7 +151,7 @@ Inspect `http://localhost:3000/` at desktop and mobile widths for overflow, focu
 - [ ] **Step 5: Commit the home slice**
 
 ```text
-git add apps/storefront/src/app/(public)/page.tsx apps/storefront/src/app/globals.css apps/storefront/src/features/public-site/product-card.tsx apps/storefront/src/app/(public)/page.test.tsx
+git add apps/storefront/src/app/(public)/page.tsx apps/storefront/src/app/globals.css apps/storefront/src/features/public-site/product-card.tsx
 git commit -m "feat: restore editorial storefront home"
 ```
 
