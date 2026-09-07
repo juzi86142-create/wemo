@@ -3,12 +3,12 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createApiApp } from "../bootstrap";
+import { createApiApp } from "../../src/bootstrap";
 import {
   databaseIntegrationEnabled,
   setupIntegrationDatabase,
   teardownIntegrationDatabase,
-} from "./integration-database.fixture";
+} from "../../src/runtime/integration-database.fixture";
 
 const describeDatabase = databaseIntegrationEnabled() ? describe : describe.skip;
 

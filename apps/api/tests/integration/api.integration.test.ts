@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 
-import { createApiApp } from "../bootstrap";
+import { createApiApp } from "../../src/bootstrap";
 import {
   databaseIntegrationEnabled,
   setupIntegrationDatabase,
   teardownIntegrationDatabase,
-} from "./integration-database.fixture";
+} from "../../src/runtime/integration-database.fixture";
 
 const describeDatabase = databaseIntegrationEnabled() ? describe : describe.skip;
 
