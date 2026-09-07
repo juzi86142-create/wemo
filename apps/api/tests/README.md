@@ -102,7 +102,8 @@ RUN_DATABASE_INTEGRATION=1 pnpm test
 
 - 使用环境变量 `DATABASE_URL` 连接本地PostgreSQL
 - 集成测试使用事务或清理脚本避免数据污染
-- Seed数据通过 `apps/api/src/seed.ts` 提供
+- Seed数据通过 `apps/api/tests/seed.ts` 提供（`pnpm --filter @wemo/api seed`）
+- Seed 是非破坏性的：按自然键判断存在性，已存在一律跳过，永不删除数据库已有数据
 - Demo环境可以重复运行seed脚本
 
 ## 已知限制

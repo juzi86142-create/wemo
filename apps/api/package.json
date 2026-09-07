@@ -9,7 +9,7 @@
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "seed": "tsup src/seed.ts --format esm --out-dir dist-seed && node dist-seed/seed.js"
+    "seed": "tsup tests/seed.ts --format esm --out-dir dist-seed && node dist-seed/seed.js"
   },
   "dependencies": {
     "@nestjs/common": "12.0.1",

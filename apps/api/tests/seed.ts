@@ -1,11 +1,19 @@
 import { createDatabase } from "@wemo/database";
 
+import { hashPassword } from "../src/modules/auth/password";
+
 const database = createDatabase();
 
-async function main() {
-  console.log("开始 seeding 数据库（演示数据）...");
+/** 演示账号统一密码 登录文档与前端联调用 */
+const DEMO_PASSWORD = "Demo1234!";
 
-  await cleanDatabase();
+/**
+ * 演示数据填充 仅做新增与跳过 永不删除已有数据
+ * 每个实体按自然键判断存在性 已存在则跳过
+ */
+async function main() {
+  console.log("开始 seeding 数据库（演示数据，非破坏性）...");
+
   await seedLanguages();
   await seedMarkets();
   await seedRoles();
@@ -15,44 +23,7 @@ async function main() {
   await seedContent();
   await seedSettings();
 
-  console.log("Seeding 完成！");
-}
-
-async function cleanDatabase() {
-  console.log("清理现有数据...");
-
-  // 按依赖顺序删除（relationMode=prisma，无物理外键，顺序仅为语义清晰）
-  await database.payment.deleteMany();
-  await database.shipment.deleteMany();
-  await database.orderItem.deleteMany();
-  await database.order.deleteMany();
-  await database.quoteVersion.deleteMany();
-  await database.quote.deleteMany();
-  await database.price.deleteMany();
-  await database.priceList.deleteMany();
-  await database.inventoryBalance.deleteMany();
-  await database.variant.deleteMany();
-  await database.productTranslation.deleteMany();
-  await database.product.deleteMany();
-  await database.category.deleteMany();
-  await database.formSubmission.deleteMany();
-  await database.contentEntry.deleteMany();
-  await database.redirect.deleteMany();
-  await database.mediaAsset.deleteMany();
-  await database.auditLog.deleteMany();
-  await database.systemSetting.deleteMany();
-  await database.userRole.deleteMany();
-  await database.role.deleteMany();
-  await database.session.deleteMany();
-  await database.user.deleteMany();
-  await database.dealerMember.deleteMany();
-  await database.dealerApplication.deleteMany();
-  await database.dealerCompany.deleteMany();
-  await database.marketLocale.deleteMany();
-  await database.market.deleteMany();
-  await database.language.deleteMany();
-
-  console.log("数据清理完成");
+  console.log("Seeding 完成！已有数据未被修改。");
 }
 
 async function seedLanguages() {
@@ -63,13 +34,19 @@ async function seedLanguages() {
     { code: "zh", label: "Chinese", nativeLabel: "中文" },
   ];
 
+  let created = 0;
   for (const language of languages) {
+    const existing = await database.language.findUnique({
+      where: { code: language.code },
+    });
+    if (existing) continue;
     await database.language.create({
       data: { ...language, status: "active" },
     });
+    created += 1;
   }
 
-  console.log(`  ✓ 创建了 ${languages.length} 种语言`);
+  console.log(`  ✓ 创建 ${created} 种语言（跳过 ${languages.length - created}）`);
 }
 
 async function seedMarkets() {
@@ -96,8 +73,13 @@ async function seedMarkets() {
     },
   ];
 
+  let created = 0;
   for (const market of markets) {
-    const created = await database.market.create({
+    const existing = await database.market.findUnique({
+      where: { code: market.code },
+    });
+    if (existing) continue;
+    const createdMarket = await database.market.create({
       data: {
         code: market.code,
         defaultLocale: market.locales.find((locale) => locale.isDefault)!.locale,
@@ -110,7 +92,7 @@ async function seedMarkets() {
 
     await database.marketLocale.createMany({
       data: market.locales.map((locale, index) => ({
-        marketId: created.id,
+        marketId: createdMarket.id,
         languageId: locale.language.id,
         locale: locale.locale,
         pathPrefix: locale.pathPrefix,
@@ -119,52 +101,150 @@ async function seedMarkets() {
         status: "active",
       })),
     });
+    created += 1;
   }
 
-  console.log(`  ✓ 创建了 ${markets.length} 个市场`);
+  console.log(`  ✓ 创建 ${created} 个市场（跳过 ${markets.length - created}）`);
 }
 
 async function seedRoles() {
   console.log(" seeding roles...");
 
-  const roles = [
-    { code: "admin", name: "Administrator", audience: "staff" },
-    { code: "customer", name: "Customer", audience: "user" },
-    { code: "dealer", name: "Dealer", audience: "dealer" },
+  const adminPermissions = [
+    "analytics:read",
+    "audit:read",
+    "cart:read",
+    "catalog:read",
+    "catalog:write",
+    "content:read",
+    "content:write",
+    "dealers:read",
+    "dealers:write",
+    "forms:read",
+    "forms:write",
+    "identity:read",
+    "identity:write",
+    "integrations:read",
+    "inventory:read",
+    "jobs:read",
+    "jobs:write",
+    "media:read",
+    "media:write",
+    "notifications:read",
+    "notifications:write",
+    "payments:read",
+    "pricing:read",
+    "pricing:write",
+    "quotes:write",
+    "reports:read",
+    "returns:write",
+    "seo:read",
+    "seo:write",
+    "settings:read",
+    "settings:write",
+  ];
+  const contentEditorPermissions = [
+    "content:read",
+    "content:write",
+    "media:read",
+    "media:write",
+    "seo:read",
+    "seo:write",
+    "forms:read",
+    "notifications:read",
+    "analytics:read",
+  ];
+  const dealerOpsPermissions = [
+    "dealers:read",
+    "dealers:write",
+    "pricing:read",
+    "pricing:write",
+    "inventory:read",
+    "quotes:write",
+    "reports:read",
+  ];
+  const supportPermissions = [
+    "forms:read",
+    "forms:write",
+    "payments:read",
+    "returns:write",
+    "identity:read",
   ];
 
+  const roles = [
+    {
+      code: "admin",
+      name: "Administrator",
+      audience: "staff",
+      permissions: adminPermissions,
+    },
+    {
+      code: "content_editor",
+      name: "Content Editor",
+      audience: "staff",
+      permissions: contentEditorPermissions,
+    },
+    {
+      code: "dealer_ops",
+      name: "Dealer Operations",
+      audience: "staff",
+      permissions: dealerOpsPermissions,
+    },
+    {
+      code: "support",
+      name: "Customer Support",
+      audience: "staff",
+      permissions: supportPermissions,
+    },
+    { code: "customer", name: "Customer", audience: "user", permissions: [] },
+    { code: "dealer", name: "Dealer", audience: "dealer", permissions: [] },
+  ];
+
+  let created = 0;
   for (const role of roles) {
+    const existing = await database.role.findUnique({
+      where: { code: role.code },
+    });
+    if (existing) continue;
     await database.role.create({ data: role });
+    created += 1;
   }
 
-  console.log(`  ✓ 创建了 ${roles.length} 个角色`);
+  console.log(`  ✓ 创建 ${created} 个角色（跳过 ${roles.length - created}）`);
 }
 
 async function seedUsers() {
   console.log(" seeding users...");
 
+  const demoPasswordHash = hashPassword(DEMO_PASSWORD);
+
   const users = [
     {
       email: "admin@wemove.com",
-      passwordHash: "$2a$10$dummy.hash.for.demo",
       name: "Admin User",
       audience: "staff",
+      roleCode: "admin",
       status: "active",
     },
     {
       email: "user@example.com",
-      passwordHash: "$2a$10$dummy.hash.for.demo",
       name: "Demo User",
       audience: "user",
+      roleCode: "customer",
       status: "active",
     },
   ];
 
+  let created = 0;
   for (const user of users) {
-    const created = await database.user.create({
+    const existing = await database.user.findUnique({
+      where: { email: user.email },
+    });
+    if (existing) continue;
+    const createdUser = await database.user.create({
       data: {
         email: user.email,
-        passwordHash: user.passwordHash,
+        passwordHash: demoPasswordHash,
         name: user.name,
         audience: user.audience,
         status: user.status,
@@ -173,56 +253,66 @@ async function seedUsers() {
     });
 
     const role = await database.role.findFirst({
-      where: { audience: user.audience },
+      where: { code: user.roleCode },
     });
     if (role) {
       await database.userRole.create({
-        data: { userId: created.id, roleId: role.id, overrides: {} },
+        data: { userId: createdUser.id, roleId: role.id, overrides: {} },
       });
     }
+    created += 1;
   }
 
-  // 演示经销商：公司 + 成员
-  const dealerUser = await database.user.create({
-    data: {
-      email: "dealer@example.com",
-      passwordHash: "$2a$10$dummy.hash.for.demo",
-      name: "Dealer Contact",
-      audience: "dealer",
-      status: "active",
-      verifiedAt: new Date(),
-    },
+  // 演示经销商：公司 + 成员（成员存在则整体跳过）
+  let dealerCreated = 0;
+  const existingDealer = await database.user.findUnique({
+    where: { email: "dealer@example.com" },
   });
-  const dealerRole = await database.role.findFirst({
-    where: { code: "dealer" },
-  });
-  if (dealerRole) {
-    await database.userRole.create({
-      data: { userId: dealerUser.id, roleId: dealerRole.id, overrides: {} },
+  if (!existingDealer) {
+    const dealerUser = await database.user.create({
+      data: {
+        email: "dealer@example.com",
+        passwordHash: demoPasswordHash,
+        name: "Dealer Contact",
+        audience: "dealer",
+        status: "active",
+        verifiedAt: new Date(),
+      },
     });
+    const dealerRole = await database.role.findFirst({
+      where: { code: "dealer" },
+    });
+    if (dealerRole) {
+      await database.userRole.create({
+        data: { userId: dealerUser.id, roleId: dealerRole.id, overrides: {} },
+      });
+    }
+    const company = await database.dealerCompany.create({
+      data: {
+        legalName: "Demo Sports Trading Co.",
+        displayName: "Demo Sports",
+        country: "US",
+        currency: "USD",
+        terms: { payment_terms: "net30" },
+        publicListing: true,
+        status: "active",
+      },
+    });
+    await database.dealerMember.create({
+      data: {
+        companyId: company.id,
+        userId: dealerUser.id,
+        role: "admin",
+        permissions: ["dealer:read", "dealer:write"],
+        status: "active",
+      },
+    });
+    dealerCreated = 1;
   }
-  const company = await database.dealerCompany.create({
-    data: {
-      legalName: "Demo Sports Trading Co.",
-      displayName: "Demo Sports",
-      country: "US",
-      currency: "USD",
-      terms: { payment_terms: "net30" },
-      publicListing: true,
-      status: "active",
-    },
-  });
-  await database.dealerMember.create({
-    data: {
-      companyId: company.id,
-      userId: dealerUser.id,
-      role: "admin",
-      permissions: ["dealer:read", "dealer:write"],
-      status: "active",
-    },
-  });
 
-  console.log(`  ✓ 创建了 ${users.length} 个用户 + 1 个经销商账号`);
+  console.log(
+    `  ✓ 创建 ${created} 个用户 + ${dealerCreated} 个经销商账号（跳过已存在）`,
+  );
 }
 
 async function seedCategories() {
@@ -234,7 +324,12 @@ async function seedCategories() {
     { slug: "sports-games", sortOrder: 3 },
   ];
 
+  let created = 0;
   for (const category of categories) {
+    const existing = await database.category.findFirst({
+      where: { slug: category.slug },
+    });
+    if (existing) continue;
     await database.category.create({
       data: {
         slug: category.slug,
@@ -246,9 +341,10 @@ async function seedCategories() {
         },
       },
     });
+    created += 1;
   }
 
-  console.log(`  ✓ 创建了 ${categories.length} 个分类`);
+  console.log(`  ✓ 创建 ${created} 个分类（跳过 ${categories.length - created}）`);
 }
 
 async function seedProducts() {
@@ -304,8 +400,15 @@ async function seedProducts() {
     [cn.code, cn],
   ]);
 
+  let created = 0;
   for (const product of products) {
-    const created = await database.product.create({
+    // 变体 SKU 是产品唯一标识 已存在则整体跳过
+    const existingVariant = await database.variant.findFirst({
+      where: { sku: `${product.sku}-VAR` },
+    });
+    if (existingVariant) continue;
+
+    const createdProduct = await database.product.create({
       data: {
         primaryCategoryId: product.category.id,
         status: "active",
@@ -317,12 +420,11 @@ async function seedProducts() {
       },
     });
 
-    // 每语言/市场一条翻译（slug 唯一）
-    for (const [marketCode, market] of marketByCode) {
+    for (const [marketCode] of marketByCode) {
       const locale = marketCode === "US" ? "en-US" : "zh-CN";
       await database.productTranslation.create({
         data: {
-          productId: created.id,
+          productId: createdProduct.id,
           locale,
           market: marketCode,
           slug: `${product.sku.toLowerCase()}-${marketCode.toLowerCase()}`,
@@ -341,9 +443,9 @@ async function seedProducts() {
 
     const variant = await database.variant.create({
       data: {
-        productId: created.id,
+        productId: createdProduct.id,
         sku: `${product.sku}-VAR`,
-        barcode: `B${created.id}0001`,
+        barcode: `B${createdProduct.id}0001`,
         options: { default: true },
         specifications: { weight: "2.5kg", dimensions: "40x20x10cm" },
         status: "active",
@@ -375,47 +477,53 @@ async function seedProducts() {
         source: "manual",
       },
     });
+    created += 1;
   }
 
-  // B2B 价格表与经销商价格
-  const priceList = await database.priceList.create({
-    data: {
-      code: "DEALER-2026",
-      name: "Dealer Price List 2026",
-      market: "US",
-      currency: "USD",
-      status: "active",
-    },
+  // B2B 价格表与经销商价格（价格表按 code 判断）
+  const existingPriceList = await database.priceList.findFirst({
+    where: { code: "DEALER-2026" },
   });
-  const company = await database.dealerCompany.findFirst();
-  const firstVariant = await database.variant.findFirst();
-  if (company && firstVariant) {
-    await database.price.create({
+  if (!existingPriceList) {
+    const priceList = await database.priceList.create({
       data: {
-        variantId: firstVariant.id,
-        priceListId: priceList.id,
-        dealerCompanyId: company.id,
+        code: "DEALER-2026",
+        name: "Dealer Price List 2026",
         market: "US",
         currency: "USD",
-        priceType: "dealer",
-        amountMinor: 3999,
-        minQuantity: 10,
-        rules: { tier: "volume" },
+        status: "active",
       },
     });
+    const company = await database.dealerCompany.findFirst();
+    const firstVariant = await database.variant.findFirst();
+    if (company && firstVariant) {
+      await database.price.create({
+        data: {
+          variantId: firstVariant.id,
+          priceListId: priceList.id,
+          dealerCompanyId: company.id,
+          market: "US",
+          currency: "USD",
+          priceType: "dealer",
+          amountMinor: 3999,
+          minQuantity: 10,
+          rules: { tier: "volume" },
+        },
+      });
+    }
   }
 
-  console.log(`  ✓ 创建了 ${products.length} 个产品（含变体/价格/库存）`);
+  console.log(
+    `  ✓ 创建 ${created} 个产品（含变体/价格/库存，跳过 ${products.length - created}）`,
+  );
 }
 
 async function seedContent() {
   console.log(" seeding content...");
 
-  await database.contentEntry.create({
-    data: {
+  const entries = [
+    {
       type: "page",
-      locale: "en-US",
-      market: "US",
       slug: "about",
       title: "About WEMOVE SPORTS",
       body: {
@@ -427,17 +535,9 @@ async function seedContent() {
           },
         ],
       },
-      seo: { title: "About Us", description: "WEMOVE SPORTS official site" },
-      status: "published",
-      publishedAt: new Date(),
     },
-  });
-
-  await database.contentEntry.create({
-    data: {
+    {
       type: "navigation",
-      locale: "en-US",
-      market: "US",
       slug: "main-nav",
       title: "Main Navigation",
       body: {
@@ -447,17 +547,46 @@ async function seedContent() {
           { label: "About", url: "/en-us/about" },
         ],
       },
-      seo: {},
-      status: "published",
-      publishedAt: new Date(),
     },
-  });
+  ];
 
-  await database.redirect.create({
-    data: { sourcePath: "/old-home", targetPath: "/en-us/", statusCode: 301 },
-  });
+  let created = 0;
+  for (const entry of entries) {
+    const existing = await database.contentEntry.findFirst({
+      where: { type: entry.type, slug: entry.slug },
+    });
+    if (existing) continue;
+    await database.contentEntry.create({
+      data: {
+        type: entry.type,
+        locale: "en-US",
+        market: "US",
+        slug: entry.slug,
+        title: entry.title,
+        body: entry.body,
+        seo:
+          entry.type === "page"
+            ? { title: "About Us", description: "WEMOVE SPORTS official site" }
+            : {},
+        status: "published",
+        publishedAt: new Date(),
+      },
+    });
+    created += 1;
+  }
 
-  console.log("  ✓ 创建了内容页、导航和重定向");
+  const existingRedirect = await database.redirect.findFirst({
+    where: { sourcePath: "/old-home" },
+  });
+  let redirectCreated = 0;
+  if (!existingRedirect) {
+    await database.redirect.create({
+      data: { sourcePath: "/old-home", targetPath: "/en-us/", statusCode: 301 },
+    });
+    redirectCreated = 1;
+  }
+
+  console.log(`  ✓ 创建 ${created} 个内容页 + ${redirectCreated} 个重定向（跳过已存在）`);
 }
 
 async function seedSettings() {
@@ -469,7 +598,12 @@ async function seedSettings() {
     { groupName: "platform", key: "default_locale", value: "en-US" },
   ];
 
+  let created = 0;
   for (const setting of settings) {
+    const existing = await database.systemSetting.findFirst({
+      where: { groupName: setting.groupName, key: setting.key },
+    });
+    if (existing) continue;
     await database.systemSetting.create({
       data: {
         groupName: setting.groupName,
@@ -479,9 +613,10 @@ async function seedSettings() {
         updatedBy: 1,
       },
     });
+    created += 1;
   }
 
-  console.log(`  ✓ 创建了 ${settings.length} 个系统设置`);
+  console.log(`  ✓ 创建 ${created} 个系统设置（跳过 ${settings.length - created}）`);
 }
 
 main()
