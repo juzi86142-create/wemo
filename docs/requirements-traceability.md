@@ -124,6 +124,17 @@
 | 报价与订单正确性 | 报价 current_version 随评审/转单递增；转单写入订单行（真实 SKU/名称）；过期报价禁转单；价格优先级对齐 6.4（企业>价格表>等级>默认）；订单快照固化真实 SKU/名称并提交节点校验库存；订单号/申请号统一 generateBusinessNo；表单工单状态机收紧附录 D 六态 | `apps/api/src/modules/quotes/quotes.prisma-repository.ts`、`apps/api/src/modules/pricing/pricing.prisma-repository.ts`、`apps/api/src/modules/orders/orders.service.ts`、`apps/api/src/modules/forms/forms.service.ts` | typecheck 0；39 测试 + 1 skipped |
 | 框架能力复用与去重 | terminus/throttler 落地；listResponse 统一；cms 模块重复表单实现移除；orders 模块死代码（reserveInventory/releaseInventory/updateOrderStatus）移除；seed 移入 tests 且非破坏性 | `apps/api/src/health/health.controller.ts`、`apps/api/src/runtime/env.ts`、`apps/api/tests/seed.ts` | pnpm check 全绿（212 ID 覆盖/架构/无物理外键/typecheck/39测试/构建/运行时健康） |
 
+## 后端四轮补齐证据（2026-09-07 夜间）
+
+| 模块切片 | 已实现范围 | 代码与测试入口 | 结果 |
+| --- | --- | --- | --- |
+| 折扣码 ADM-PR-004/5.2 | Redis 折扣码管理（后台 CRUD）；checkout 核销校验：停用/有效期/市场/商品范围/最低金额/使用次数；percent/fixed 折扣计算固化进订单快照与总额 | `apps/api/src/modules/pricing/coupon.redis-repository.ts`、`modules/orders/orders.service.ts` | typecheck 0；39 测试 + 1 skipped；pnpm check 全绿 |
+| Shipment 拆单 ORD-B2B-005/ADM-O-005 | 员工创建分批发货（承运商/运单号/行项数量）；超量拦截（按已发数量计算剩余）；发满整单 shipped 否则 partially_shipped；审计记录 | `apps/api/src/modules/orders/orders.prisma-repository.ts`（createShipment）、`orders.controller.ts` | typecheck 0；39 测试 + 1 skipped |
+| Tier 主数据 6.4 | dealer_tiers 表迁移；后台 CRUD；seed 三档（Distributor/Wholesale/Retail Partner） | `packages/database/prisma/migrations/20260907032454_add_dealer_tiers`、`modules/dealers/dealers.prisma-repository.ts` | 迁移已应用；seed 非破坏跳过已存在 |
+| CMS 定时发布/预览/版本 ADM-C-003/004/005 | publish 支持 publish_at/archive_at；定时发布与下线在读取侧按时间生效（无调度器）；草稿预览令牌（Redis 7 天有效）；内容版本历史（更新前快照 Redis 列表） | `apps/api/src/modules/cms/cms.prisma-repository.ts`、`cms.service.ts`、`cms.controller.ts` | typecheck 0；39 测试 + 1 skipped |
+| MFA SEC-002/2.3 | 后台员工强制两步登录：登录返回挑战（一次性六位码 5 分钟有效，Redis 核销）；验证码经通知投递承载；mfa/verify 核销后发 staff 会话 | `apps/api/src/modules/auth/auth.service.ts`、`auth.prisma-repository.ts`、`tests/integration/api.integration.test.ts`（loginStaff 两步流程） | typecheck 0；39 测试 + 1 skipped；真实 HTTP：挑战 → Redis 取码 → 核销 → staff 会话 |
+| 真实邮件 19 章 | nodemailer 经 Mailpit SMTP 真实投递；业务事件通知 email 渠道即时发送；投递状态/消息 ID/失败原因回写 Redis；收件人邮箱按用户查库 | `apps/api/src/modules/notifications/email-sender.service.ts`、`notifications.service.ts`（emitBusinessNotification） | 真实冒烟：admin 登录后 Mailpit 出现 account_mfa_challenge 邮件；checkout 后出现 order_confirmation |
+
 ## 后端二轮核对补齐证据（2026-09-07）
 
 | 模块切片 | 已实现范围 | 代码与测试入口 | 结果 |
