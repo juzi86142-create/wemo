@@ -7,9 +7,12 @@ import {
   Post,
   Query,
 } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 
 import { AuthService } from "./auth.service";
 
+/** 登录注册找回等敏感接口每 IP 每分钟 10 次 */
+@Throttle({ default: { limit: 10, ttl: 60_000 } })
 @Controller("auth")
 export class AuthController {
   constructor(

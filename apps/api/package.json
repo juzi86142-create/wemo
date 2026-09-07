@@ -15,6 +15,8 @@
     "@nestjs/common": "12.0.1",
     "@nestjs/core": "12.0.1",
     "@nestjs/platform-fastify": "12.0.1",
+    "@nestjs/terminus": "^11.1.1",
+    "@nestjs/throttler": "^6.5.0",
     "@wemo/contracts": "workspace:*",
     "@wemo/database": "workspace:*",
     "fastify": "5.12.1",

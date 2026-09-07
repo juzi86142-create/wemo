@@ -9,6 +9,7 @@ import {
   Post,
   Query,
 } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 
 import { FormsService } from "./forms.service";
 
@@ -19,6 +20,8 @@ export class FormsController {
     private readonly formsService: FormsService,
   ) {}
 
+  /** 联系表单每 IP 每分钟 10 次 兼作反垃圾基本防护 */
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post("forms/submissions")
   @HttpCode(200)
   submit(@Body() body: unknown) {
