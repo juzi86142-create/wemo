@@ -135,6 +135,17 @@
 | MFA SEC-002/2.3 | 后台员工强制两步登录：登录返回挑战（一次性六位码 5 分钟有效，Redis 核销）；验证码经通知投递承载；mfa/verify 核销后发 staff 会话 | `apps/api/src/modules/auth/auth.service.ts`、`auth.prisma-repository.ts`、`tests/integration/api.integration.test.ts`（loginStaff 两步流程） | typecheck 0；39 测试 + 1 skipped；真实 HTTP：挑战 → Redis 取码 → 核销 → staff 会话 |
 | 真实邮件 19 章 | nodemailer 经 Mailpit SMTP 真实投递；业务事件通知 email 渠道即时发送；投递状态/消息 ID/失败原因回写 Redis；收件人邮箱按用户查库 | `apps/api/src/modules/notifications/email-sender.service.ts`、`notifications.service.ts`（emitBusinessNotification） | 真实冒烟：admin 登录后 Mailpit 出现 account_mfa_challenge 邮件；checkout 后出现 order_confirmation |
 
+## 后端五轮终检证据（2026-09-07 凌晨）
+
+| 模块切片 | 已实现范围 | 代码与测试入口 | 结果 |
+| --- | --- | --- | --- |
+| 交易正确性 | 申请单号统一生成器；阶梯价按采购数量选档（9.2）；PO 编号与结算方式入单快照（ORD-B2B-001/002）；折扣码限定用户（ADM-PR-004）；退货行项校验（USR-007）；历史复购 Reorder（ORD-B2B-007）；经销商接受报价（QTE-004） | `apps/api/src/modules/pricing/pricing.prisma-repository.ts`、`orders/orders.service.ts`、`returns/returns.service.ts`、`quotes/quotes.service.ts` | typecheck 0；39 测试 + 1 skipped |
+| 购物车与库存 | 游客购物车按本地标识复用（5.2）；库存盘点端点（7.6）；预占超时读取侧释放（9.3）；B2C 与经销商市场开关生效（5.2/ACC-005） | `apps/api/src/modules/cart/cart.redis-repository.ts`、`inventory/inventory.service.ts`、`orders/orders.service.ts` | typecheck 0；39 测试 + 1 skipped |
+| 平台能力 | sitemap 真实生成（SEO-004）；语言市场管理路由（12.1）；表单定义管理（CT-001）；审计覆盖商品/内容/设置/媒体/表单写操作（2.2）；服务端埋点 purchase/dealer_apply_submit/request_quote/contact_submit（18.1）；webhook HMAC 验签密钥化 + 支付回调联动订单状态（15.1/5.2） | `apps/api/src/modules/seo/seo.prisma-repository.ts`、`apps/api/src/modules/localization/localization.controller.ts`、`apps/api/src/modules/forms/forms.service.ts`、`apps/api/src/modules/integrations/integrations.service.ts`、`apps/api/src/modules/analytics/analytics.redis-repository.ts` | 真实冒烟：sitemap 返回真实条目；语言创建 200；伪造 webhook 签名 401 |
+| 内容与媒体 | 内容翻译状态列落库（12.1）；首页模块结构校验（ADM-C-002）；媒体文件上传落盘 + 受控访问（7.11/10.3）；通知模板 13 个种子 + 模板变量校验 + 内部收件组（19.1/19.2） | `apps/api/src/modules/cms/cms.service.ts`、`apps/api/src/modules/media/media.service.ts`、`apps/api/src/modules/notifications/notifications.service.ts`、`apps/api/tests/seed.ts` | 真实冒烟：Mailpit 收到组邮件；模板缺失时投递记录失败原因 |
+| 报表聚合 | 七类报表真实聚合：订单/报价/申请/表单/库存/成员/媒体/搜索事件来自 PostgreSQL 与 Redis（18.2） | `apps/api/src/modules/reports/reports.redis-repository.ts` | 真实冒烟：dashboard 返回 54 单真实数据 |
+| 产品列表与后台 | PLP 年龄/场景/技能筛选与六种排序（PLP-002/003）；数据请求后台工单处理（7.9）；经销商成员邀请一次性令牌（6.7） | `apps/api/src/modules/catalog/catalog.prisma-repository.ts`、`apps/api/src/modules/identity/identity.service.ts`、`apps/api/src/modules/dealers/dealers.service.ts` | typecheck 0；39 测试 + 1 skipped |
+
 ## 后端二轮核对补齐证据（2026-09-07）
 
 | 模块切片 | 已实现范围 | 代码与测试入口 | 结果 |
