@@ -8,6 +8,10 @@ import {
   type ReturnCreateRecord,
   type ReturnsRepository,
 } from "./returns.repository";
+import {
+  AUDIT_REPOSITORY,
+  type AuditRepository,
+} from "../audit/audit.repository";
 
 type ReturnRow = NonNullable<
   Awaited<ReturnType<DatabaseClient["returnRequest"]["findUnique"]>>
@@ -17,6 +21,7 @@ type ReturnRow = NonNullable<
 export class ReturnsPrismaRepository implements ReturnsRepository {
   constructor(
     @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
+    @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
   ) {}
 
   async createReturn(input: ReturnCreateRecord): Promise<ReturnRequest> {
@@ -96,17 +101,15 @@ export class ReturnsPrismaRepository implements ReturnsRepository {
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          actorId: 1,
-          action: `return.${decision}`,
-          entity: "return_request",
-          entityId: id,
-          before: { status: existing.status },
-          after: { status: decision, note: note ?? null },
-          requestId,
-          ip: null,
-        },
+      await this.audit.recordLog({
+        actor_id: null,
+        action: `return.${decision}`,
+        entity: "return_request",
+        entity_id: id,
+        before: { status: existing.status },
+        after: { status: decision, note: note ?? null },
+        request_id: requestId,
+        ip: null,
       });
 
       return updated;

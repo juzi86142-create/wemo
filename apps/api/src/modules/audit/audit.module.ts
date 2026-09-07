@@ -16,5 +16,6 @@ import { AuditService } from "./audit.service";
       useClass: AuditPrismaRepository,
     },
   ],
+  exports: [AUDIT_REPOSITORY],
 })
 export class AuditModule {}

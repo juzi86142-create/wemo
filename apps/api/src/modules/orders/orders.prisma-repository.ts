@@ -7,6 +7,10 @@ import {
   type OrderCreateCommand,
   type OrdersRepository,
 } from "./orders.repository";
+import {
+  AUDIT_REPOSITORY,
+  type AuditRepository,
+} from "../audit/audit.repository";
 import type {
   Order,
   OrderItem,
@@ -24,6 +28,7 @@ export class OrdersPrismaRepository implements OrdersRepository {
   constructor(
     @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
   ) {}
 
   async listOrders(
@@ -259,16 +264,14 @@ export class OrdersPrismaRepository implements OrdersRepository {
     requestId: string,
     note?: string,
   ): Promise<void> {
-    await this.database.auditLog.create({
-      data: {
-        actorId: 1,
-        action: `order.status.${status}`,
-        entity: "order",
-        entityId: orderId,
-        after: note !== undefined ? { status, note } : { status },
-        requestId,
-        ip: null,
-      },
+    await this.audit.recordLog({
+      actor_id: null,
+      action: `order.status.${status}`,
+      entity: "order",
+      entity_id: orderId,
+      after: note !== undefined ? { status, note } : { status },
+      request_id: requestId,
+      ip: null,
     });
   }
 
