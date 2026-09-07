@@ -3,6 +3,7 @@ import type { Order } from "@wemo/contracts";
 
 import {
   clearOrderSuccessSnapshot,
+  consumeOrderSuccessSnapshot,
   readOrderSuccessSnapshot,
   writeOrderSuccessSnapshot,
 } from "./order-success-snapshot";
@@ -65,5 +66,13 @@ describe("order success snapshot", () => {
     vi.unstubAllGlobals();
     expect(readOrderSuccessSnapshot()).toBeNull();
     expect(() => clearOrderSuccessSnapshot()).not.toThrow();
+  });
+
+  it("consumes the stored order snapshot once", () => {
+    const storage = installStorage(JSON.stringify(order));
+
+    expect(consumeOrderSuccessSnapshot()).toEqual(order);
+    expect(consumeOrderSuccessSnapshot()).toBeNull();
+    expect(storage.removeItem).toHaveBeenCalledTimes(1);
   });
 });

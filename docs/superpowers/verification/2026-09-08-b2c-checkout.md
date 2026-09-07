@@ -8,7 +8,7 @@ Branch: `feat/storefront-consumer-phase`
 
 ## Scope
 
-This evidence covers the storefront implementation for the guest checkout form, authenticated prefill boundary, order-success snapshot, cart entry point, analytics events, preview safety, and responsive empty/error states. Payment-provider integration, guest order lookup, and a cart-delete endpoint remain outside this slice.
+This evidence covers the storefront implementation for the guest checkout form, authenticated prefill boundary, order-success snapshot, cart entry point, analytics events, preview safety, responsive empty/error states, and the explicit local contract-mock path. Payment-provider integration, guest order lookup, and a cart-delete endpoint remain outside this slice.
 
 ## Automated Gate
 
@@ -17,8 +17,9 @@ All commands were run from the repository root and returned exit code `0`:
 | Command | Result |
 | --- | --- |
 | `pnpm --filter @wemo/contracts build` | `tsc -p tsconfig.build.json` passed |
+| `pnpm exec vitest run scripts/storefront-contract-mock.test.ts` | 1 test file passed; 5 tests passed; 0 failures |
 | `pnpm --filter @wemo/storefront typecheck` | `tsc --noEmit` passed |
-| `pnpm --filter @wemo/storefront test` | 11 test files passed; 21 tests passed; 0 failures |
+| `pnpm --filter @wemo/storefront test` | 12 test files passed; 23 tests passed; 0 failures |
 | `pnpm --filter @wemo/storefront build` | Next.js production build passed; `/checkout` and `/order/success` included |
 
 ## Preview Safety
@@ -32,6 +33,20 @@ The local API origin was absent/unreachable during this verification. Server HTM
 | `/order/success` | `Your order details are not here.` | none of `{Product}`, `{Price}`, `{Count}` |
 
 The preview checkout branch does not render a submit form and therefore cannot claim a successful order. The success route does not render an order number or total without a schema-validated session snapshot.
+
+## Contract Mock Verification
+
+The local-only mock server is running on `127.0.0.1:4000` because Windows reserved the planned `4010` range in this environment. The storefront runs on `localhost:3000` with `WEMO_API_ORIGIN=http://127.0.0.1:4000`, `NEXT_PUBLIC_WEMO_CONTRACT_MOCK=true`, and a same-origin Next rewrite for `/api/v1/*`.
+
+The mock uses `@wemo/contracts` for cart, checkout input, API error, and order response validation. It owns fixture prices and calculates totals server-side; client-supplied price fields are rejected. The response includes `X-Wemo-Environment: contract-mock`, and the UI visibly states: `CONTRACT MOCK ONLY. No live order will be created.`
+
+The browser completed this guest flow:
+
+- `/cart`: two fixture items, contract-mock notice, and `$76.00` estimate.
+- `/checkout`: guest form rendered with the contract-mock notice; required contact and shipping fields submitted.
+- `/order/success`: order `WMO-MOCK-D51989E8`, status `pending payment`, both fixture line items, and server-calculated `$76.00` total.
+
+The mock handler tests also cover unknown variants, malformed/strict client price fields, contract-valid cart responses, and the HTTP boundary. The order-success snapshot regression test covers one-time consumption under React Strict Mode's repeated development effect.
 
 ## Browser Checks
 
@@ -49,7 +64,7 @@ Live checkout was not exercised because the local API and middleware dependencie
 
 Follow-up startup diagnosis on Windows found that Docker Desktop 4.49.0 crashes during backend initialization with `initializing Inference manager: listening on unix://<HOME>\\AppData\\Local\\Docker\\run\\dockerInference` and `The filename, directory name, or volume label syntax is incorrect.` The engine pipe is consequently removed and `docker info` cannot connect. Disabling Docker Model Runner in the local Docker Desktop settings did not change the error, and the stale `dockerInference` runtime reparse point could not be moved by Windows. No local PostgreSQL, Redis, or MinIO executables/services are installed as an alternative runtime.
 
-The frontend adapter is wired to `POST /api/v1/checkout`, validates `CheckoutCreateSchema` before submission, validates `OrderMutationResponseSchema` after the response, and does not submit client-calculated prices. A real guest checkout, authenticated profile/address prefill, backend order response, and success snapshot still require the local API stack to be started and seeded.
+The frontend adapter is wired to `POST /api/v1/checkout`, validates `CheckoutCreateSchema` before submission, validates `OrderMutationResponseSchema` after the response, and does not submit client-calculated prices. The browser result above is contract-mock verification only; it does not create a live order or prove PostgreSQL/Redis persistence, notifications, payment behavior, or real backend authorization. A real guest checkout, authenticated profile/address prefill against live data, backend order response, and live success snapshot still require the local API stack to be started and seeded.
 
 ## Remaining Limitations
 

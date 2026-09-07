@@ -30,7 +30,7 @@
 - `handleMockRequest(method: string, pathname: string, body: unknown, requestId: string): MockHttpResponse`
 - `MockHttpResponse = { status: number; body: unknown }`
 
-- [ ] **Step 1: Write the failing handler tests**
+- [x] **Step 1: Write the failing handler tests**
 
 Create pure Vitest tests covering:
 
@@ -78,7 +78,7 @@ Run: `pnpm exec vitest run scripts/storefront-contract-mock.test.ts`
 
 Expected: FAIL because the handler module and exports do not exist.
 
-- [ ] **Step 2: Implement fixtures, validation, and error responses**
+- [x] **Step 2: Implement fixtures, validation, and error responses**
 
 Implement the smallest pure handler that:
 
@@ -92,7 +92,7 @@ Implement the smallest pure handler that:
 
 Every response body must be parsed by the relevant contract schema before it is returned from the pure handler.
 
-- [ ] **Step 3: Run the focused tests and commit the handler**
+- [x] **Step 3: Run the focused tests and commit the handler**
 
 Run: `pnpm exec vitest run scripts/storefront-contract-mock.test.ts`
 
@@ -113,7 +113,7 @@ git commit -m "feat: add contract validated storefront mock"
 - `startMockServer(port?: number): Promise<import("node:http").Server>`
 - Root command: `pnpm mock:storefront`
 
-- [ ] **Step 1: Write the HTTP boundary test**
+- [x] **Step 1: Write the HTTP boundary test**
 
 Extend the mock test file with an HTTP smoke test that starts the server on an ephemeral port, sends `GET /api/v1/cart` and `POST /api/v1/checkout` using Node's `fetch`, and asserts `200`, JSON content type, and contract-valid bodies. Close the server in `finally`.
 
@@ -121,11 +121,11 @@ Run: `pnpm exec vitest run scripts/storefront-contract-mock.test.ts`
 
 Expected: FAIL because `startMockServer` is not defined.
 
-- [ ] **Step 2: Implement the HTTP wrapper**
+- [x] **Step 2: Implement the HTTP wrapper**
 
 Use `node:http.createServer` to collect a bounded request body, generate a request ID from `x-request-id` or `mock-${randomUUID()}`, call `handleMockRequest`, and return JSON without logging request bodies. Bind to `127.0.0.1`; use `Number(process.env.WEMO_MOCK_PORT ?? 4010)` when no port argument is supplied. Print `CONTRACT MOCK ONLY` and the base URL after listening.
 
-- [ ] **Step 3: Add the root start command and run tests**
+- [x] **Step 3: Add the root start command and run tests**
 
 Add this root package script:
 
@@ -142,7 +142,7 @@ pnpm --filter @wemo/storefront typecheck
 
 Expected: mock tests pass and storefront typecheck exits `0`.
 
-- [ ] **Step 4: Commit the HTTP boundary**
+- [x] **Step 4: Commit the HTTP boundary**
 
 ```text
 git add scripts/storefront-contract-mock.ts scripts/storefront-contract-mock.test.ts package.json
@@ -162,7 +162,7 @@ git commit -m "feat: expose storefront contract mock server"
 - Public env flag: `NEXT_PUBLIC_WEMO_CONTRACT_MOCK=true`
 - Visible copy: `CONTRACT MOCK ONLY. No live order will be created.`
 
-- [ ] **Step 1: Write the failing environment assertion**
+- [x] **Step 1: Write the failing environment assertion**
 
 Write a pure test for `isContractMockMode(value: string | undefined): boolean` with `"true"` returning `true`, unset returning `false`, and `"false"` returning `false`. Keep this test free of JSX rendering dependencies.
 
@@ -170,11 +170,11 @@ Run: `pnpm --filter @wemo/storefront test -- src/features/commerce/contract-mock
 
 Expected: FAIL because `contract-mock-mode.ts` and `isContractMockMode` do not exist.
 
-- [ ] **Step 2: Implement the helper and notice**
+- [x] **Step 2: Implement the helper and notice**
 
 Implement `isContractMockMode` and render the notice in the cart and checkout live-looking states only when `isContractMockMode(process.env.NEXT_PUBLIC_WEMO_CONTRACT_MOCK)` is true. Use existing editorial typography, border, surface, and responsive tokens; do not change the source palette or show the notice in the existing preview error branch.
 
-- [ ] **Step 3: Run checks and commit**
+- [x] **Step 3: Run checks and commit**
 
 Run:
 
@@ -197,32 +197,32 @@ git commit -m "feat: label storefront contract mock mode"
 - Modify: `docs/superpowers/verification/2026-09-08-b2c-checkout.md`
 - Modify: `docs/requirements-traceability.md`
 
-- [ ] **Step 1: Start the mock server**
+- [x] **Step 1: Start the mock server**
 
-Run `pnpm mock:storefront` in a persistent terminal and confirm it prints `CONTRACT MOCK ONLY` and listens on `127.0.0.1:4010`.
+Run `pnpm mock:storefront` in a persistent terminal and confirm it prints `CONTRACT MOCK ONLY` and listens on the configured loopback port. The default is `4010`; this Windows verification used `4000` because the `4010` range was reserved.
 
-- [ ] **Step 2: Restart the storefront with explicit mock variables**
+- [x] **Step 2: Restart the storefront with explicit mock variables**
 
 Start the dev server with:
 
 ```powershell
-$env:WEMO_API_ORIGIN = "http://127.0.0.1:4010"
-$env:NEXT_PUBLIC_API_BASE_URL = "http://127.0.0.1:4010"
+$env:WEMO_API_ORIGIN = "http://127.0.0.1:4000"
+$env:NEXT_PUBLIC_API_BASE_URL = "http://127.0.0.1:4000"
 $env:NEXT_PUBLIC_WEMO_CONTRACT_MOCK = "true"
 pnpm --filter @wemo/storefront dev
 ```
 
 Verify `/cart` is live-looking rather than preview, `/checkout` renders the guest form, and the visible mock notice is present.
 
-- [ ] **Step 3: Exercise the full guest flow**
+- [x] **Step 3: Exercise the full guest flow**
 
 In the browser, fill the required contact and shipping fields and submit. Verify that the request reaches `POST /api/v1/checkout`, the mock returns a contract-valid order, the URL becomes `/order/success`, and the page shows the mock order number, status, line items, and server-calculated total.
 
-- [ ] **Step 4: Verify negative paths**
+- [x] **Step 4: Verify negative paths**
 
 Run the pure tests for malformed input and unknown variants. Confirm the frontend still displays field/API error states when the mock returns an API error. Confirm there is no order-success snapshot before a successful mock response.
 
-- [ ] **Step 5: Run final automated checks and record evidence**
+- [x] **Step 5: Run final automated checks and record evidence**
 
 Run:
 
@@ -236,9 +236,13 @@ git diff --check
 
 Update the verification document with mock server status, browser routes, mock order result, negative-path result, and the explicit statement that live backend acceptance remains pending. Mark only the mock verification slice as done; keep real B2C acceptance in-progress.
 
-- [ ] **Step 6: Commit evidence and update the plan**
+- [x] **Step 6: Commit evidence and update the plan**
 
 ```text
 git add docs/superpowers/plans/2026-09-08-storefront-contract-mock.md docs/superpowers/verification/2026-09-08-b2c-checkout.md docs/requirements-traceability.md
 git commit -m "docs: verify storefront contract mock flow"
 ```
+
+### Completion note
+
+The contract-mock slice is complete. The storefront was verified against the local mock through `/cart`, `/checkout`, and `/order/success`, including the Strict Mode-safe order snapshot consumption. This does not replace live backend acceptance: PostgreSQL, Redis, the API process, payment-provider behavior, and real order persistence remain pending.

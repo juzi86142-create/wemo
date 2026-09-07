@@ -1,20 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Order } from "@wemo/contracts";
 
 import { StatusPanel } from "../platform";
 import { formatMoney } from "./cart-adapter";
-import { clearOrderSuccessSnapshot, readOrderSuccessSnapshot } from "./order-success-snapshot";
+import { consumeOrderSuccessSnapshot } from "./order-success-snapshot";
 
 export function OrderSuccessView() {
   const [order, setOrder] = useState<Order | null>(null);
+  const consumedSnapshot = useRef(false);
 
   useEffect(() => {
-    const snapshot = readOrderSuccessSnapshot();
-    setOrder(snapshot);
-    clearOrderSuccessSnapshot();
+    if (consumedSnapshot.current) return;
+    consumedSnapshot.current = true;
+    setOrder(consumeOrderSuccessSnapshot());
   }, []);
 
   if (!order) {

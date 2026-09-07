@@ -47,3 +47,11 @@ export function clearOrderSuccessSnapshot() {
     // Session storage is optional.
   }
 }
+
+export function consumeOrderSuccessSnapshot(): Order | null {
+  const snapshot = readOrderSuccessSnapshot();
+  if (!snapshot) return null;
+
+  clearOrderSuccessSnapshot();
+  return snapshot;
+}
