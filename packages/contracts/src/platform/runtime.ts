@@ -20,6 +20,7 @@ export const RequestContextSchema = z.object({
   currency: z.string().length(3),
   ip: z.string().min(1).nullable().optional(),
   user_agent: z.string().min(1).nullable().optional(),
+  session_token: z.string().min(16).nullable().optional(),
   actor: SessionActorSchema.nullable().optional(),
 });
 

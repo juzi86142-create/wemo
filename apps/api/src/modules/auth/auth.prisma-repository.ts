@@ -1,7 +1,13 @@
-import { Inject, Injectable } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
 import type { Redis } from "ioredis";
 import type { DatabaseClient } from "@wemo/database";
 import type {
+  AccountAudience,
   AuthLoginInput,
   AuthSession,
   AuthSessionListQuery,
@@ -10,13 +16,16 @@ import type {
   IdentityUser,
   JsonValue,
 } from "@wemo/contracts";
+import { randomBytes } from "node:crypto";
 
 import {
   type AuthRepository,
   type AuthSessionListResult,
   type CreateUserInput,
   type RecordNotificationInput,
+  type RevokeOthersResult,
 } from "./auth.repository";
+import { hashPassword, verifyPassword } from "./password";
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
 import {
@@ -51,7 +60,15 @@ interface SessionRow {
   revokedAt: Date | null;
 }
 
-/** 注册登录与会话持久化在 PostgreSQL 订阅与通知投递持久化在 Redis */
+const SESSION_TTL_DAYS = 7;
+
+/** 邮箱验证令牌的 Redis hash 键 value 形状 */
+interface VerificationEntry {
+  token: string;
+  user_id: number;
+}
+
+/** 注册登录与会话持久化在 PostgreSQL 邮箱验证令牌与通知投递持久化在 Redis */
 @Injectable()
 export class AuthPrismaRepository implements AuthRepository {
   constructor(
@@ -63,7 +80,7 @@ export class AuthPrismaRepository implements AuthRepository {
     const user = await this.database.user.create({
       data: {
         email: input.email,
-        passwordHash: `hashed_${input.password}`,
+        passwordHash: hashPassword(input.password),
         name: input.name,
         audience: input.audience,
       },
@@ -81,37 +98,48 @@ export class AuthPrismaRepository implements AuthRepository {
   }
 
   async verifyEmail(input: AuthVerifyEmailInput): Promise<IdentityUser> {
+    const userId = await this.consumeEmailVerificationToken(
+      input.email,
+      input.token,
+    );
+    if (userId === null) {
+      throw new UnauthorizedException("邮箱验证令牌无效或已过期");
+    }
+
     const user = await this.database.user.update({
-      where: { email: input.email },
-      data: { verifiedAt: new Date() },
+      where: { id: userId },
+      data: { verifiedAt: new Date(), status: "active" },
     });
 
     return this.mapUser(user);
   }
 
   async authenticate(input: AuthLoginInput): Promise<IdentityUser> {
-    const user = await this.database.user.findFirst({
-      where: {
-        email: input.email,
-        passwordHash: `hashed_${input.password}`,
-      },
+    const user = await this.database.user.findUnique({
+      where: { email: input.email },
     });
 
-    if (!user) {
-      throw new Error("Invalid credentials");
+    if (!user || !verifyPassword(input.password, user.passwordHash)) {
+      throw new UnauthorizedException("邮箱或密码不正确");
+    }
+    if (user.status === "suspended" || user.status === "closed") {
+      throw new ForbiddenException("账户已停用或关闭");
     }
 
     return this.mapUser(user);
   }
 
-  async issueSession(userId: number, requestId: string): Promise<AuthSession> {
-    const token = `session_${requestId}_${userId}`;
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  async issueSession(
+    userId: number,
+    audience: AccountAudience,
+  ): Promise<AuthSession> {
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
 
     const session = await this.database.session.create({
       data: {
         userId,
-        audience: "user",
+        audience,
         token,
         expiresAt,
       },
@@ -170,6 +198,105 @@ export class AuthPrismaRepository implements AuthRepository {
     });
 
     return this.mapSession(session);
+  }
+
+  async revokeOtherSessions(
+    userId: number,
+    currentToken: string,
+  ): Promise<RevokeOthersResult> {
+    const otherSessions = await this.database.session.findMany({
+      where: {
+        userId,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+        token: { not: currentToken },
+      },
+    });
+
+    if (otherSessions.length > 0) {
+      await this.database.session.updateMany({
+        where: { id: { in: otherSessions.map((s) => s.id) } },
+        data: { revokedAt: new Date() },
+      });
+    }
+
+    const remaining = await this.database.session.findMany({
+      where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return {
+      revoked_count: otherSessions.length,
+      remaining: remaining.map((s) => this.mapSession(s)),
+    };
+  }
+
+  async storeEmailVerificationToken(
+    email: string,
+    token: string,
+    userId: number,
+  ): Promise<void> {
+    const entry: VerificationEntry = { token, user_id: userId };
+    await writeHashObject(
+      this.redis,
+      `${REDIS_KEY_PREFIX}:verifications`,
+      email,
+      entry,
+    );
+  }
+
+  async consumeEmailVerificationToken(
+    email: string,
+    token: string,
+  ): Promise<number | null> {
+    const entry = await readHashOne<VerificationEntry>(
+      this.redis,
+      `${REDIS_KEY_PREFIX}:verifications`,
+      email,
+      (raw) => JSON.parse(raw) as VerificationEntry,
+    );
+    if (!entry || entry.token !== token) {
+      return null;
+    }
+    await this.redis.hdel(`${REDIS_KEY_PREFIX}:verifications`, email);
+    return entry.user_id;
+  }
+
+  async changePassword(
+    userId: number,
+    newPassword: string,
+  ): Promise<IdentityUser> {
+    const user = await this.database.user.update({
+      where: { id: userId },
+      data: { passwordHash: hashPassword(newPassword) },
+    });
+
+    return this.mapUser(user);
+  }
+
+  async getPasswordHash(userId: number): Promise<string | null> {
+    const user = await this.database.user.findUnique({
+      where: { id: userId },
+    });
+    return user?.passwordHash ?? null;
+  }
+
+  async getActiveDealerMembership(
+    userId: number,
+  ): Promise<{ company_id: number; role: string } | null> {
+    const member = await this.database.dealerMember.findFirst({
+      where: { userId, status: "active" },
+    });
+    if (!member) {
+      return null;
+    }
+    const company = await this.database.dealerCompany.findUnique({
+      where: { id: member.companyId },
+    });
+    if (!company || company.status !== "active") {
+      return null;
+    }
+    return { company_id: member.companyId, role: member.role };
   }
 
   async upsertSubscription(
@@ -256,7 +383,6 @@ export class AuthPrismaRepository implements AuthRepository {
       token: session.token,
       user_id: session.userId,
       audience: session.audience as AuthSession["audience"],
-
       company_id: null,
       permissions: [],
       expires_at: session.expiresAt.toISOString(),

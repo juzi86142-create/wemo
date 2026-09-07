@@ -147,7 +147,15 @@ export class ApiErrorFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
     const reply = http.getResponse<FastifyReply>();
-    const requestId = this.requestContext.getRequestId();
+    const request = http.getRequest<{ id?: string }>();
+    // 监听模式下异常链可能脱离拦截器的 ALS 绑定 回退使用 Fastify 请求 ID
+    const fromContext = this.requestContext.getRequestId();
+    const requestId =
+      fromContext !== "unknown-request"
+        ? fromContext
+        : typeof request?.id === "string" && request.id
+          ? request.id
+          : fromContext;
     const { status, body } = normalizeApiError(exception, requestId);
 
     reply.header("x-request-id", requestId).status(status).send(body);

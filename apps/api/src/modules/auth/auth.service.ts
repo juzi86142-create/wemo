@@ -1,8 +1,15 @@
-import { ForbiddenException, Inject, Injectable } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
 import {
   AuthForgotPasswordSchema,
   AuthLoginSchema,
+  AuthPasswordChangeSchema,
   AuthRegisterSchema,
+  AuthRevokeOthersResponseSchema,
   AuthSessionListQuerySchema,
   AuthSessionListResponseSchema,
   AuthSessionMutationResponseSchema,
@@ -11,10 +18,12 @@ import {
   IdentityNotificationMutationResponseSchema,
   IdentityUserMutationResponseSchema,
 } from "@wemo/contracts/identity";
+import { randomBytes } from "node:crypto";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
 import { AuthPrismaRepository } from "./auth.prisma-repository";
 import { AUTH_REPOSITORY } from "./auth.repository";
+import { verifyPassword } from "./password";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
@@ -45,6 +54,13 @@ export class AuthService {
       audience: "user",
     });
 
+    const verificationToken = randomBytes(24).toString("hex");
+    await this.repository.storeEmailVerificationToken(
+      input.email,
+      verificationToken,
+      item.id,
+    );
+
     if (input.agree_marketing) {
       await this.repository.upsertSubscription(item.id, {
         channel: "newsletter",
@@ -61,7 +77,7 @@ export class AuthService {
       channel: "email",
       template_key: "account_email_verification",
       request_id: context.request_id,
-      payload: { email: item.email },
+      payload: { email: item.email, token: verificationToken },
       status: "queued",
     });
 
@@ -86,10 +102,13 @@ export class AuthService {
     const context = this.requestContext.requireContext();
     const input = parseInput(AuthLoginSchema, body);
     const user = await this.repository.authenticate(input);
-    const item = await this.repository.issueSession(
-      user.id,
-      context.request_id,
-    );
+    if (user.audience === "dealer") {
+      const member = await this.repository.getActiveDealerMembership(user.id);
+      if (!member) {
+        throw new ForbiddenException("经销商企业停用或成员关系已失效");
+      }
+    }
+    const item = await this.repository.issueSession(user.id, user.audience);
 
     return AuthSessionMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -101,6 +120,7 @@ export class AuthService {
     const context = this.requestContext.requireContext();
     const input = parseInput(AuthForgotPasswordSchema, body);
     const user = await this.repository.getUserByEmail(input.email);
+    const resetToken = user ? randomBytes(24).toString("hex") : null;
     const item = await this.repository.recordNotification({
       recipient_user_id: user?.id ?? null,
       company_id: null,
@@ -109,11 +129,30 @@ export class AuthService {
       channel: "email",
       template_key: "account_password_reset",
       request_id: context.request_id,
-      payload: { email: input.email, accepted: true },
+      payload: { email: input.email, token: resetToken, accepted: true },
       status: "queued",
     });
 
     return IdentityNotificationMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item,
+    });
+  }
+
+  async changePassword(body: unknown) {
+    const actor = this.authorization.requireActor();
+    const context = this.requestContext.requireContext();
+    const input = parseInput(AuthPasswordChangeSchema, body);
+    const passwordHash = await this.repository.getPasswordHash(actor.user_id);
+    if (!passwordHash || !verifyPassword(input.current_password, passwordHash)) {
+      throw new UnauthorizedException("当前密码不正确");
+    }
+    const item = await this.repository.changePassword(
+      actor.user_id,
+      input.new_password,
+    );
+
+    return IdentityUserMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
     });
@@ -135,6 +174,24 @@ export class AuthService {
         page_size: input.page_size,
       }),
     );
+  }
+
+  async revokeOtherSessions() {
+    const actor = this.authorization.requireActor();
+    const context = this.requestContext.requireContext();
+    const currentToken = this.requestContext.getSessionToken();
+    if (!currentToken) {
+      throw new UnauthorizedException("当前请求缺少会话令牌");
+    }
+    const result = await this.repository.revokeOtherSessions(
+      actor.user_id,
+      currentToken,
+    );
+
+    return AuthRevokeOthersResponseSchema.parse({
+      request_id: context.request_id,
+      item: result,
+    });
   }
 
   async logout(body: unknown) {

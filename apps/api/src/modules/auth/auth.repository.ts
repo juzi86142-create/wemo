@@ -36,17 +36,40 @@ export interface AuthSessionListResult {
   page_size: number;
 }
 
+export interface RevokeOthersResult {
+  revoked_count: number;
+  remaining: AuthSession[];
+}
+
 export interface AuthRepository {
   createUser(input: CreateUserInput): Promise<IdentityUser>;
   getUserByEmail(email: string): Promise<IdentityUser | null>;
   verifyEmail(input: AuthVerifyEmailInput): Promise<IdentityUser>;
   authenticate(input: AuthLoginInput): Promise<IdentityUser>;
-  issueSession(userId: number, requestId: string): Promise<AuthSession>;
+  issueSession(userId: number, audience: AccountAudience): Promise<AuthSession>;
   listSessions(
     query: AuthSessionListQuery & { user_id: number },
   ): Promise<AuthSessionListResult>;
   getSessionByToken(token: string): Promise<AuthSession | null>;
   revokeSession(token: string): Promise<AuthSession>;
+  revokeOtherSessions(
+    userId: number,
+    currentToken: string,
+  ): Promise<RevokeOthersResult>;
+  storeEmailVerificationToken(
+    email: string,
+    token: string,
+    userId: number,
+  ): Promise<void>;
+  consumeEmailVerificationToken(
+    email: string,
+    token: string,
+  ): Promise<number | null>;
+  changePassword(userId: number, newPassword: string): Promise<IdentityUser>;
+  getPasswordHash(userId: number): Promise<string | null>;
+  getActiveDealerMembership(
+    userId: number,
+  ): Promise<{ company_id: number; role: string } | null>;
   upsertSubscription(
     userId: number,
     input: { channel: string; status: string; consent_at: string },

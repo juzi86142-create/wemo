@@ -4,11 +4,9 @@ import {
   type RequestContext,
   type RequestActor,
 } from "@wemo/contracts/platform";
-import { SessionActorSchema } from "@wemo/contracts/identity";
 import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { FastifyRequest } from "fastify";
-import type { ZodIssue } from "zod";
 
 import { WemoHttpException } from "./validation";
 
@@ -23,35 +21,27 @@ function headerValue(
   return typeof value === "string" ? value : undefined;
 }
 
-function parseActorHeader(rawActor: string | undefined): RequestActor | null {
-  if (!rawActor) {
+/** 解析 Authorization Bearer 令牌 服务端会话解析不信任任何身份头 */
+export function parseBearerToken(request: FastifyRequest): string | null {
+  const authorization = headerValue(request.headers, "authorization");
+  if (!authorization) {
     return null;
   }
-
-  try {
-    const parsed = JSON.parse(rawActor) as unknown;
-    const result = SessionActorSchema.safeParse(parsed);
-    if (!result.success) {
-      throw new WemoHttpException(
-        "AUTH_CONTEXT_INVALID",
-        "认证上下文格式无效",
-        result.error.issues.map((issue: ZodIssue) => ({
-          field: issue.path.length ? issue.path.join(".") : "actor",
-          message: issue.message,
-        })),
-      );
-    }
-    return result.data;
-  } catch (error) {
-    if (error instanceof WemoHttpException) {
-      throw error;
-    }
-
-    throw new BadRequestException("x-wemo-actor 必须是合法 JSON");
+  const [scheme, token, ...rest] = authorization.split(" ");
+  if (scheme !== "Bearer" || !token || token.length < 16 || rest.length > 0) {
+    throw new WemoHttpException(
+      "AUTH_HEADER_INVALID",
+      "Authorization 头必须是 Bearer <token> 格式",
+    );
   }
+  return token;
 }
 
-export function createRequestContext(request: FastifyRequest): RequestContext {
+export function createRequestContext(
+  request: FastifyRequest,
+  actor: RequestActor | null = null,
+  sessionToken: string | null = null,
+): RequestContext {
   const requestId = request.id || randomUUID();
   const rawContext = {
     request_id: requestId,
@@ -71,7 +61,8 @@ export function createRequestContext(request: FastifyRequest): RequestContext {
       "USD",
     ip: request.ip ?? null,
     user_agent: headerValue(request.headers, "user-agent") ?? null,
-    actor: parseActorHeader(headerValue(request.headers, "x-wemo-actor")),
+    session_token: sessionToken,
+    actor,
   };
 
   return RequestContextSchema.parse(rawContext);
@@ -132,5 +123,9 @@ export class RequestContextStore {
 
   getIp(): string | null {
     return this.getContext()?.ip ?? null;
+  }
+
+  getSessionToken(): string | null {
+    return this.getContext()?.session_token ?? null;
   }
 }

@@ -44,9 +44,21 @@ export class AuthController {
     return this.authService.forgotPassword(body);
   }
 
+  @Post("change-password")
+  @HttpCode(200)
+  changePassword(@Body() body: unknown) {
+    return this.authService.changePassword(body);
+  }
+
   @Get("sessions")
   listSessions(@Query() query: unknown) {
     return this.authService.listSessions(query);
+  }
+
+  @Post("revoke-other-sessions")
+  @HttpCode(200)
+  revokeOtherSessions() {
+    return this.authService.revokeOtherSessions();
   }
 
   @Post("logout")

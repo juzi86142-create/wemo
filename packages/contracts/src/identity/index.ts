@@ -167,6 +167,24 @@ export const AuthLoginSchema = z
 export const AuthVerifyEmailSchema = z
   .object({
     email: z.string().trim().email(),
+    token: z.string().min(16).max(128),
+  })
+  .strict();
+
+export const AuthPasswordChangeSchema = z
+  .object({
+    current_password: z.string().min(1).max(128),
+    new_password: z.string().min(8).max(128),
+  })
+  .strict();
+
+export const AuthRevokeOthersResponseSchema = z
+  .object({
+    request_id: RequestIdSchema,
+    item: z.object({
+      revoked_count: z.number().int().min(0),
+      remaining: z.array(AuthSessionSchema),
+    }),
   })
   .strict();
 
@@ -301,6 +319,7 @@ export type IdentityProfileUpdate = z.infer<typeof IdentityProfileUpdateSchema>;
 export type AuthRegisterInput = z.infer<typeof AuthRegisterSchema>;
 export type AuthLoginInput = z.infer<typeof AuthLoginSchema>;
 export type AuthVerifyEmailInput = z.infer<typeof AuthVerifyEmailSchema>;
+export type AuthPasswordChangeInput = z.infer<typeof AuthPasswordChangeSchema>;
 export type AuthForgotPasswordInput = z.infer<typeof AuthForgotPasswordSchema>;
 export type AuthSessionRevokeInput = z.infer<typeof AuthSessionRevokeSchema>;
 export type AuthSessionListQuery = z.infer<typeof AuthSessionListQuerySchema>;
