@@ -22,6 +22,7 @@ import type { DatabaseClient } from "@wemo/database";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
+import { generateBusinessNo } from "../../runtime/ids";
 import {
   readHashAll,
   redisNextId,
@@ -86,7 +87,7 @@ export class DealersPrismaRepository implements DealersRepository {
     const payload = this.readRecord(input.payload);
     const application = await this.database.dealerApplication.create({
       data: {
-        applicationNo: `APP-${Date.now()}`,
+        applicationNo: generateBusinessNo("APP"),
         applicantUserId: input.applicant_user_id,
         legalName: input.legal_name,
         country: input.country,

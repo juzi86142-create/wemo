@@ -114,6 +114,7 @@ export class OrdersService {
     couponCode: string | undefined,
     subtotalMinor: number,
     market: string,
+    userId: number | null,
     identityByVariant: Map<
       number,
       { sku: string; name: string; product_id: number }
@@ -153,6 +154,9 @@ export class OrdersService {
       if (!inScope) {
         throw new ForbiddenException("折扣码不适用于订单中的商品");
       }
+    }
+    if (coupon.user_ids.length > 0 && !coupon.user_ids.includes(userId ?? -1)) {
+      throw new ForbiddenException("折扣码不适用于当前用户");
     }
     if (
       coupon.usage_limit !== null &&
@@ -251,6 +255,7 @@ export class OrdersService {
       input.coupon_code,
       subtotal_minor,
       context.market,
+      userId,
       identityByVariant,
     );
 
@@ -273,6 +278,8 @@ export class OrdersService {
         discount_minor: discount.discount_minor,
         coupon_code: discount.coupon_code,
         coupon_id: discount.coupon_id,
+        po_number: input.po_number ?? null,
+        payment_method: input.payment_method ?? null,
         cart_id: input.cart_id ?? null,
         quote_id: input.quote_id ?? null,
         note: input.note ?? null,
@@ -329,6 +336,34 @@ export class OrdersService {
     return OrderMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
+    });
+  }
+
+  /** 历史复购 重新校验当前价格库存与停售 需求 ORD-B2B-007 */
+  async reorderOrder(id: unknown) {
+    const actor = this.authorization.requireActor();
+    const parsedId = parseInput(OrderIdParamSchema, { id });
+    const order = await this.repository.getOrderById(parsedId.id);
+    if (!order) {
+      throw new NotFoundException("订单不存在");
+    }
+    if (
+      actor.audience !== "staff" &&
+      order.user_id !== actor.user_id &&
+      order.company_id !== actor.company_id
+    ) {
+      throw new ForbiddenException("不能复购其他订单");
+    }
+    const items = await this.repository.getOrderItems(parsedId.id);
+
+    return this.createOrder({
+      channel: order.channel,
+      items: items.map((item) => ({
+        variant_id: item.variant_id,
+        quantity: item.quantity,
+      })),
+      address_snapshot: order.address_snapshot,
+      note: `复购自订单 ${order.order_no}`,
     });
   }
 

@@ -65,6 +65,7 @@ export class CouponRedisRepository implements CouponRepository {
       min_amount_minor: input.min_amount_minor ?? null,
       market: input.market ?? null,
       product_ids: input.product_ids ?? [],
+      user_ids: input.user_ids ?? [],
       usage_limit: input.usage_limit ?? null,
       usage_count: usageCount ?? 0,
       valid_from: input.valid_from ?? null,
@@ -86,12 +87,15 @@ export class CouponRedisRepository implements CouponRepository {
       (raw) => Number(raw),
     );
     if (id === null) return null;
-    return readHashOne<Coupon>(
+    const coupon = await readHashOne<Coupon>(
       this.redis,
       COUPONS_KEY,
       id,
       (raw) => JSON.parse(raw) as Coupon,
     );
+    if (coupon === null) return null;
+    // 旧记录无 user_ids 视为不限用户
+    return { ...coupon, user_ids: coupon.user_ids ?? [] };
   }
 
   async recordUsage(couponId: number): Promise<number> {

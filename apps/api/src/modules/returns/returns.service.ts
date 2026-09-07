@@ -90,6 +90,21 @@ export class ReturnsService {
     if (!refundable.has(order.status)) {
       throw new ForbiddenException("当前订单状态不支持售后");
     }
+    // 售后行项必须属于该订单且数量不超过订购量 需求 USR-007
+    const orderItems = await this.ordersRepository.getOrderItems(input.order_id);
+    for (const line of input.items) {
+      const orderItem = orderItems.find((row) => row.id === line.order_item_id);
+      if (!orderItem) {
+        throw new ForbiddenException(
+          `订单行 ${line.order_item_id} 不属于该订单`,
+        );
+      }
+      if (line.quantity > orderItem.quantity) {
+        throw new ForbiddenException(
+          `订单行 ${line.order_item_id} 退货数量超过订购量`,
+        );
+      }
+    }
     const item = await this.repository.createReturn({
       ...input,
       user_id: actor.audience === "staff" ? null : actor.user_id,

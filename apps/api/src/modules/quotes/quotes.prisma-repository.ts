@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import type { DatabaseClient } from "@wemo/database";
 import type {
   JsonValue,
@@ -210,6 +215,60 @@ export class QuotesPrismaRepository implements QuotesRepository {
     const updated = await this.loadQuote(id);
     if (!updated) {
       throw new Error(`报价评审后读取失败: ${id}`);
+    }
+    return updated;
+  }
+
+  async acceptQuote(
+    id: number,
+    actorId: number,
+    requestId: string,
+    note?: string,
+  ): Promise<Quote> {
+    const current = await this.database.quote.findUnique({ where: { id } });
+    if (!current) {
+      throw new NotFoundException(`报价 ${id} 不存在`);
+    }
+    if (current.status !== "quoted") {
+      throw new ConflictException("仅已报价状态可接受");
+    }
+
+    const versions = await this.database.quoteVersion.findMany({
+      where: { quoteId: id },
+      orderBy: { version: "asc" },
+    });
+    const previous = versions[versions.length - 1];
+    const prevSnapshot = readSnapshot(previous?.snapshot);
+
+    await this.database.$transaction(async (tx) => {
+      await tx.quote.update({
+        where: { id },
+        data: {
+          status: "accepted",
+          currentVersion: { increment: 1 },
+        },
+      });
+      await tx.quoteVersion.create({
+        data: {
+          quoteId: id,
+          version: current.currentVersion + 1,
+          createdBy: actorId,
+          snapshot: {
+            items: prevSnapshot.items ?? [],
+            pricing_snapshot: prevSnapshot.pricing_snapshot ?? {},
+            terms_snapshot: prevSnapshot.terms_snapshot ?? {},
+            status: "accepted",
+            valid_until: prevSnapshot.valid_until ?? new Date().toISOString(),
+            requested_by_user_id: prevSnapshot.requested_by_user_id ?? null,
+            ...(note !== undefined ? { note } : {}),
+          } as unknown as SnapshotWrite,
+        },
+      });
+    });
+
+    const updated = await this.loadQuote(id);
+    if (!updated) {
+      throw new Error(`报价接受后读取失败: ${id}`);
     }
     return updated;
   }

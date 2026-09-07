@@ -30,5 +30,6 @@ export interface QuotesRepository {
   listVersions(quoteId: number): Promise<QuoteVersion[]>;
   createQuote(input: QuoteCreateRecord): Promise<Quote>;
   reviewQuote(id: number, input: QuoteReviewRecord, reviewerId: number, requestId: string): Promise<Quote>;
+  acceptQuote(id: number, actorId: number, requestId: string, note?: string): Promise<Quote>;
   convertToOrder(quoteId: number, input: QuoteConvertRecord, actorId: number, requestId: string): Promise<Quote>;
 }

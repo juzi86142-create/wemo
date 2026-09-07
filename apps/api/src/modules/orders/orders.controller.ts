@@ -63,6 +63,12 @@ export class OrdersController {
     return this.ordersService.listShipments(id);
   }
 
+  @Post("orders/:id/reorder")
+  @HttpCode(200)
+  reorderOrder(@Param("id") id: string) {
+    return this.ordersService.reorderOrder(id);
+  }
+
   @Post("admin/orders/:id/shipments")
   @HttpCode(200)
   createShipment(@Param("id") id: string, @Body() body: unknown) {

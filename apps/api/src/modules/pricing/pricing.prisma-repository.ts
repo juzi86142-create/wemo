@@ -73,7 +73,10 @@ export class PricingPrismaRepository implements PricingRepository {
     }
 
     const items: PricePreviewItem[] = input.items.map(item => {
-      const price = this.pickPrice(byVariant.get(item.variant_id) ?? [], input);
+      const price = this.pickPrice(byVariant.get(item.variant_id) ?? [], {
+        ...input,
+        quantity: item.quantity,
+      });
       const unitPrice = price?.amountMinor ?? 0;
       return {
         variant_id: item.variant_id,
@@ -185,6 +188,7 @@ export class PricingPrismaRepository implements PricingRepository {
       dealer_company_id?: number | undefined;
       dealer_tier_id?: number | undefined;
       price_list_id?: number | undefined;
+      quantity: number;
     },
   ): PriceRow | null {
     if (candidates.length === 0) return null;
@@ -204,8 +208,14 @@ export class PricingPrismaRepository implements PricingRepository {
         price.priceListId === null,
     ];
     for (const matches of matchers) {
-      const hit = candidates.find(matches);
-      if (hit) return hit;
+      const tier = candidates.filter(matches);
+      if (tier.length === 0) continue;
+      // 阶梯价按采购数量选档 取满足数量的最高档 需求 6.4/9.2
+      const applicable = tier.filter(
+        price => price.minQuantity <= input.quantity,
+      );
+      const hit = applicable.sort((a, b) => b.minQuantity - a.minQuantity)[0];
+      return hit ?? null;
     }
     return candidates[0] ?? null;
   }

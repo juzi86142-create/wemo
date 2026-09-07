@@ -365,6 +365,7 @@ export const CouponSchema = z
     min_amount_minor: z.number().int().nonnegative().nullable(),
     market: z.string().min(1).nullable(),
     product_ids: z.array(EntityIdSchema),
+    user_ids: z.array(EntityIdSchema),
     usage_limit: z.number().int().positive().nullable(),
     usage_count: z.number().int().nonnegative(),
     valid_from: z.string().datetime().nullable(),
@@ -384,6 +385,8 @@ export const CouponUpsertSchema = z
     min_amount_minor: z.number().int().nonnegative().nullable().optional(),
     market: z.string().min(1).nullable().optional(),
     product_ids: z.array(EntityIdSchema).default([]),
+    // 限定用户 空为不限 需求 ADM-PR-004
+    user_ids: z.array(EntityIdSchema).default([]),
     usage_limit: z.number().int().positive().nullable().optional(),
     valid_from: z.string().datetime().nullable().optional(),
     valid_to: z.string().datetime().nullable().optional(),
@@ -544,6 +547,9 @@ export const OrderCreateSchema = z
     cart_id: EntityIdSchema.optional(),
     quote_id: EntityIdSchema.optional(),
     coupon_code: z.string().trim().min(1).optional(),
+    // B2B 采购订单号与结算方式 需求 ORD-B2B-001/002
+    po_number: z.string().trim().min(1).optional(),
+    payment_method: z.string().trim().min(1).optional(),
     note: z.string().min(1).optional(),
   })
   .strict();
@@ -708,6 +714,13 @@ export const QuoteReviewSchema = z
     decision: z.enum(["under_review", "quoted", "rejected", "expired"]),
     note: z.string().min(1).optional(),
     terms_snapshot: JsonValueSchema.optional(),
+  })
+  .strict();
+
+/** 经销商接受报价 需求 QTE-004 */
+export const QuoteAcceptSchema = z
+  .object({
+    note: z.string().min(1).optional(),
   })
   .strict();
 

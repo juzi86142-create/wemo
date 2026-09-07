@@ -264,6 +264,14 @@ export class OrdersPrismaRepository implements OrdersRepository {
     return stock;
   }
 
+  async getOrderItems(orderId: number): Promise<OrderItem[]> {
+    const items = await this.database.orderItem.findMany({
+      where: { orderId },
+      orderBy: { id: "asc" },
+    });
+    return items.map((item) => this.mapItem(item));
+  }
+
   async listShipments(orderId: number): Promise<Shipment[]> {
     const rows = await this.database.shipment.findMany({
       where: { orderId },

@@ -46,6 +46,8 @@ export interface OrdersRepository {
   ): Promise<Map<number, { sku: string; name: string; product_id: number }>>;
   /** 变体可售库存合计 */
   getAvailableStock(variantIds: number[], market: string): Promise<Map<number, number>>;
+  /** 订单行明细 供退货行项校验与复购 */
+  getOrderItems(orderId: number): Promise<OrderItem[]>;
   /** 分批发货 需求 ORD-B2B-005/ADM-O-005 */
   listShipments(orderId: number): Promise<Shipment[]>;
   createShipment(

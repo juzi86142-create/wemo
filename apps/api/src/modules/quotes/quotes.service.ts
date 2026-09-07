@@ -7,6 +7,7 @@ import {
   QuoteMutationResponseSchema,
   QuoteVersionListResponseSchema,
   QuoteReviewSchema,
+  QuoteAcceptSchema,
 } from "@wemo/contracts/commerce";
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
@@ -135,6 +136,42 @@ export class QuotesService {
         status: item.status,
         decision: payload.decision,
       },
+    });
+
+    return QuoteMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item,
+    });
+  }
+
+  /** 经销商接受报价 需求 QTE-004 接受后可转订单 */
+  async acceptQuote(id: unknown, body: unknown) {
+    const context = this.requestContext.requireContext();
+    const actor = this.authorization.requireActor();
+    const parsedId = parseInput(QuoteIdParamSchema, { id });
+    const input = parseInput(QuoteAcceptSchema, body);
+    const before = await this.repository.getQuoteById(parsedId.id);
+    if (!before) {
+      throw new ConflictException("报价不存在");
+    }
+    if (actor.audience !== "staff" && before.company_id !== actor.company_id) {
+      throw new ForbiddenException("不能接受其他企业报价");
+    }
+    const item = await this.repository.acceptQuote(
+      parsedId.id,
+      actor.user_id,
+      context.request_id,
+      input.note,
+    );
+
+    await this.notifications.emitBusinessNotification({
+      template_code: "quote_accepted",
+      recipient_user_id: before.requested_by_user_id,
+      company_id: before.company_id,
+      audience: "dealer",
+      channel: "email",
+      request_id: context.request_id,
+      payload: { quote_id: item.id, status: item.status },
     });
 
     return QuoteMutationResponseSchema.parse({
