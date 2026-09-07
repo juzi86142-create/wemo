@@ -35,6 +35,12 @@ export class OrdersController {
     return this.ordersService.createOrder(body);
   }
 
+  @Post("checkout")
+  @HttpCode(200)
+  checkout(@Body() body: unknown) {
+    return this.ordersService.checkout(body);
+  }
+
   @Patch("orders/:id/status")
   @HttpCode(200)
   updateStatus(@Param("id") id: string, @Body() body: unknown) {

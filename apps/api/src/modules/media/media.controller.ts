@@ -28,6 +28,16 @@ export class MediaController {
     return this.mediaService.getAsset(id);
   }
 
+  @Get("downloads")
+  listDownloads(@Query() query: unknown) {
+    return this.mediaService.listDownloads(query);
+  }
+
+  @Get("dealer/downloads")
+  listDealerDownloads(@Query() query: unknown) {
+    return this.mediaService.listDealerDownloads(query);
+  }
+
   @Get("media/assets/:id/signed-url")
   getSignedUrl(@Param("id") id: string) {
     return this.mediaService.getSignedUrl(id);

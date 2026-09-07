@@ -1,5 +1,6 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import {
+  CheckoutCreateSchema,
   OrderCreateSchema,
   OrderListQuerySchema,
   OrderListResponseSchema,
@@ -75,6 +76,23 @@ export class OrdersService {
     return OrderMutationResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,
       item,
+    });
+  }
+
+  async checkout(body: unknown) {
+    const input = parseInput(CheckoutCreateSchema, body);
+    return this.createOrder({
+      channel: "b2c",
+      items: input.items,
+      address_snapshot: {
+        contact: input.contact,
+        shipping_address: input.shipping_address,
+        billing_address: input.billing_address ?? null,
+        shipping_method: input.shipping_method ?? null,
+        coupon_code: input.coupon_code ?? null,
+        payment_method: input.payment_method ?? null,
+      },
+      note: input.note,
     });
   }
 

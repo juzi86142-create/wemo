@@ -12,7 +12,13 @@ import type {
 } from "@wemo/contracts";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
-import { type Page, CATALOG_REPOSITORY, type CatalogRepository } from "./catalog.repository";
+import {
+  type Page,
+  CATALOG_REPOSITORY,
+  type CatalogRepository,
+  type DealerCatalogBaseRow,
+  type DealerCatalogContext,
+} from "./catalog.repository";
 
 type ProductRow = NonNullable<
   Awaited<ReturnType<DatabaseClient["product"]["findFirst"]>>
@@ -641,5 +647,137 @@ export class CatalogPrismaRepository implements CatalogRepository {
     } else {
       await this.database.variant.create({ data: { productId, ...data } });
     }
+  }
+
+  async getDealerCatalogContext(
+    companyId: number,
+  ): Promise<DealerCatalogContext | null> {
+    const company = await this.database.dealerCompany.findUnique({
+      where: { id: companyId },
+    });
+    if (!company) {
+      return null;
+    }
+    const terms = asRecord(company.terms) ?? {};
+    return {
+      tier_id: company.tierId,
+      price_list_id: company.priceListId,
+      currency: company.currency,
+      authorized_category_slugs: readStringList(terms, "authorized_categories"),
+    };
+  }
+
+  async listDealerCatalogBase(options: {
+    market: string;
+    locale: string;
+    categorySlugs: string[];
+  }): Promise<DealerCatalogBaseRow[]> {
+    const categoryWhere =
+      options.categorySlugs.length > 0
+        ? { slug: { in: options.categorySlugs } }
+        : {};
+    const categories = await this.database.category.findMany({
+      where: categoryWhere as never,
+    });
+    const categoryIds = categories.map((category) => category.id);
+
+    const products = await this.database.product.findMany({
+      where: {
+        status: "active",
+        ...(categoryIds.length > 0
+          ? { primaryCategoryId: { in: categoryIds } }
+          : {}),
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (products.length === 0) {
+      return [];
+    }
+    const productIds = products.map((product) => product.id);
+
+    const [translations, variants] = await Promise.all([
+      this.database.productTranslation.findMany({
+        where: { productId: { in: productIds } },
+      }),
+      this.database.variant.findMany({
+        where: { productId: { in: productIds }, status: "active" },
+      }),
+    ]);
+
+    const translationByProduct = new Map<number, TranslationRow>();
+    for (const translation of translations) {
+      const existing = translationByProduct.get(translation.productId);
+      if (existing) continue;
+      if (
+        translation.market === options.market &&
+        translation.locale === options.locale
+      ) {
+        translationByProduct.set(translation.productId, translation);
+      }
+    }
+    for (const translation of translations) {
+      if (!translationByProduct.has(translation.productId)) {
+        translationByProduct.set(translation.productId, translation);
+      }
+    }
+
+    return products.flatMap((product) => {
+      const translation = translationByProduct.get(product.id);
+      return variants
+        .filter((variant) => variant.productId === product.id)
+        .map((variant) => ({
+          product_id: product.id,
+          slug: translation?.slug ?? `product-${product.id}`,
+          name: translation?.name ?? `Product ${product.id}`,
+          category_id: product.primaryCategoryId,
+          variant_id: variant.id,
+          sku: variant.sku,
+          specifications: variant.specifications,
+        }));
+    });
+  }
+
+  async getAvailableStock(
+    variantIds: number[],
+    market: string,
+  ): Promise<Map<number, number>> {
+    const balances = await this.database.inventoryBalance.findMany({
+      where: { variantId: { in: variantIds }, market },
+    });
+    const stockByVariant = new Map<number, number>();
+    for (const balance of balances) {
+      stockByVariant.set(
+        balance.variantId,
+        (stockByVariant.get(balance.variantId) ?? 0) + balance.available,
+      );
+    }
+    return stockByVariant;
+  }
+
+  async getVariantBySku(sku: string): Promise<DealerCatalogBaseRow | null> {
+    const variant = await this.database.variant.findFirst({
+      where: { sku, status: "active" },
+    });
+    if (!variant) {
+      return null;
+    }
+    const product = await this.database.product.findUnique({
+      where: { id: variant.productId },
+    });
+    if (!product || product.status !== "active") {
+      return null;
+    }
+    const translation = await this.database.productTranslation.findFirst({
+      where: { productId: product.id },
+    });
+    return {
+      product_id: product.id,
+      slug: translation?.slug ?? `product-${product.id}`,
+      name: translation?.name ?? `Product ${product.id}`,
+      category_id: product.primaryCategoryId,
+      variant_id: variant.id,
+      sku: variant.sku,
+      specifications: variant.specifications,
+    };
   }
 }

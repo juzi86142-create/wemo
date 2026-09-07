@@ -46,6 +46,17 @@ export class CatalogController {
     return this.catalogService.listProducts(query);
   }
 
+  @Get("dealer/catalog")
+  dealerCatalog(@Query() query: unknown) {
+    return this.catalogService.dealerCatalog(query);
+  }
+
+  @Post("dealer/quick-order")
+  @HttpCode(200)
+  quickOrder(@Body() body: unknown) {
+    return this.catalogService.quickOrder(body);
+  }
+
   @Get("admin/catalog/products")
   listAdminProducts(@Query() query: unknown) {
     return this.catalogService.listAdminProducts(query);

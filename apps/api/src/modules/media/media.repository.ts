@@ -15,6 +15,10 @@ export type MediaAssetPage = {
 
 export interface MediaRepository {
   listAssets(query: MediaAssetListQuery): Promise<MediaAssetPage>;
+  listAssetsByVisibilities(
+    visibilities: string[],
+    query: MediaAssetListQuery,
+  ): Promise<MediaAssetPage>;
   getAssetById(id: number): Promise<MediaAsset | null>;
   createAsset(input: MediaAssetCreateInput): Promise<MediaAsset>;
 }

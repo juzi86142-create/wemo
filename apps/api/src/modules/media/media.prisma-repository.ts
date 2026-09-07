@@ -20,6 +20,16 @@ export class MediaPrismaRepository implements MediaRepository {
     @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
   ) {}
 
+  async listAssetsByVisibilities(
+    visibilities: string[],
+    query: MediaAssetListQuery,
+  ): Promise<MediaAssetPage> {
+    return this.listAssetsWhere(
+      { visibility: { in: visibilities } },
+      query,
+    );
+  }
+
   async listAssets(query: MediaAssetListQuery): Promise<MediaAssetPage> {
     const where: Record<string, unknown> = {};
     if (query.visibility !== undefined) where.visibility = query.visibility;
@@ -27,6 +37,13 @@ export class MediaPrismaRepository implements MediaRepository {
     if (query.q !== undefined) {
       where.OR = [{ fileKey: { contains: query.q } }, { alt: { contains: query.q } }];
     }
+    return this.listAssetsWhere(where, query);
+  }
+
+  private async listAssetsWhere(
+    where: Record<string, unknown>,
+    query: MediaAssetListQuery,
+  ): Promise<MediaAssetPage> {
 
     const [rows, total] = await Promise.all([
       this.database.mediaAsset.findMany({

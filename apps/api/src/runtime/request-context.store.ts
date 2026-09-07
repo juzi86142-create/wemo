@@ -50,7 +50,7 @@ export function createRequestContext(
     market:
       headerValue(request.headers, "x-wemo-market") ??
       process.env.WEMO_DEFAULT_MARKET ??
-      "global",
+      "US",
     locale:
       headerValue(request.headers, "x-wemo-locale") ??
       process.env.WEMO_DEFAULT_LOCALE ??

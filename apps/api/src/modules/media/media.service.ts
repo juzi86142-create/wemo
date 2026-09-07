@@ -72,6 +72,25 @@ export class MediaService {
     return MediaAssetListResponseSchema.parse(result);
   }
 
+  async listDownloads(query: unknown) {
+    const parsed = parseInput(MediaAssetListQuerySchema, query);
+    const result = await this.repository.listAssetsByVisibilities(
+      ["public"],
+      parsed,
+    );
+    return MediaAssetListResponseSchema.parse(result);
+  }
+
+  async listDealerDownloads(query: unknown) {
+    this.authorization.requireAudience("dealer", "staff");
+    const parsed = parseInput(MediaAssetListQuerySchema, query);
+    const result = await this.repository.listAssetsByVisibilities(
+      ["public", "dealer"],
+      parsed,
+    );
+    return MediaAssetListResponseSchema.parse(result);
+  }
+
   async getAsset(id: unknown) {
     const parsed = parseInput(MediaIdParamSchema, { id });
     const asset = await this.repository.getAssetById(parsed.id);
