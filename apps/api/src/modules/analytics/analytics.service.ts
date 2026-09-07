@@ -7,7 +7,7 @@ import {
 } from "@wemo/contracts/platform";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { AnalyticsPrismaRepository } from "./analytics.prisma-repository";
+import { AnalyticsRedisRepository } from "./analytics.redis-repository";
 import { ANALYTICS_REPOSITORY } from "./analytics.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
@@ -16,7 +16,7 @@ import { parseInput } from "../../runtime/validation";
 export class AnalyticsService {
   constructor(
     @Inject(ANALYTICS_REPOSITORY)
-    private readonly repository: AnalyticsPrismaRepository,
+    private readonly repository: AnalyticsRedisRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)

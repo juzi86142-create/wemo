@@ -2,7 +2,7 @@ import { Module } from "@nestjs/common";
 
 import { DatabaseModule } from "../../database/database.module";
 import { ReportsController } from "./reports.controller";
-import { ReportsPrismaRepository } from "./reports.prisma-repository";
+import { ReportsRedisRepository } from "./reports.redis-repository";
 import { REPORTS_REPOSITORY } from "./reports.repository";
 import { ReportsService } from "./reports.service";
 
@@ -13,7 +13,7 @@ import { ReportsService } from "./reports.service";
     ReportsService,
     {
       provide: REPORTS_REPOSITORY,
-      useClass: ReportsPrismaRepository,
+      useClass: ReportsRedisRepository,
     },
   ],
 })

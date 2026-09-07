@@ -8,7 +8,7 @@ import {
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { ReportsPrismaRepository } from "./reports.prisma-repository";
+import { ReportsRedisRepository } from "./reports.redis-repository";
 import { REPORTS_REPOSITORY } from "./reports.repository";
 import { parseInput } from "../../runtime/validation";
 import { RequestContextStore } from "../../runtime/request-context.store";
@@ -21,7 +21,7 @@ const ReportKindParamSchema = z.object({
 export class ReportsService {
   constructor(
     @Inject(REPORTS_REPOSITORY)
-    private readonly repository: ReportsPrismaRepository,
+    private readonly repository: ReportsRedisRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)

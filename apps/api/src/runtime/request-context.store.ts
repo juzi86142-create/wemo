@@ -85,6 +85,15 @@ export class RequestContextStore {
     return this.storage.run(context, callback);
   }
 
+  /**
+   * 将 context 绑定到当前异步执行链（含 done() 之后的后续 handler）。
+   * HTTP 请求入口必须用 enterWith 而非 run：run 的 callback 返回后
+   * 后续 Fastify handler 会脱离 context。
+   */
+  enterWith(context: RequestContext): void {
+    this.storage.enterWith(context);
+  }
+
   getContext(): RequestContext | null {
     return this.storage.getStore() ?? null;
   }

@@ -13,7 +13,7 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { NotificationsPrismaRepository } from "./notifications.prisma-repository";
+import { NotificationsRedisRepository } from "./notifications.redis-repository";
 import { NOTIFICATIONS_REPOSITORY } from "./notifications.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
@@ -29,7 +29,7 @@ const NotificationDeliveryIdParamSchema = z.object({
 export class NotificationsService {
   constructor(
     @Inject(NOTIFICATIONS_REPOSITORY)
-    private readonly repository: NotificationsPrismaRepository,
+    private readonly repository: NotificationsRedisRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)

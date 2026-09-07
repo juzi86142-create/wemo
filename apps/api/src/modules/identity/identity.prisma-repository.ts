@@ -1,4 +1,5 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import type { Redis } from "ioredis";
 import type { DatabaseClient } from "@wemo/database";
 import type {
   AccountAudience,
@@ -15,8 +16,10 @@ import type {
   IdentitySubscriptionUpsertInput,
   IdentityUser,
 } from "@wemo/contracts";
+import { randomUUID } from "node:crypto";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
+import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
 import {
   type CreateDataRequestInput,
   type CreateRoleInput,
@@ -26,6 +29,22 @@ import {
   type IdentityUserListResult,
   type UpdateRoleInput,
 } from "./identity.repository";
+
+function userAddressesKey(userId: number): string {
+  return `${REDIS_KEY_PREFIX}:user:${userId}:addresses`;
+}
+
+function userSubscriptionsKey(userId: number): string {
+  return `${REDIS_KEY_PREFIX}:user:${userId}:subscriptions`;
+}
+
+function userDataRequestsKey(userId: number): string {
+  return `${REDIS_KEY_PREFIX}:user:${userId}:data-requests`;
+}
+
+function notificationDeliveriesKey(): string {
+  return `${REDIS_KEY_PREFIX}:notifications:deliveries`;
+}
 
 /** users 表行的最小形状（无 relation，纯标量字段） */
 interface UserRow {
@@ -41,9 +60,13 @@ interface UserRow {
   updatedAt: Date;
 }
 
+/** 用户账号与角色持久化在 PostgreSQL 地址 订阅 数据请求 通知持久化在 Redis */
 @Injectable()
 export class IdentityPrismaRepository implements IdentityRepository {
-  constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
+  constructor(
+    @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+  ) {}
 
   async getUserById(id: number): Promise<IdentityUser | null> {
     const user = await this.database.user.findUnique({
@@ -53,7 +76,10 @@ export class IdentityPrismaRepository implements IdentityRepository {
     return user ? this.mapUser(user) : null;
   }
 
-  async updateProfile(userId: number, input: IdentityProfileUpdate): Promise<IdentityUser> {
+  async updateProfile(
+    userId: number,
+    input: IdentityProfileUpdate,
+  ): Promise<IdentityUser> {
     const user = await this.database.user.update({
       where: { id: userId },
       data: {
@@ -66,37 +92,89 @@ export class IdentityPrismaRepository implements IdentityRepository {
     return this.mapUser(user);
   }
 
-  // addresses 表已删除：Demo 模式返回空列表
-  async listAddresses(_userId: number): Promise<IdentityAddress[]> {
-    return [];
+  async listAddresses(userId: number): Promise<IdentityAddress[]> {
+    const raw = await this.redis.hgetall(userAddressesKey(userId));
+    return Object.entries(raw)
+      .map(([, value]) => JSON.parse(value) as IdentityAddress)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
   }
 
-  async upsertAddress(_userId: number, _input: IdentityAddressCreateInput): Promise<IdentityAddress> {
-    throw new Error("Demo模式：暂不支持地址本");
+  async upsertAddress(
+    userId: number,
+    input: IdentityAddressCreateInput,
+  ): Promise<IdentityAddress> {
+    const now = new Date().toISOString();
+    const address: IdentityAddress = {
+      id: await this.redis.incr(
+        `${REDIS_KEY_PREFIX}:user:${userId}:addresses:next`,
+      ),
+      user_id: userId,
+      kind: input.kind,
+      payload: input.payload,
+      created_at: now,
+    };
+    await this.redis.hset(
+      userAddressesKey(userId),
+      String(address.id),
+      JSON.stringify(address),
+    );
+    return address;
   }
 
-  async createAddress(_userId: number, _input: IdentityAddressCreateInput): Promise<IdentityAddress> {
-    throw new Error("Demo模式：暂不支持地址本");
+  async createAddress(
+    userId: number,
+    input: IdentityAddressCreateInput,
+  ): Promise<IdentityAddress> {
+    return this.upsertAddress(userId, input);
   }
 
-  // addresses 表已删除：Demo 模式空实现
-  async deleteAddress(_userId: number, _addressId: number): Promise<void> {
-    // 无 DB 写入
+  async deleteAddress(userId: number, addressId: number): Promise<void> {
+    await this.redis.hdel(userAddressesKey(userId), String(addressId));
   }
 
-  // subscriptions 表已删除：Demo 模式返回空列表
-  async listSubscriptions(_userId: number): Promise<IdentitySubscription[]> {
-    return [];
+  async listSubscriptions(userId: number): Promise<IdentitySubscription[]> {
+    const raw = await this.redis.hgetall(userSubscriptionsKey(userId));
+    return Object.entries(raw)
+      .map(([, value]) => JSON.parse(value) as IdentitySubscription)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
   }
 
   async upsertSubscription(
-    _userId: number,
-    _input: IdentitySubscriptionUpsertInput,
+    userId: number,
+    input: IdentitySubscriptionUpsertInput,
   ): Promise<IdentitySubscription> {
-    throw new Error("Demo模式：暂不支持订阅偏好");
+    const existing = await this.redis.hget(
+      userSubscriptionsKey(userId),
+      input.channel,
+    );
+    const now = new Date().toISOString();
+    const subscription: IdentitySubscription = existing
+      ? {
+          ...(JSON.parse(existing) as IdentitySubscription),
+          status: input.status,
+          consent_at: input.consent_at ?? now,
+        }
+      : {
+          id: await this.redis.incr(
+            `${REDIS_KEY_PREFIX}:user:${userId}:subscriptions:next`,
+          ),
+          user_id: userId,
+          channel: input.channel,
+          status: input.status,
+          consent_at: input.consent_at ?? now,
+          created_at: now,
+        };
+    await this.redis.hset(
+      userSubscriptionsKey(userId),
+      input.channel,
+      JSON.stringify(subscription),
+    );
+    return subscription;
   }
 
-  async listUsers(query: IdentityUserListQuery): Promise<IdentityUserListResult> {
+  async listUsers(
+    query: IdentityUserListQuery,
+  ): Promise<IdentityUserListResult> {
     const where: Record<string, unknown> = {};
     if (query.email) where.email = { contains: query.email };
     if (query.status) where.status = query.status;
@@ -113,7 +191,7 @@ export class IdentityPrismaRepository implements IdentityRepository {
     ]);
 
     return {
-      items: users.map(u => this.mapUser(u)),
+      items: users.map((u) => this.mapUser(u)),
       total,
       page: query.page,
       page_size: query.page_size,
@@ -128,7 +206,10 @@ export class IdentityPrismaRepository implements IdentityRepository {
     return user ? this.mapUser(user) : null;
   }
 
-  async updateUserStatus(userId: number, status: AccountStatus): Promise<IdentityUser> {
+  async updateUserStatus(
+    userId: number,
+    status: AccountStatus,
+  ): Promise<IdentityUser> {
     const user = await this.database.user.update({
       where: { id: userId },
       data: { status },
@@ -147,11 +228,10 @@ export class IdentityPrismaRepository implements IdentityRepository {
 
   async listRoles(): Promise<IdentityRole[]> {
     const roles = await this.database.role.findMany();
-    return roles.map(r => this.mapRole(r));
+    return roles.map((r) => this.mapRole(r));
   }
 
   async createRole(input: CreateRoleInput): Promise<IdentityRole> {
-    // roles 表无 permissions 列，权限写入走 user_roles.overrides（见 setUserPermissions）
     const role = await this.database.role.create({
       data: {
         code: input.code,
@@ -163,7 +243,10 @@ export class IdentityPrismaRepository implements IdentityRepository {
     return this.mapRole(role);
   }
 
-  async updateRole(roleId: number, input: UpdateRoleInput): Promise<IdentityRole> {
+  async updateRole(
+    roleId: number,
+    input: UpdateRoleInput,
+  ): Promise<IdentityRole> {
     const role = await this.database.role.update({
       where: { id: roleId },
       data: input.name !== undefined ? { name: input.name } : {},
@@ -178,24 +261,53 @@ export class IdentityPrismaRepository implements IdentityRepository {
 
   async listPermissions(): Promise<string[]> {
     return [
-      "account:read", "account:write",
-      "orders:read", "orders:write",
-      "dealer:read", "dealer:write",
-      "catalog:read", "catalog:write",
+      "account:read",
+      "account:write",
+      "orders:read",
+      "orders:write",
+      "dealer:read",
+      "dealer:write",
+      "catalog:read",
+      "catalog:write",
     ];
   }
 
-  // data_requests 表已删除：Demo 模式不支持导出请求
-  async createDataRequest(_userId: number, _input: CreateDataRequestInput): Promise<IdentityDataRequest> {
-    throw new Error("Demo模式：暂不支持数据导出请求");
+  async createDataRequest(
+    userId: number,
+    input: CreateDataRequestInput,
+  ): Promise<IdentityDataRequest> {
+    const now = new Date().toISOString();
+    const request: IdentityDataRequest = {
+      id: await this.redis.incr(
+        `${REDIS_KEY_PREFIX}:user:${userId}:data-requests:next`,
+      ),
+      user_id: userId,
+      kind: input.kind,
+      status: "requested",
+      request_id: input.request_id || randomUUID(),
+      notes: input.notes,
+      created_at: now,
+      completed_at: null,
+    };
+    await this.redis.hset(
+      userDataRequestsKey(userId),
+      String(request.id),
+      JSON.stringify(request),
+    );
+    return request;
   }
 
-  async listDataRequests(_userId: number): Promise<IdentityDataRequest[]> {
-    return [];
+  async listDataRequests(userId: number): Promise<IdentityDataRequest[]> {
+    const raw = await this.redis.hgetall(userDataRequestsKey(userId));
+    return Object.entries(raw)
+      .map(([, value]) => JSON.parse(value) as IdentityDataRequest)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
-  // Demo：用户权限以 user_roles.overrides.permissions 持久化（无成员记录时仅返回权限视图）
-  async setUserPermissions(userId: number, permissions: string[]): Promise<IdentityRole> {
+  async setUserPermissions(
+    userId: number,
+    permissions: string[],
+  ): Promise<IdentityRole> {
     const user = await this.database.user.findUnique({
       where: { id: userId },
     });
@@ -251,13 +363,33 @@ export class IdentityPrismaRepository implements IdentityRepository {
     };
   }
 
-  // notification_deliveries 表已删除：Demo 模式返回空分页
   async listNotifications(
     query: IdentityNotificationListQuery,
   ): Promise<IdentityNotificationListResult> {
+    const raw = await this.redis.hgetall(notificationDeliveriesKey());
+    let items = Object.entries(raw)
+      .map(([, value]) => JSON.parse(value) as IdentityNotification)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+
+    if (query.recipient_user_id !== undefined) {
+      items = items.filter(
+        (item) => item.recipient_user_id === query.recipient_user_id,
+      );
+    }
+    if (query.company_id !== undefined) {
+      items = items.filter((item) => item.company_id === query.company_id);
+    }
+    if (query.audience !== undefined) {
+      items = items.filter((item) => item.audience === query.audience);
+    }
+    if (query.status !== undefined) {
+      items = items.filter((item) => item.status === query.status);
+    }
+
+    const start = (query.page - 1) * query.page_size;
     return {
-      items: [],
-      total: 0,
+      items: items.slice(start, start + query.page_size),
+      total: items.length,
       page: query.page,
       page_size: query.page_size,
     };
@@ -278,13 +410,18 @@ export class IdentityPrismaRepository implements IdentityRepository {
     };
   }
 
-  private mapRole(role: { id: number; code: string; name: string; audience: string }): IdentityRole {
+  private mapRole(role: {
+    id: number;
+    code: string;
+    name: string;
+    audience: string;
+  }): IdentityRole {
     return {
       id: role.id,
       code: role.code,
       name: role.name,
       audience: role.audience as AccountAudience,
-      // roles 表无 permissions 列，角色权限列表暂固定为空
+
       permissions: [],
     };
   }

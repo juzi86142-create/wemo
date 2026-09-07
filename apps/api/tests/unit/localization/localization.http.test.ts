@@ -15,6 +15,7 @@ import {
   type LocalizationRepository,
 } from "../../../src/modules/localization/localization.repository";
 import { LocalizationService } from "../../../src/modules/localization/localization.service";
+import { RuntimeModule } from "../../../src/runtime/runtime.module";
 
 const language: Language = {
   id: 1,
@@ -52,7 +53,7 @@ const repository: LocalizationRepository = {
 };
 
 @Module({
-  imports: [ApiHttpModule],
+  imports: [ApiHttpModule, RuntimeModule],
   controllers: [LocalizationController],
   providers: [
     LocalizationService,

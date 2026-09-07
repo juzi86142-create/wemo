@@ -41,13 +41,12 @@ export async function createApiApp(
   const requestContextStore = app.get(RequestContextStore);
   const fastify = app.getHttpAdapter().getInstance();
 
+  // 请求上下文在 RequestIdInterceptor（与 controller 同一条 async 链）中 enterWith；
+  // onRequest hook 仅兜底处理 context 创建失败等入口错误。
   fastify.addHook("onRequest", (request, reply, done) => {
     try {
-      const context = createRequestContext(request);
-      reply.header("x-request-id", context.request_id);
-      requestContextStore.run(context, () => {
-        done();
-      });
+      reply.header("x-request-id", String(request.id));
+      done();
     } catch (error) {
       const requestId =
         typeof request.id === "string" && request.id.trim()

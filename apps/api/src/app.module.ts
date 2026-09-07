@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 
+import { RedisModule } from "./database/redis.module";
 import { HealthModule } from "./health/health.module";
 import { ApiHttpModule } from "./http/api-http.module";
 import { AnalyticsModule } from "./modules/analytics/analytics.module";
@@ -30,6 +31,7 @@ import { RuntimeModule } from "./runtime/runtime.module";
 
 @Module({
   imports: [
+    RedisModule,
     ApiHttpModule,
     HealthModule,
     AuthModule,

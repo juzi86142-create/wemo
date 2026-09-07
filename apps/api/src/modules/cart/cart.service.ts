@@ -10,7 +10,7 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { CartPrismaRepository } from "./cart.prisma-repository";
+import { CartRedisRepository } from "./cart.redis-repository";
 import { CART_REPOSITORY } from "./cart.repository";
 import { PricingPrismaRepository } from "../pricing/pricing.prisma-repository";
 import { PRICING_REPOSITORY } from "../pricing/pricing.repository";
@@ -39,7 +39,7 @@ type CartRuntimeContext = {
 export class CartService {
   constructor(
     @Inject(CART_REPOSITORY)
-    private readonly cartRepository: CartPrismaRepository,
+    private readonly cartRepository: CartRedisRepository,
     @Inject(PRICING_REPOSITORY)
     private readonly pricingRepository: PricingPrismaRepository,
     @Inject(AuthorizationService)

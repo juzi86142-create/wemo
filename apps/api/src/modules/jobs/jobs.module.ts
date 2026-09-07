@@ -2,7 +2,7 @@ import { Module } from "@nestjs/common";
 
 import { DatabaseModule } from "../../database/database.module";
 import { JobsController } from "./jobs.controller";
-import { JobsPrismaRepository } from "./jobs.prisma-repository";
+import { JobsRedisRepository } from "./jobs.redis-repository";
 import { JOBS_REPOSITORY } from "./jobs.repository";
 import { JobsService } from "./jobs.service";
 
@@ -13,7 +13,7 @@ import { JobsService } from "./jobs.service";
     JobsService,
     {
       provide: JOBS_REPOSITORY,
-      useClass: JobsPrismaRepository,
+      useClass: JobsRedisRepository,
     },
   ],
 })

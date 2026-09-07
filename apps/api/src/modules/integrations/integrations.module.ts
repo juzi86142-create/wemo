@@ -2,7 +2,7 @@ import { Module } from "@nestjs/common";
 
 import { DatabaseModule } from "../../database/database.module";
 import { IntegrationsController } from "./integrations.controller";
-import { IntegrationsPrismaRepository } from "./integrations.prisma-repository";
+import { IntegrationsRedisRepository } from "./integrations.redis-repository";
 import { INTEGRATIONS_REPOSITORY } from "./integrations.repository";
 import { IntegrationsService } from "./integrations.service";
 import { WebhookController } from "./webhook.controller";
@@ -14,7 +14,7 @@ import { WebhookController } from "./webhook.controller";
     IntegrationsService,
     {
       provide: INTEGRATIONS_REPOSITORY,
-      useClass: IntegrationsPrismaRepository,
+      useClass: IntegrationsRedisRepository,
     },
   ],
 })

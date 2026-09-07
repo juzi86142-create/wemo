@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { Redis } from "ioredis";
 import type { DatabaseClient } from "@wemo/database";
 import type {
   AuthLoginInput,
@@ -17,6 +18,7 @@ import {
   type RecordNotificationInput,
 } from "./auth.repository";
 import { DATABASE_CLIENT } from "../../database/database.constants";
+import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -47,15 +49,19 @@ interface SessionRow {
   revokedAt: Date | null;
 }
 
+/** 注册登录与会话持久化在 PostgreSQL 订阅与通知投递持久化在 Redis */
 @Injectable()
 export class AuthPrismaRepository implements AuthRepository {
-  constructor(@Inject(DATABASE_CLIENT) private readonly database: DatabaseClient) {}
+  constructor(
+    @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+  ) {}
 
   async createUser(input: CreateUserInput): Promise<IdentityUser> {
     const user = await this.database.user.create({
       data: {
         email: input.email,
-        passwordHash: `hashed_${input.password}`, // Demo only - use bcrypt in production
+        passwordHash: `hashed_${input.password}`,
         name: input.name,
         audience: input.audience,
       },
@@ -85,7 +91,7 @@ export class AuthPrismaRepository implements AuthRepository {
     const user = await this.database.user.findFirst({
       where: {
         email: input.email,
-        passwordHash: `hashed_${input.password}`, // Demo only
+        passwordHash: `hashed_${input.password}`,
       },
     });
 
@@ -98,7 +104,7 @@ export class AuthPrismaRepository implements AuthRepository {
 
   async issueSession(userId: number, requestId: string): Promise<AuthSession> {
     const token = `session_${requestId}_${userId}`;
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     const session = await this.database.session.create({
       data: {
@@ -140,7 +146,7 @@ export class AuthPrismaRepository implements AuthRepository {
     ]);
 
     return {
-      items: sessions.map(s => this.mapSession(s)),
+      items: sessions.map((s) => this.mapSession(s)),
       total,
       page: query.page,
       page_size: query.page_size,
@@ -164,22 +170,40 @@ export class AuthPrismaRepository implements AuthRepository {
     return this.mapSession(session);
   }
 
-  // subscriptions 表已删除：Demo 模式空实现
   async upsertSubscription(
-    _userId: number,
-    _input: { channel: string; status: string; consent_at: string },
+    userId: number,
+    input: { channel: string; status: string; consent_at: string },
   ): Promise<void> {
-    // 无 DB 写入
+    const key = `${REDIS_KEY_PREFIX}:user:${userId}:subscriptions`;
+    const existing = await this.redis.hget(key, input.channel);
+    const now = nowIso();
+    const subscription = existing
+      ? {
+          ...(JSON.parse(existing) as Record<string, unknown>),
+          status: input.status,
+          consent_at: input.consent_at,
+        }
+      : {
+          id: await this.redis.incr(
+            `${REDIS_KEY_PREFIX}:user:${userId}:subscriptions:next`,
+          ),
+          user_id: userId,
+          channel: input.channel,
+          status: input.status,
+          consent_at: input.consent_at,
+          created_at: now,
+        };
+    await this.redis.hset(key, input.channel, JSON.stringify(subscription));
   }
 
-  // notification_deliveries 表已删除：返回合成契约对象，无 DB 写入
-  async recordNotification(input: RecordNotificationInput): Promise<IdentityNotification> {
-    console.log(
-      `[demo] notification queued: kind=${input.kind} recipient=${input.recipient_user_id ?? "-"} template=${input.template_key}`,
-    );
-
-    return {
-      id: Date.now(),
+  async recordNotification(
+    input: RecordNotificationInput,
+  ): Promise<IdentityNotification> {
+    const now = nowIso();
+    const notification: IdentityNotification = {
+      id: await this.redis.incr(
+        `${REDIS_KEY_PREFIX}:notifications:deliveries:next`,
+      ),
       recipient_user_id: input.recipient_user_id,
       company_id: input.company_id,
       audience: input.audience as IdentityNotification["audience"],
@@ -190,9 +214,15 @@ export class AuthPrismaRepository implements AuthRepository {
       request_id: input.request_id,
       payload: input.payload as JsonValue,
       failure_reason: null,
-      created_at: nowIso(),
+      created_at: now,
       sent_at: null,
     };
+    await this.redis.hset(
+      `${REDIS_KEY_PREFIX}:notifications:deliveries`,
+      String(notification.id),
+      JSON.stringify(notification),
+    );
+    return notification;
   }
 
   private mapUser(user: UserRow): IdentityUser {
@@ -216,7 +246,7 @@ export class AuthPrismaRepository implements AuthRepository {
       token: session.token,
       user_id: session.userId,
       audience: session.audience as AuthSession["audience"],
-      // sessions 表不存企业与权限快照，Demo 下收口为 null/空数组
+
       company_id: null,
       permissions: [],
       expires_at: session.expiresAt.toISOString(),

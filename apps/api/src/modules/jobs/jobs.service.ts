@@ -15,7 +15,7 @@ import {
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { JobsPrismaRepository } from "./jobs.prisma-repository";
+import { JobsRedisRepository } from "./jobs.redis-repository";
 import { JOBS_REPOSITORY } from "./jobs.repository";
 import { parseInput } from "../../runtime/validation";
 import { RequestContextStore } from "../../runtime/request-context.store";
@@ -37,7 +37,7 @@ const JobFailureSchema = z.object({
 export class JobsService {
   constructor(
     @Inject(JOBS_REPOSITORY)
-    private readonly repository: JobsPrismaRepository,
+    private readonly repository: JobsRedisRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)

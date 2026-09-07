@@ -9,7 +9,7 @@ import {
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { IntegrationsPrismaRepository } from "./integrations.prisma-repository";
+import { IntegrationsRedisRepository } from "./integrations.redis-repository";
 import { INTEGRATIONS_REPOSITORY } from "./integrations.repository";
 import { parseInput } from "../../runtime/validation";
 import { RequestContextStore } from "../../runtime/request-context.store";
@@ -22,7 +22,7 @@ const WebhookProviderParamSchema = z.object({
 export class IntegrationsService {
   constructor(
     @Inject(INTEGRATIONS_REPOSITORY)
-    private readonly repository: IntegrationsPrismaRepository,
+    private readonly repository: IntegrationsRedisRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)

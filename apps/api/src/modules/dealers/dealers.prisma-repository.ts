@@ -1,4 +1,5 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import type { Redis } from "ioredis";
 import type {
   DealerAddress,
   DealerAddressCreateInput,
@@ -18,6 +19,11 @@ import type {
 import type { DatabaseClient } from "@wemo/database";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
+import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
+
+function companyAddressesKey(companyId: number): string {
+  return `${REDIS_KEY_PREFIX}:company:${companyId}:addresses`;
+}
 import type {
   DealersRepository,
   DealerApplicationListQuery,
@@ -27,10 +33,12 @@ import type {
   ListResult,
 } from "./dealers.repository";
 
+/** 经销商申请企业与成员持久化在 PostgreSQL 企业地址持久化在 Redis */
 @Injectable()
 export class DealersPrismaRepository implements DealersRepository {
   constructor(
     @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
   async listPublicListings(
@@ -114,7 +122,9 @@ export class DealersPrismaRepository implements DealersRepository {
     ]);
 
     return {
-      items: applications.map((application) => this.mapApplication(application)),
+      items: applications.map((application) =>
+        this.mapApplication(application),
+      ),
       total,
       page: query.page,
       page_size: query.page_size,
@@ -251,7 +261,9 @@ export class DealersPrismaRepository implements DealersRepository {
     const company = await this.database.dealerCompany.update({
       where: { id: companyId },
       data: {
-        ...(input.legal_name !== undefined ? { legalName: input.legal_name } : {}),
+        ...(input.legal_name !== undefined
+          ? { legalName: input.legal_name }
+          : {}),
         ...(input.display_name !== undefined
           ? { displayName: input.display_name }
           : {}),
@@ -281,7 +293,9 @@ export class DealersPrismaRepository implements DealersRepository {
           ...(input.authorized_categories !== undefined
             ? { authorized_categories: input.authorized_categories }
             : {}),
-          ...(input.sales_rep !== undefined ? { sales_rep: input.sales_rep } : {}),
+          ...(input.sales_rep !== undefined
+            ? { sales_rep: input.sales_rep }
+            : {}),
         },
       },
     });
@@ -363,7 +377,9 @@ export class DealersPrismaRepository implements DealersRepository {
         const user = userById.get(member.userId);
         return {
           ...this.mapMember(member),
-          user: user ? { id: user.id, email: user.email, name: user.name } : null,
+          user: user
+            ? { id: user.id, email: user.email, name: user.name }
+            : null,
         };
       }),
       total,
@@ -373,18 +389,33 @@ export class DealersPrismaRepository implements DealersRepository {
   }
 
   async listDealerAddresses(companyId: number): Promise<DealerAddress[]> {
-    // demo 模式：dealer_addresses 表已下线，公开地址列表恒为空
-    return [];
+    const raw = await this.redis.hgetall(companyAddressesKey(companyId));
+    return Object.entries(raw)
+      .map(([, value]) => JSON.parse(value) as DealerAddress)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
   }
 
   async createDealerAddress(
     companyId: number,
     input: DealerAddressCreateInput,
   ): Promise<DealerAddress> {
-    throw new Error("Demo模式：暂不支持经销商地址管理");
+    const address: DealerAddress = {
+      id: await this.redis.incr(
+        `${REDIS_KEY_PREFIX}:company:${companyId}:addresses:next`,
+      ),
+      company_id: companyId,
+      kind: input.kind,
+      payload: input.payload,
+      public_listing: input.public_listing ?? null,
+      created_at: new Date().toISOString(),
+    };
+    await this.redis.hset(
+      companyAddressesKey(companyId),
+      String(address.id),
+      JSON.stringify(address),
+    );
+    return address;
   }
-
-  // === 映射 ===
 
   private mapApplication(application: any): DealerApplication {
     const payload = this.readRecord(application.payload);
@@ -394,12 +425,20 @@ export class DealersPrismaRepository implements DealersRepository {
       applicant_user_id: application.applicantUserId ?? null,
       company_id: null,
       legal_name: application.legalName,
-      display_name: this.stringFrom(payload, "display_name", application.legalName),
+      display_name: this.stringFrom(
+        payload,
+        "display_name",
+        application.legalName,
+      ),
       country: application.country,
       website: this.nullableStringFrom(payload, "website"),
       business_type: this.stringFrom(payload, "business_type", "general"),
       tax_id: this.nullableStringFrom(payload, "tax_id"),
-      contact_name: this.stringFrom(payload, "contact_name", application.legalName),
+      contact_name: this.stringFrom(
+        payload,
+        "contact_name",
+        application.legalName,
+      ),
       contact_email: application.contactEmail,
       contact_phone: this.nullableStringFrom(payload, "contact_phone"),
       currency: this.currencyFrom(payload),
@@ -485,7 +524,10 @@ export class DealersPrismaRepository implements DealersRepository {
     return typeof value === "string" && value.length === 3 ? value : "USD";
   }
 
-  private jsonArrayFrom(payload: Record<string, JsonValue>, key: string): JsonValue {
+  private jsonArrayFrom(
+    payload: Record<string, JsonValue>,
+    key: string,
+  ): JsonValue {
     const value = payload[key];
     return Array.isArray(value) ? value : [];
   }

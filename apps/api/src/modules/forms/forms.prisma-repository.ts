@@ -1,4 +1,5 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import type { Redis } from "ioredis";
 import type {
   FormSubmission,
   FormSubmissionCreateInput,
@@ -9,6 +10,7 @@ import type {
 import type { DatabaseClient } from "@wemo/database";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
+import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
 import type {
   FormDefinition,
   FormDefinitionCreateInput,
@@ -18,85 +20,93 @@ import type {
   FormsRepository,
 } from "./forms.repository";
 
-// Prisma schema 尚未包含 form_submissions 模型（生成 client 无该 delegate），
-// 此处按表结构声明最小访问面；schema 恢复并重新 generate 后可换回 database.formSubmission 直调。
-type FormSubmissionRow = {
-  id: number;
-  submissionNo: string;
-  type: string;
-  source: string;
-  payload: unknown;
-  assigneeId: number | null;
-  status: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
+type FormSubmissionRow = NonNullable<
+  Awaited<ReturnType<DatabaseClient["formSubmission"]["findFirst"]>>
+>;
 
-type FormSubmissionDelegate = {
-  create(args: {
-    data: {
-      submissionNo: string;
-      type: string;
-      source: string;
-      payload: unknown;
-      assigneeId: number | null;
-      status: string;
-    };
-  }): Promise<FormSubmissionRow>;
-  findMany(args: {
-    where: unknown;
-    skip: number;
-    take: number;
-    orderBy: unknown;
-  }): Promise<FormSubmissionRow[]>;
-  count(args: { where: unknown }): Promise<number>;
-  findUnique(args: { where: { id: number } }): Promise<FormSubmissionRow | null>;
-  update(args: { where: { id: number }; data: unknown }): Promise<FormSubmissionRow>;
-};
+const FORM_DEFINITIONS_KEY = `${REDIS_KEY_PREFIX}:forms:definitions`;
 
+/** 表单提交持久化在 PostgreSQL 表单定义持久化在 Redis */
 @Injectable()
 export class FormsPrismaRepository implements FormsRepository {
   constructor(
     @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
-  private get submissions(): FormSubmissionDelegate {
-    return (
-      this.database as unknown as { formSubmission: FormSubmissionDelegate }
-    ).formSubmission;
-  }
-
   async createForm(input: FormDefinitionCreateInput): Promise<FormDefinition> {
-    void input;
-    throw new Error("Demo模式：暂不支持表单定义管理");
+    const now = new Date().toISOString();
+    const form: FormDefinition = {
+      id: await this.redis.incr(`${REDIS_KEY_PREFIX}:forms:definitions:next`),
+      name: input.name,
+      description: input.description ?? null,
+      fields: input.fields ?? [],
+      is_active: input.is_active ?? true,
+      created_at: now,
+      updated_at: now,
+    };
+    await this.redis.hset(
+      FORM_DEFINITIONS_KEY,
+      String(form.id),
+      JSON.stringify(form),
+    );
+    return form;
   }
 
   async getFormById(id: number): Promise<FormDefinition | null> {
-    void id;
-    throw new Error("Demo模式：暂不支持表单定义管理");
+    const raw = await this.redis.hget(FORM_DEFINITIONS_KEY, String(id));
+    return raw ? (JSON.parse(raw) as FormDefinition) : null;
   }
 
-  async listForms(query: FormDefinitionListQuery): Promise<FormPage<FormDefinition>> {
-    void query;
-    throw new Error("Demo模式：暂不支持表单定义管理");
+  async listForms(
+    query: FormDefinitionListQuery,
+  ): Promise<FormPage<FormDefinition>> {
+    const raw = await this.redis.hgetall(FORM_DEFINITIONS_KEY);
+    const forms = Object.entries(raw)
+      .map(([, value]) => JSON.parse(value) as FormDefinition)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const start = (query.page - 1) * query.page_size;
+    return {
+      items: forms.slice(start, start + query.page_size),
+      total: forms.length,
+      page: query.page,
+      page_size: query.page_size,
+    };
   }
 
   async updateForm(
     id: number,
     input: FormDefinitionUpdateInput,
   ): Promise<FormDefinition> {
-    void id;
-    void input;
-    throw new Error("Demo模式：暂不支持表单定义管理");
+    const existing = await this.getFormById(id);
+    if (!existing) {
+      throw new NotFoundException(`表单定义 ${id} 不存在`);
+    }
+    const updated: FormDefinition = {
+      ...existing,
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.description !== undefined
+        ? { description: input.description }
+        : {}),
+      ...(input.fields !== undefined ? { fields: input.fields } : {}),
+      ...(input.is_active !== undefined ? { is_active: input.is_active } : {}),
+      updated_at: new Date().toISOString(),
+    };
+    await this.redis.hset(
+      FORM_DEFINITIONS_KEY,
+      String(id),
+      JSON.stringify(updated),
+    );
+    return updated;
   }
 
   async submitForm(input: FormSubmissionCreateInput): Promise<FormSubmission> {
-    const row = await this.submissions.create({
+    const row = await this.database.formSubmission.create({
       data: {
         submissionNo: this.buildSubmissionNo(),
         type: input.type,
         source: input.source,
-        payload: input.payload,
+        payload: input.payload as never,
         assigneeId: null,
         status: "new",
       },
@@ -109,36 +119,43 @@ export class FormsPrismaRepository implements FormsRepository {
     id: number,
     input: FormSubmissionUpdateInput,
   ): Promise<FormSubmission> {
-    const existing = await this.submissions.findUnique({ where: { id } });
+    const existing = await this.database.formSubmission.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException("提交记录不存在");
     }
 
-    // priority/tags/internal_note 无对应列，demo 阶段仅落库状态与负责人
     const data: Record<string, unknown> = {};
     if (input.assignee_id !== undefined) data.assigneeId = input.assignee_id;
     if (input.status !== undefined) data.status = input.status;
 
-    const row = await this.submissions.update({ where: { id }, data });
+    const row = await this.database.formSubmission.update({
+      where: { id },
+      data,
+    });
     return this.mapSubmission(row);
   }
 
   async listSubmissions(
     query: FormSubmissionListQuery,
   ): Promise<FormPage<FormSubmission>> {
-    const where: Record<string, unknown> = {};
-    if (query.type !== undefined) where.type = query.type;
-    if (query.status !== undefined) where.status = query.status;
-    if (query.assignee_id !== undefined) where.assigneeId = query.assignee_id;
+    const where = {
+      ...(query.type !== undefined ? { type: query.type } : {}),
+      ...(query.status !== undefined ? { status: query.status } : {}),
+      ...(query.assignee_id !== undefined
+        ? { assigneeId: query.assignee_id }
+        : {}),
+    };
 
     const [rows, total] = await Promise.all([
-      this.submissions.findMany({
+      this.database.formSubmission.findMany({
         where,
         skip: (query.page - 1) * query.page_size,
         take: query.page_size,
         orderBy: { createdAt: "desc" },
       }),
-      this.submissions.count({ where }),
+      this.database.formSubmission.count({ where }),
     ]);
 
     return {
@@ -150,7 +167,9 @@ export class FormsPrismaRepository implements FormsRepository {
   }
 
   async getSubmissionById(id: number): Promise<FormSubmission | null> {
-    const row = await this.submissions.findUnique({ where: { id } });
+    const row = await this.database.formSubmission.findUnique({
+      where: { id },
+    });
     return row ? this.mapSubmission(row) : null;
   }
 
@@ -160,8 +179,6 @@ export class FormsPrismaRepository implements FormsRepository {
     return `FS-${stamp}-${random}`;
   }
 
-  // attachments/priority/tags/internal_note/request_id/history 无对应列，
-  // 返回契约形状时补齐稳定默认值（request_id 以 submission_no 回退）
   private mapSubmission(row: FormSubmissionRow): FormSubmission {
     return {
       id: row.id,
