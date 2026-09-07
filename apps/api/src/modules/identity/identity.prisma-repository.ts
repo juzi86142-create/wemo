@@ -50,6 +50,10 @@ function userDataRequestsKey(userId: number): string {
   return `${REDIS_KEY_PREFIX}:user:${userId}:data-requests`;
 }
 
+function globalDataRequestsKey(): string {
+  return `${REDIS_KEY_PREFIX}:data-requests`;
+}
+
 function userFavoritesKey(userId: number): string {
   return `${REDIS_KEY_PREFIX}:user:${userId}:favorites`;
 }
@@ -383,6 +387,13 @@ export class IdentityPrismaRepository implements IdentityRepository {
       request.id,
       request,
     );
+    // 全局索引 供后台处理列表与状态更新 需求 7.9
+    await writeHashObject(
+      this.redis,
+      globalDataRequestsKey(),
+      request.id,
+      request,
+    );
     return request;
   }
 
@@ -393,6 +404,45 @@ export class IdentityPrismaRepository implements IdentityRepository {
       (raw) => JSON.parse(raw) as IdentityDataRequest,
     );
     return requests.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
+  /** 后台列出全部数据请求 需求 7.9 用户导出与删除工单 */
+  async listAllDataRequests(): Promise<IdentityDataRequest[]> {
+    const requests = await readHashAll<IdentityDataRequest>(
+      this.redis,
+      globalDataRequestsKey(),
+      (raw) => JSON.parse(raw) as IdentityDataRequest,
+    );
+    return requests.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
+  async updateDataRequestStatus(
+    id: number,
+    status: IdentityDataRequest["status"],
+  ): Promise<IdentityDataRequest | null> {
+    const request = await readHashOne<IdentityDataRequest>(
+      this.redis,
+      globalDataRequestsKey(),
+      id,
+      (raw) => JSON.parse(raw) as IdentityDataRequest,
+    );
+    if (!request) return null;
+    const updated: IdentityDataRequest = {
+      ...request,
+      status,
+      completed_at:
+        status === "completed" || status === "rejected"
+          ? new Date().toISOString()
+          : request.completed_at,
+    };
+    await writeHashObject(this.redis, globalDataRequestsKey(), id, updated);
+    await writeHashObject(
+      this.redis,
+      userDataRequestsKey(request.user_id),
+      id,
+      updated,
+    );
+    return updated;
   }
 
   async setUserPermissions(

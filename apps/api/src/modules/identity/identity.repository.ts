@@ -92,4 +92,9 @@ export interface IdentityRepository {
   listFavorites(userId: number): Promise<IdentityFavorite[]>;
   addFavorite(userId: number, productId: number): Promise<IdentityFavorite>;
   removeFavorite(userId: number, productId: number): Promise<void>;
+  listAllDataRequests(): Promise<IdentityDataRequest[]>;
+  updateDataRequestStatus(
+    id: number,
+    status: IdentityDataRequest["status"],
+  ): Promise<IdentityDataRequest | null>;
 }

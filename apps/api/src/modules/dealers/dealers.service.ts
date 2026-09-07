@@ -25,10 +25,14 @@ import {
   DealerMemberMutationResponseSchema,
   DealerPublicListingListQuerySchema,
   DealerPublicListingListResponseSchema,
+  DealerMemberAcceptSchema,
+  DealerMemberInviteSchema,
+  DealerMemberInviteResponseSchema,
   DealerTierListResponseSchema,
   DealerTierMutationResponseSchema,
   DealerTierUpsertSchema,
 } from "@wemo/contracts/dealers";
+import { randomBytes } from "node:crypto";
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
@@ -307,24 +311,6 @@ export class DealersService {
     );
   }
 
-  async inviteMember(body: unknown) {
-    const actor = this.authorization.requireActor();
-    const context = this.requestContext.requireContext();
-    const companyId = this.requireDealerCompanyId();
-    const input = parseInput(DealerMemberCreateSchema, body);
-    const item = await this.repository.createDealerMember({
-      company_id: companyId,
-      user_id: input.user_id,
-      role: input.role,
-      permissions: input.permissions,
-    });
-
-    return DealerMemberMutationResponseSchema.parse({
-      request_id: context.request_id,
-      item,
-    });
-  }
-
   async listCompanies(query: unknown) {
     this.authorization.requireStaffPermission("dealers:read");
     const parsed = parseInput(DealerCompanyListQuerySchema, query);
@@ -339,6 +325,81 @@ export class DealersService {
     return DealerMemberListResponseSchema.parse(
       await this.repository.listDealerMembers(parsed),
     );
+  }
+
+  /** 成员邀请 需求 6.7 一次性令牌带有效期 接受后建立成员关系 */
+  async inviteMember(body: unknown) {
+    const actor = this.authorization.requireAudience("dealer", "staff");
+    const context = this.requestContext.requireContext();
+    const input = parseInput(DealerMemberInviteSchema, body);
+    const companyId =
+      actor.audience === "staff"
+        ? this.requireDealerCompanyId()
+        : actor.company_id;
+    if (!companyId) {
+      throw new ForbiddenException("邀请需要企业上下文");
+    }
+    const token = randomBytes(24).toString("hex");
+    const expiresAt = new Date(
+      Date.now() + 7 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    await this.repository.createMemberInvite(
+      companyId,
+      input.email,
+      input.role ?? "member",
+      token,
+      expiresAt,
+    );
+
+    await this.notifications.emitBusinessNotification({
+      template_code: "dealer_member_invite",
+      recipient_user_id: actor.user_id,
+      company_id: companyId,
+      audience: "dealer",
+      channel: "email",
+      request_id: context.request_id,
+      payload: { email: input.email, token, expires_at: expiresAt },
+    });
+
+    return DealerMemberInviteResponseSchema.parse({
+      request_id: context.request_id,
+      item: { token, email: input.email, expires_at: expiresAt },
+    });
+  }
+
+  async acceptMemberInvite(body: unknown) {
+    const actor = this.authorization.requireActor();
+    const context = this.requestContext.requireContext();
+    const input = parseInput(DealerMemberAcceptSchema, body);
+    const invite = await this.repository.acceptMemberInvite(input.token);
+    if (!invite) {
+      throw new NotFoundException("邀请链接无效或已过期");
+    }
+    const existing = await this.repository.listDealerMembers({
+      company_id: invite.company_id,
+      page: 1,
+      page_size: 100,
+    });
+    const already = existing.items.find(
+      (member) => member.user_id === actor.user_id,
+    );
+    if (already) {
+      return DealerMemberMutationResponseSchema.parse({
+        request_id: context.request_id,
+        item: already,
+      });
+    }
+    const item = await this.repository.createDealerMember({
+      company_id: invite.company_id,
+      user_id: actor.user_id,
+      role: invite.role,
+      permissions: ["dealer:read", "dealer:write"],
+    });
+
+    return DealerMemberMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item,
+    });
   }
 
   /** 经销商等级主数据 需求 6.4 名称后台可配置 */

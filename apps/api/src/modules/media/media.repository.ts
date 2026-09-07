@@ -20,5 +20,6 @@ export interface MediaRepository {
     query: MediaAssetListQuery,
   ): Promise<MediaAssetPage>;
   getAssetById(id: number): Promise<MediaAsset | null>;
+  getAssetByFileKey(fileKey: string): Promise<MediaAsset | null>;
   createAsset(input: MediaAssetCreateInput): Promise<MediaAsset>;
 }

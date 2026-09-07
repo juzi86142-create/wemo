@@ -15,9 +15,13 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import type { MediaAsset } from "@wemo/contracts/content";
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
+
+const FileKeyParamSchema = z.object({
+  fileKey: z.string().min(1),
+});
 
 import { AUDIT_REPOSITORY, type AuditRepository } from "../audit/audit.repository";
 import { AuthorizationService } from "../../runtime/authorization.service";
@@ -131,6 +135,26 @@ export class MediaService {
         method: "GET",
       },
     });
+  }
+
+  /** 受控文件访问 需求 10.3 四级权限在文件直取路径同样生效 */
+  async serveFile(fileKey: unknown, reply: unknown) {
+    const parsed = parseInput(FileKeyParamSchema, { fileKey });
+    const asset = await this.repository.getAssetByFileKey(parsed.fileKey);
+    if (!asset) {
+      throw new NotFoundException("文件不存在");
+    }
+    canAccessVisibility(asset.visibility, this.authorization);
+
+    const mediaDir = process.env.MEDIA_DIR ?? "uploads";
+    const target = resolve(process.cwd(), mediaDir, asset.file_key);
+    const fastifyReply = reply as {
+      type(mime: string): unknown;
+      send(data: Buffer): unknown;
+    };
+    const buffer = await readFile(target);
+    fastifyReply.type(asset.mime);
+    return fastifyReply.send(buffer);
   }
 
   /** 媒体文件上传 需求 7.11 文件落本地媒体目录并登记资产 */

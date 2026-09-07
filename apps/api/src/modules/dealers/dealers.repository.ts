@@ -94,4 +94,17 @@ export interface DealersRepository {
   createDealerAddress(companyId: number, input: DealerAddressCreateInput): Promise<DealerAddress>;
   listTiers(): Promise<DealerTier[]>;
   upsertTier(input: DealerTierUpsertInput & { id?: number }): Promise<DealerTier>;
+  /** 成员邀请一次性令牌 需求 6.7 */
+  createMemberInvite(
+    companyId: number,
+    email: string,
+    role: string,
+    token: string,
+    expiresAt: string,
+  ): Promise<void>;
+  acceptMemberInvite(token: string): Promise<{
+    company_id: number;
+    email: string;
+    role: string;
+  } | null>;
 }

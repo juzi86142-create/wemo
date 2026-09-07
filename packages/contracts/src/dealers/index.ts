@@ -6,6 +6,7 @@ import {
   EntityIdSchema,
   JsonValueSchema,
   PaginationSchema,
+  RequestIdSchema,
 } from "../common/index.js";
 
 export const DealerApplicationStatusSchema = z.enum([
@@ -277,6 +278,33 @@ export const DealerTierListResponseSchema = createListResponseSchema(
 export const DealerTierMutationResponseSchema = createItemResponseSchema(
   DealerTierSchema,
 );
+
+/** 经销商成员邀请 需求 6.7 一次性链接带有效期 */
+export const DealerMemberInviteSchema = z
+  .object({
+    email: z.string().trim().email(),
+    role: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+export const DealerMemberAcceptSchema = z
+  .object({
+    token: z.string().min(16).max(128),
+  })
+  .strict();
+
+export const DealerMemberInviteResponseSchema = z
+  .object({
+    request_id: RequestIdSchema,
+    item: z
+      .object({
+        token: z.string().min(16),
+        email: z.string().email(),
+        expires_at: z.string().datetime(),
+      })
+      .strict(),
+  })
+  .strict();
 
 export type DealerApplicationStatus = z.infer<
   typeof DealerApplicationStatusSchema

@@ -159,7 +159,21 @@ export const CatalogProductListQuerySchema = PaginationSchema.extend({
   status: ProductStatusSchema.optional(),
   category_id: EntityIdSchema.optional(),
   q: z.string().min(1).optional(),
-  sort: z.enum(["name_asc", "name_desc", "newest"]).optional(),
+  // 筛选 需求 PLP-002 年龄场景技能
+  age: z.coerce.number().int().min(0).max(18).optional(),
+  environment: z.string().min(1).optional(),
+  skill: z.string().min(1).optional(),
+  // 排序 需求 PLP-003
+  sort: z
+    .enum([
+      "featured",
+      "newest",
+      "price_asc",
+      "price_desc",
+      "name_asc",
+      "name_desc",
+    ])
+    .optional(),
 });
 
 export const CatalogCategoryListResponseSchema =

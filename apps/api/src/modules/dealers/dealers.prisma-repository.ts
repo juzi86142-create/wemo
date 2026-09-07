@@ -25,6 +25,7 @@ import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
 import { generateBusinessNo } from "../../runtime/ids";
 import {
   readHashAll,
+  readHashOne,
   redisNextId,
   writeHashObject,
 } from "../../runtime/redis-hash";
@@ -552,6 +553,49 @@ export class DealersPrismaRepository implements DealersRepository {
       status: tier.status as DealerTier["status"],
       created_at: tier.createdAt.toISOString(),
     }));
+  }
+
+  async createMemberInvite(
+    companyId: number,
+    email: string,
+    role: string,
+    token: string,
+    expiresAt: string,
+  ): Promise<void> {
+    await writeHashObject(
+      this.redis,
+      `${REDIS_KEY_PREFIX}:dealer:invites`,
+      token,
+      { company_id: companyId, email, role, expires_at: expiresAt },
+    );
+  }
+
+  async acceptMemberInvite(token: string): Promise<{
+    company_id: number;
+    email: string;
+    role: string;
+  } | null> {
+    const invite = await readHashOne<{
+      company_id: number;
+      email: string;
+      role: string;
+      expires_at: string;
+    }>(
+      this.redis,
+      `${REDIS_KEY_PREFIX}:dealer:invites`,
+      token,
+      (raw) =>
+        JSON.parse(raw) as {
+          company_id: number;
+          email: string;
+          role: string;
+          expires_at: string;
+        },
+    );
+    if (!invite) return null;
+    if (new Date(invite.expires_at) < new Date()) return null;
+    await this.redis.hdel(`${REDIS_KEY_PREFIX}:dealer:invites`, token);
+    return invite;
   }
 
   async upsertTier(

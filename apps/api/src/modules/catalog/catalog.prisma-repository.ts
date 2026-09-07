@@ -204,20 +204,90 @@ export class CatalogPrismaRepository implements CatalogRepository {
       ...(query.category_id !== undefined
         ? { primaryCategoryId: query.category_id }
         : {}),
+      // 年龄筛选 需求 PLP-002
+      ...(query.age !== undefined
+        ? { ageMin: { lte: query.age }, ageMax: { gte: query.age } }
+        : {}),
+      // 场景与技能来自 attributes Json 需求 PLP-002
+      ...(query.environment !== undefined
+        ? {
+            attributes: {
+              path: ["play_environment"],
+              array_contains: query.environment,
+            },
+          }
+        : {}),
+      ...(query.skill !== undefined
+        ? { attributes: { path: ["skills"], array_contains: query.skill } }
+        : {}),
     };
 
+    // 价格排序需要先取全部候选再按价格排序分页 需求 PLP-003
+    const priceSort = query.sort === "price_asc" || query.sort === "price_desc";
     const [products, total] = await Promise.all([
       this.database.product.findMany({
         where,
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        orderBy: { createdAt: "desc" },
+        ...(priceSort ? {} : { skip: (page - 1) * pageSize, take: pageSize }),
+        orderBy: {
+          ...(query.sort === "newest" || query.sort === undefined
+            ? { createdAt: "desc" as const }
+            : {}),
+          ...(query.sort === "featured" ? { publishedAt: "desc" as const } : {}),
+        },
       }),
       this.database.product.count({ where }),
     ]);
 
     const items = await this.assembleProducts(products, context);
-    return { items, total, page, page_size: pageSize };
+    const sorted = await this.sortProducts(items, query.sort);
+    return {
+      items: priceSort
+        ? sorted.slice((page - 1) * pageSize, page * pageSize)
+        : sorted,
+      total,
+      page,
+      page_size: pageSize,
+    };
+  }
+
+  /** 名称与价格排序在装配结果上执行 需求 PLP-003 */
+  private async sortProducts(
+    products: CatalogProduct[],
+    sort: CatalogProductListQuery["sort"],
+  ): Promise<CatalogProduct[]> {
+    if (sort === "name_asc" || sort === "name_desc") {
+      return [...products].sort((a, b) =>
+        sort === "name_asc"
+          ? a.name.localeCompare(b.name)
+          : b.name.localeCompare(a.name),
+      );
+    }
+    if (sort === "price_asc" || sort === "price_desc") {
+      const variantIds = products.flatMap((product) =>
+        product.variants.map((variant) => variant.id),
+      );
+      const prices =
+        variantIds.length > 0
+          ? await this.database.price.findMany({
+              where: { variantId: { in: variantIds } },
+            })
+          : [];
+      const priceByVariant = new Map(
+        prices.map((price) => [price.variantId, price.amountMinor]),
+      );
+      const lowestPrice = (product: CatalogProduct): number =>
+        Math.min(
+          ...product.variants.map(
+            (variant) => priceByVariant.get(variant.id) ?? Number.MAX_SAFE_INTEGER,
+          ),
+        );
+      return [...products].sort((a, b) =>
+        sort === "price_asc"
+          ? lowestPrice(a) - lowestPrice(b)
+          : lowestPrice(b) - lowestPrice(a),
+      );
+    }
+    return products;
   }
 
   async getProductBySlug(slug: string): Promise<CatalogProduct | null> {

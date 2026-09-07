@@ -8,6 +8,7 @@ import {
   Post,
   Query,
   Req,
+  Res,
 } from "@nestjs/common";
 import type { FastifyRequest } from "fastify";
 
@@ -43,6 +44,11 @@ export class MediaController {
   @Get("media/assets/:id/signed-url")
   getSignedUrl(@Param("id") id: string) {
     return this.mediaService.getSignedUrl(id);
+  }
+
+  @Get("media/files/:fileKey")
+  serveFile(@Param("fileKey") fileKey: string, @Res() reply: unknown) {
+    return this.mediaService.serveFile(fileKey, reply);
   }
 
   @Get("admin/media/assets")

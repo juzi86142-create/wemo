@@ -86,6 +86,17 @@ export class IdentityController {
     return this.identityService.assignRole(id, body);
   }
 
+  @Get("admin/data-requests")
+  listAdminDataRequests() {
+    return this.identityService.listAdminDataRequests();
+  }
+
+  @Patch("admin/data-requests/:id/status")
+  @HttpCode(200)
+  updateDataRequestStatus(@Param("id") id: string, @Body() body: unknown) {
+    return this.identityService.updateDataRequestStatus(id, body);
+  }
+
   @Get("account/subscriptions")
   listSubscriptions() {
     return this.identityService.listSubscriptions();

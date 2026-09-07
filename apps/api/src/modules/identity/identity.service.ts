@@ -33,9 +33,14 @@ import {
   IdentityUserMutationResponseSchema,
   IdentityUserRoleAssignSchema,
   IdentityUserStatusUpdateSchema,
+  IdentityDataRequestStatusSchema,
 } from "@wemo/contracts/identity";
 import type { IdentityNotificationListQuery } from "@wemo/contracts/identity";
 import { z } from "zod";
+
+const IdentityDataRequestStatusUpdateSchema = z.object({
+  status: IdentityDataRequestStatusSchema,
+});
 
 import { AuthorizationService } from "../../runtime/authorization.service";
 import { listResponse } from "../../runtime/list-response";
@@ -282,6 +287,30 @@ export class IdentityService {
       request_id: context.request_id,
       item,
     });
+  }
+
+  /** 后台数据请求工单处理 需求 7.9 */
+  async listAdminDataRequests() {
+    this.authorization.requireStaffPermission("identity:read");
+    return listResponse(await this.repository.listAllDataRequests());
+  }
+
+  async updateDataRequestStatus(id: unknown, body: unknown) {
+    this.authorization.requireStaffPermission("identity:write");
+    const context = this.requestContext.requireContext();
+    const parsedId = parseInput(UserIdParamSchema, { id });
+    const parsedBody = parseInput(IdentityDataRequestStatusUpdateSchema, body);
+    const item = await this.repository.updateDataRequestStatus(
+      parsedId.id,
+      parsedBody.status,
+    );
+    if (!item) {
+      throw new NotFoundException("数据请求不存在");
+    }
+    return {
+      request_id: context.request_id,
+      item,
+    };
   }
 
   async assignRole(id: unknown, body: unknown) {

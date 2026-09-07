@@ -68,6 +68,13 @@ export class MediaPrismaRepository implements MediaRepository {
     return row ? this.mapRow(row) : null;
   }
 
+  async getAssetByFileKey(fileKey: string): Promise<MediaAsset | null> {
+    const row = await this.database.mediaAsset.findUnique({
+      where: { fileKey },
+    });
+    return row ? this.mapRow(row) : null;
+  }
+
   async createAsset(input: MediaAssetCreateInput): Promise<MediaAsset> {
     const row = await this.database.mediaAsset.create({
       data: {

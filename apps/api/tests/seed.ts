@@ -825,6 +825,14 @@ async function seedNotificationTemplates() {
       variables: ["quote_id"],
     },
     {
+      code: "dealer_member_invite",
+      audience: "dealer",
+      category: "dealer",
+      subject: "You are invited to a dealer company",
+      body: "邀请令牌: {{token}}",
+      variables: ["email", "token"],
+    },
+    {
       code: "order_confirmation",
       audience: "user",
       category: "order",
