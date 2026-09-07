@@ -1,4 +1,9 @@
-import { Inject, Injectable } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import {
   ReturnCreateSchema,
   ReturnListQuerySchema,
@@ -11,6 +16,10 @@ import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import {
+  ORDERS_REPOSITORY,
+  type OrdersRepository,
+} from "../orders/orders.repository";
 import { ReturnsPrismaRepository } from "./returns.prisma-repository";
 import { RETURNS_REPOSITORY } from "./returns.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
@@ -25,6 +34,8 @@ export class ReturnsService {
   constructor(
     @Inject(RETURNS_REPOSITORY)
     private readonly repository: ReturnsPrismaRepository,
+    @Inject(ORDERS_REPOSITORY)
+    private readonly ordersRepository: OrdersRepository,
     @Inject(NotificationsService)
     private readonly notifications: NotificationsService,
     @Inject(AuthorizationService)
@@ -34,14 +45,14 @@ export class ReturnsService {
   ) {}
 
   async listReturns(query: unknown) {
+    const actor = this.authorization.requireActor();
     const parsed = parseInput(ReturnListQuerySchema, query);
-    const actor = this.requestContext.getActor();
     const scope = {
       ...parsed,
-      ...(actor && actor.audience === "dealer" && actor.company_id
+      ...(actor.audience === "dealer" && actor.company_id
         ? { company_id: actor.company_id }
         : {}),
-      ...(actor && actor.audience !== "staff" && actor.audience !== "dealer"
+      ...(actor.audience !== "staff" && actor.audience !== "dealer"
         ? { user_id: actor.user_id }
         : {}),
     };
@@ -53,11 +64,36 @@ export class ReturnsService {
   async createReturn(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(ReturnCreateSchema, body);
-    const actor = context.actor;
+    const actor = this.authorization.requireActor();
+    // 售后按订单行项目发起 必须校验订单存在归属与可售后状态
+    const order = await this.ordersRepository.getOrderById(input.order_id);
+    if (!order) {
+      throw new NotFoundException("订单不存在");
+    }
+    if (actor.audience !== "staff") {
+      const belongsToUser = order.user_id !== null && order.user_id === actor.user_id;
+      const belongsToCompany =
+        order.company_id !== null &&
+        actor.company_id !== undefined &&
+        order.company_id === actor.company_id;
+      if (!belongsToUser && !belongsToCompany) {
+        throw new ForbiddenException("不能对其他订单发起售后");
+      }
+    }
+    const refundable = new Set([
+      "paid",
+      "processing",
+      "partially_shipped",
+      "shipped",
+      "completed",
+    ]);
+    if (!refundable.has(order.status)) {
+      throw new ForbiddenException("当前订单状态不支持售后");
+    }
     const item = await this.repository.createReturn({
       ...input,
-      user_id: actor?.audience === "staff" ? null : actor?.user_id ?? null,
-      company_id: actor?.company_id ?? null,
+      user_id: actor.audience === "staff" ? null : actor.user_id,
+      company_id: actor.company_id ?? null,
       request_id: context.request_id,
     });
 

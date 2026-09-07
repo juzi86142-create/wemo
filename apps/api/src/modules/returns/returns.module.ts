@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 
 import { DatabaseModule } from "../../database/database.module";
+import { OrdersModule } from "../orders/orders.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { AuditModule } from "../audit/audit.module";
 import { ReturnsController } from "./returns.controller";
@@ -9,7 +10,7 @@ import { RETURNS_REPOSITORY } from "./returns.repository";
 import { ReturnsService } from "./returns.service";
 
 @Module({
-  imports: [DatabaseModule, NotificationsModule, AuditModule],
+  imports: [DatabaseModule, OrdersModule, NotificationsModule, AuditModule],
   controllers: [ReturnsController],
   providers: [
     ReturnsService,

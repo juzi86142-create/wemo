@@ -50,10 +50,14 @@ export class QuotesService {
   }
 
   async listVersions(id: unknown) {
+    const actor = this.authorization.requireActor();
     const parsedId = parseInput(QuoteIdParamSchema, { id });
     const quote = await this.repository.getQuoteById(parsedId.id);
     if (!quote) {
       throw new ConflictException("报价不存在");
+    }
+    if (actor.audience !== "staff" && quote.company_id !== actor.company_id) {
+      throw new ForbiddenException("不能查看其他企业报价");
     }
     return QuoteVersionListResponseSchema.parse(quote.versions);
   }
@@ -62,10 +66,9 @@ export class QuotesService {
     const context = this.requestContext.requireContext();
     const input = parseInput(QuoteCreateSchema, body);
     const actor = context.actor;
+    // 企业归属以服务端会话为准 仅员工可代某企业发起
     const companyId =
-      input.company_id ??
-      actor?.company_id ??
-      (actor?.audience === "staff" ? null : undefined);
+      actor?.audience === "staff" ? input.company_id : actor?.company_id;
     if (!companyId) {
       throw new ForbiddenException("报价需要企业上下文");
     }

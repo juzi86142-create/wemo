@@ -1,4 +1,9 @@
-import { Inject, Injectable } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
 import {
   PricingPreviewRequestSchema,
   PricingPreviewResponseSchema,
@@ -41,6 +46,27 @@ export class PricingService {
 
   preview(body: unknown) {
     const input = parseInput(PricingPreviewRequestSchema, body);
+    const actor = this.requestContext.getActor();
+    // 经销商价维度仅员工或本企业可查 游客与用户只能看零售
+    if (input.dealer_company_id !== undefined) {
+      if (!actor) {
+        throw new UnauthorizedException("缺少认证上下文");
+      }
+      if (
+        actor.audience !== "staff" &&
+        actor.company_id !== input.dealer_company_id
+      ) {
+        throw new ForbiddenException("无权查询其他企业价格");
+      }
+    }
+    if (
+      input.dealer_tier_id !== undefined ||
+      input.price_list_id !== undefined
+    ) {
+      if (actor?.audience !== "staff") {
+        throw new ForbiddenException("价格表与等级价仅员工可查");
+      }
+    }
     const item = this.repository.previewPricing(input);
     return PricingPreviewResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,

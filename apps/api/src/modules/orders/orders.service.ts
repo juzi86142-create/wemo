@@ -45,18 +45,16 @@ export class OrdersService {
   ) {}
 
   async listOrders(query: unknown) {
+    const actor = this.authorization.requireActor();
     const parsed = parseInput(OrderListQuerySchema, query);
-    const actor = this.requestContext.getActor();
     let scope = parsed;
-    if (actor) {
-      if (actor.audience === "dealer") {
-        // exactOptionalPropertyTypes：避免把 undefined 写进可选字段
-        if (actor.company_id !== undefined) {
-          scope = { ...scope, company_id: actor.company_id };
-        }
-      } else if (actor.audience !== "staff") {
-        scope = { ...scope, user_id: actor.user_id };
+    if (actor.audience === "dealer") {
+      // exactOptionalPropertyTypes：避免把 undefined 写进可选字段
+      if (actor.company_id !== undefined) {
+        scope = { ...scope, company_id: actor.company_id };
       }
+    } else if (actor.audience !== "staff") {
+      scope = { ...scope, user_id: actor.user_id };
     }
     const list = await this.repository.listOrders(scope);
     return OrderListResponseSchema.parse(list);
@@ -201,10 +199,15 @@ export class OrdersService {
   }
 
   async updateStatus(id: unknown, body: unknown) {
+    this.authorization.requireAudience("staff");
     const parsedId = parseInput(OrderIdParamSchema, { id });
     const input = parseInput(OrderStatusUpdateSchema, body);
     const context = this.requestContext.requireContext();
-    this.authorization.requireActor();
+    const order = await this.repository.getOrderById(parsedId.id);
+    if (!order) {
+      throw new NotFoundException("订单不存在");
+    }
+    this.assertStatusTransition(order.channel, order.status, input.status);
     const item = await this.repository.transitionOrder(
       parsedId.id,
       input.status,
@@ -216,5 +219,43 @@ export class OrdersService {
       request_id: context.request_id,
       item,
     });
+  }
+
+  /** 订单状态机 需求 8.3 B2C 与 8.4 B2B 仅允许合法迁移 */
+  private assertStatusTransition(
+    channel: string,
+    from: string,
+    to: string,
+  ): void {
+    const transitions: Record<string, Record<string, string[]>> = {
+      // B2C：Pending Payment → Paid → Processing → Partially Shipped → Shipped → Completed，异常 Cancelled
+      b2c: {
+        pending_payment: ["paid", "cancelled"],
+        paid: ["processing", "cancelled", "refunded"],
+        processing: ["partially_shipped", "cancelled"],
+        partially_shipped: ["shipped"],
+        shipped: ["completed"],
+        completed: [],
+        cancelled: [],
+        refunded: [],
+      },
+      // B2B：Pending Review → Confirmed → Awaiting Payment → Processing → … → Completed，异常 Cancelled
+      b2b: {
+        pending_review: ["confirmed", "cancelled"],
+        confirmed: ["awaiting_payment", "cancelled"],
+        awaiting_payment: ["processing", "cancelled"],
+        processing: ["partially_shipped", "cancelled"],
+        partially_shipped: ["shipped"],
+        shipped: ["completed"],
+        completed: [],
+        cancelled: [],
+      },
+    };
+    const allowed = transitions[channel]?.[from] ?? [];
+    if (!allowed.includes(to)) {
+      throw new ForbiddenException(
+        `订单状态不允许从 ${from} 变更为 ${to}`,
+      );
+    }
   }
 }
