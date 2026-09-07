@@ -14,6 +14,7 @@ import { EntityIdSchema, type JsonValue } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
+import { EmailSenderService } from "./email-sender.service";
 import { NotificationsRedisRepository } from "./notifications.redis-repository";
 import { NOTIFICATIONS_REPOSITORY } from "./notifications.repository";
 import { RequestContextStore } from "../../runtime/request-context.store";
@@ -31,6 +32,8 @@ export class NotificationsService {
   constructor(
     @Inject(NOTIFICATIONS_REPOSITORY)
     private readonly repository: NotificationsRedisRepository,
+    @Inject(EmailSenderService)
+    private readonly emailSender: EmailSenderService,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -109,10 +112,32 @@ export class NotificationsService {
     request_id: string;
     payload: unknown;
   }) {
-    return this.repository.recordDelivery({
+    const item = await this.repository.recordDelivery({
       ...input,
       payload: input.payload as JsonValue,
       request_id: input.request_id,
     });
+
+    // 邮件渠道真实投递 本地经 Mailpit SMTP 需求 19.2 发送状态可追踪
+    if (input.channel === "email") {
+      const email = await this.emailSender.lookupEmail(input.recipient_user_id);
+      if (email !== null) {
+        const result = await this.emailSender.send(
+          email,
+          `WEMOVE 通知 ${input.template_code}`,
+          JSON.stringify(input.payload, null, 2),
+        );
+        await this.repository.updateDeliveryResult(item.id, {
+          status: result.sent ? "sent" : "failed",
+          provider_message_id: result.provider_message_id,
+          failure_reason: result.failure_reason,
+        });
+        return (
+          (await this.repository.getNotificationDeliveryById(item.id)) ?? item
+        );
+      }
+    }
+
+    return item;
   }
 }

@@ -176,6 +176,36 @@ export class NotificationsRedisRepository implements NotificationsRepository {
   }
 
   /** 将投递记录重置为待发送并递增尝试次数 */
+  async updateDeliveryResult(
+    id: number,
+    result: {
+      status: "sent" | "failed";
+      provider_message_id: string | null;
+      failure_reason: string | null;
+    },
+  ): Promise<NotificationDelivery | null> {
+    const delivery = await readHashOne<NotificationDelivery>(
+      this.redis,
+      DELIVERIES_KEY,
+      id,
+      (raw) => JSON.parse(raw) as NotificationDelivery,
+    );
+    if (!delivery) return null;
+    const updated: NotificationDelivery = {
+      ...delivery,
+      status: result.status,
+      provider_message_id: result.provider_message_id ?? delivery.provider_message_id,
+      failure_reason: result.failure_reason ?? delivery.failure_reason,
+      sent_at:
+        result.status === "sent"
+          ? new Date().toISOString()
+          : delivery.sent_at,
+      updated_at: new Date().toISOString(),
+    };
+    await writeHashObject(this.redis, DELIVERIES_KEY, id, updated);
+    return updated;
+  }
+
   async retryDelivery(
     id: number,
     reason?: string,

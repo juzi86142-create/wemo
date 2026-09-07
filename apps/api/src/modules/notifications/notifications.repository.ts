@@ -32,4 +32,12 @@ export interface NotificationsRepository {
   ): Promise<NotificationDelivery>;
   getNotificationDeliveryById(id: number): Promise<NotificationDelivery | null>;
   retryDelivery(id: number, reason?: string): Promise<NotificationDelivery>;
+  updateDeliveryResult(
+    id: number,
+    result: {
+      status: "sent" | "failed";
+      provider_message_id: string | null;
+      failure_reason: string | null;
+    },
+  ): Promise<NotificationDelivery | null>;
 }
