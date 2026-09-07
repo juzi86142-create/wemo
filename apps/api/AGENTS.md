@@ -14,7 +14,12 @@
 - 运营内容：`cms`、`media`、`forms`、`search`、`seo`、`localization`、`notifications`、`analytics`、`reports`。
 - 平台能力：`settings`、`integrations`、`jobs`、`audit`。
 
-共 24 个模块。演示模式 stub 模块（对应表已从 `schema.prisma` 移除，读返回空、写抛「Demo模式：暂不支持…」）：`analytics`、`cart`（`previewPricing` 例外，按 `prices` 真实计价）、`notifications`、`integrations`、`jobs`、`reports`。`identity`/`dealers`/`inventory`/`orders` 的地址本、订阅、库存预占等接口亦为 stub（见各模块 README）。
+共 24 个模块，全部为真实实现：PostgreSQL 承载 30 张核心/支撑表，购物车/分析事件/通知/作业/集成/报表/地址/订阅/数据请求/库存预占等持久化在 Redis（键前缀 `wemo:`，一律不设 TTL，仅真缓存可过期）。无「演示 stub」模块；对外部系统的适配层（邮件发送、搜索引擎、对象存储、支付网关）按 demo 语义降级为日志/Redis 记录/合成结果，接口形状与权限校验保持真实。
+
+## 认证约定
+
+- 身份从 `Authorization: Bearer <token>` 服务端解析（sessions 表 + 用户/企业/角色），客户端身份头一律不信任。
+- 会话随机令牌、scrypt 密码哈希、登录注册找回验证等敏感接口经 @nestjs/throttler 限流。
 
 ## 实现约束
 

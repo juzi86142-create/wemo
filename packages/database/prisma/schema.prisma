@@ -8,7 +8,7 @@ datasource db {
   relationMode = "prisma"
 }
 
-// Demo级别：仅保留核心实体和必需支撑表（共30张；购物车/收藏/订阅/通知/分析/集成/作业/报表等非核心表已移除，对应API为演示stub）
+// Demo级别：仅保留核心实体和必需支撑表（共30张；购物车/收藏/订阅/通知/分析/集成/作业/报表等非核心数据持久化在 Redis，见 apps/api/src/modules/README.md）
 
 // === 身份认证 ===
 model User {
