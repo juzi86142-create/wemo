@@ -84,6 +84,16 @@ export class ReportsRedisRepository implements ReportsRepository {
     return snapshot;
   }
 
+  /** 按报表类型执行报表 未匹配时回退总览报表 */
+  async runReportByKind(
+    kind: ReportKind,
+    params?: Record<string, unknown>,
+  ): Promise<ReportSnapshot> {
+    const definitions = await this.loadDefinitions();
+    const definition = definitions.find((d) => d.kind === kind);
+    return this.runReport(definition?.id ?? 1, params);
+  }
+
   /** 保存报表结果 */
   async saveResult(result: unknown): Promise<{ id: number }> {
     const record = result as {

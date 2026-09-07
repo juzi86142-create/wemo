@@ -39,7 +39,7 @@ export class ReportsService {
       kind: parsedKind.kind,
       ...queryObject,
     });
-    const snapshot = await this.repository.runReport(1, {
+    const snapshot = await this.repository.runReportByKind(parsedQuery.kind, {
       from: parsedQuery.from,
       to: parsedQuery.to,
     });
