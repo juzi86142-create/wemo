@@ -1,11 +1,43 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import type { Redis } from "ioredis";
 
 import { createApiApp } from "../../src/bootstrap";
+import { REDIS_CLIENT } from "../../src/database/redis.constants";
 
 // 本地 docker postgres 已就绪；PrismaClient 初始化时读取 DATABASE_URL。
 process.env.DATABASE_URL ??=
   "postgresql://wemove:wemove@localhost:5432/wemove";
+
+/** 员工登录需两步 MFA 从 Redis 取验证码完成验证 */
+async function loginStaff(server: FastifyInstance, app: {
+  get: <T>(token: unknown) => T;
+}) {
+  const login = await server.inject({
+    method: "POST",
+    url: "/api/v1/auth/login",
+    headers: { "content-type": "application/json" },
+    payload: { email: "admin@wemove.com", password: "Demo1234!" },
+  });
+  expect(login.statusCode).toBe(200);
+  const challenge = JSON.parse(login.body);
+  expect(challenge.item.mfa_required).toBe(true);
+  const redis = app.get<Redis>(REDIS_CLIENT);
+  const raw = await redis.hget(
+    "wemo:mfa:challenges",
+    challenge.item.challenge_token,
+  );
+  expect(raw).not.toBeNull();
+  const { code } = JSON.parse(raw as string) as { code: string };
+  const verify = await server.inject({
+    method: "POST",
+    url: "/api/v1/auth/mfa/verify",
+    headers: { "content-type": "application/json" },
+    payload: { challenge_token: challenge.item.challenge_token, code },
+  });
+  expect(verify.statusCode).toBe(200);
+  return JSON.parse(verify.body).item.token as string;
+}
 
 describe("API integration（真实数据库）", () => {
   let app: Awaited<ReturnType<typeof createApiApp>>;
@@ -61,28 +93,13 @@ describe("API integration（真实数据库）", () => {
     expect(body.items[0].name).toBeTypeOf("string");
   });
 
-  it("auth 登录发放随机会话令牌", async () => {
-    const response = await server!.inject({
-      method: "POST",
-      url: "/api/v1/auth/login",
-      headers: { "content-type": "application/json" },
-      payload: { email: "admin@wemove.com", password: "Demo1234!" },
-    });
-    expect(response.statusCode).toBe(200);
-    const body = JSON.parse(response.body);
-    expect(body.item.token).toBeTypeOf("string");
-    expect(body.item.token.length).toBeGreaterThanOrEqual(32);
-    expect(body.item.audience).toBe("staff");
+  it("auth 员工登录经 MFA 两步发放随机会话令牌", async () => {
+    const token = await loginStaff(server!, app!);
+    expect(token.length).toBeGreaterThanOrEqual(32);
   });
 
   it("Bearer 令牌访问后台审计日志", async () => {
-    const login = await server!.inject({
-      method: "POST",
-      url: "/api/v1/auth/login",
-      headers: { "content-type": "application/json" },
-      payload: { email: "admin@wemove.com", password: "Demo1234!" },
-    });
-    const token = JSON.parse(login.body).item.token as string;
+    const token = await loginStaff(server!, app!);
 
     const response = await server!.inject({
       method: "GET",

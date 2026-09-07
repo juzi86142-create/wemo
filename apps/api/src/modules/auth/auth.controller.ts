@@ -32,6 +32,12 @@ export class AuthController {
     return this.authService.login(body);
   }
 
+  @Post("mfa/verify")
+  @HttpCode(200)
+  verifyMfa(@Body() body: unknown) {
+    return this.authService.verifyMfa(body);
+  }
+
   @Post("verify-email")
   @HttpCode(200)
   verifyEmail(@Body() body: unknown) {

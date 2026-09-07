@@ -7,6 +7,8 @@ import {
 import {
   AuthForgotPasswordSchema,
   AuthLoginSchema,
+  AuthMfaChallengeResponseSchema,
+  AuthMfaVerifySchema,
   AuthPasswordChangeSchema,
   AuthPasswordResetSchema,
   AuthRegisterSchema,
@@ -110,7 +112,54 @@ export class AuthService {
         throw new ForbiddenException("经销商企业停用或成员关系已失效");
       }
     }
+    // 后台员工强制 MFA 两步登录 需求 SEC-002/2.3
+    if (user.audience === "staff") {
+      const challengeToken = randomBytes(24).toString("hex");
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      await this.repository.storeMfaChallenge(challengeToken, {
+        user_id: user.id,
+        code,
+        expires_at: expiresAt,
+      });
+      await this.notifications.emitBusinessNotification({
+        template_code: "account_mfa_challenge",
+        recipient_user_id: user.id,
+        company_id: null,
+        audience: "staff",
+        channel: "email",
+        request_id: context.request_id,
+        payload: { email: user.email, code, expires_at: expiresAt },
+      });
+
+      return AuthMfaChallengeResponseSchema.parse({
+        request_id: context.request_id,
+        item: {
+          mfa_required: true,
+          challenge_token: challengeToken,
+          expires_at: expiresAt,
+        },
+      });
+    }
     const item = await this.repository.issueSession(user.id, user.audience);
+
+    return AuthSessionMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item,
+    });
+  }
+
+  async verifyMfa(body: unknown) {
+    const context = this.requestContext.requireContext();
+    const input = parseInput(AuthMfaVerifySchema, body);
+    const userId = await this.repository.consumeMfaChallenge(
+      input.challenge_token,
+      input.code,
+    );
+    if (userId === null) {
+      throw new UnauthorizedException("验证码无效或已过期");
+    }
+    const item = await this.repository.issueSession(userId, "staff");
 
     return AuthSessionMutationResponseSchema.parse({
       request_id: context.request_id,

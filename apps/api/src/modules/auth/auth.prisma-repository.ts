@@ -301,6 +301,44 @@ export class AuthPrismaRepository implements AuthRepository {
     return this.mapUser(user);
   }
 
+  async storeMfaChallenge(
+    token: string,
+    challenge: { user_id: number; code: string; expires_at: string },
+  ): Promise<void> {
+    await writeHashObject(
+      this.redis,
+      `${REDIS_KEY_PREFIX}:mfa:challenges`,
+      token,
+      challenge,
+    );
+  }
+
+  async consumeMfaChallenge(token: string, code: string): Promise<number | null> {
+    const challenge = await readHashOne<{
+      user_id: number;
+      code: string;
+      expires_at: string;
+    }>(
+      this.redis,
+      `${REDIS_KEY_PREFIX}:mfa:challenges`,
+      token,
+      (raw) =>
+        JSON.parse(raw) as {
+          user_id: number;
+          code: string;
+          expires_at: string;
+        },
+    );
+    if (!challenge || challenge.code !== code) {
+      return null;
+    }
+    if (new Date(challenge.expires_at) < new Date()) {
+      return null;
+    }
+    await this.redis.hdel(`${REDIS_KEY_PREFIX}:mfa:challenges`, token);
+    return challenge.user_id;
+  }
+
   async changePassword(
     userId: number,
     newPassword: string,

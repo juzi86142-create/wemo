@@ -212,6 +212,27 @@ export const AuthPasswordResetSchema = z
   })
   .strict();
 
+/** 后台员工强制 MFA 两步登录 需求 SEC-002/2.3 */
+export const AuthMfaChallengeResponseSchema = z
+  .object({
+    request_id: RequestIdSchema,
+    item: z
+      .object({
+        mfa_required: z.literal(true),
+        challenge_token: z.string().min(16),
+        expires_at: z.string().datetime(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const AuthMfaVerifySchema = z
+  .object({
+    challenge_token: z.string().min(16).max(128),
+    code: z.string().regex(/^\d{6}$/),
+  })
+  .strict();
+
 export const AuthRevokeOthersResponseSchema = z
   .object({
     request_id: RequestIdSchema,
@@ -379,6 +400,7 @@ export type AuthLoginInput = z.infer<typeof AuthLoginSchema>;
 export type AuthVerifyEmailInput = z.infer<typeof AuthVerifyEmailSchema>;
 export type AuthPasswordChangeInput = z.infer<typeof AuthPasswordChangeSchema>;
 export type AuthPasswordResetInput = z.infer<typeof AuthPasswordResetSchema>;
+export type AuthMfaVerifyInput = z.infer<typeof AuthMfaVerifySchema>;
 export type AuthForgotPasswordInput = z.infer<typeof AuthForgotPasswordSchema>;
 export type AuthSessionRevokeInput = z.infer<typeof AuthSessionRevokeSchema>;
 export type AuthSessionListQuery = z.infer<typeof AuthSessionListQuerySchema>;

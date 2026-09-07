@@ -62,6 +62,12 @@ export interface AuthRepository {
     token: string,
   ): Promise<number | null>;
   resetPassword(userId: number, newPassword: string): Promise<IdentityUser>;
+  /** 员工 MFA 挑战一次性六位码 */
+  storeMfaChallenge(
+    token: string,
+    challenge: { user_id: number; code: string; expires_at: string },
+  ): Promise<void>;
+  consumeMfaChallenge(token: string, code: string): Promise<number | null>;
   changePassword(userId: number, newPassword: string): Promise<IdentityUser>;
   getPasswordHash(userId: number): Promise<string | null>;
   getActiveDealerMembership(
