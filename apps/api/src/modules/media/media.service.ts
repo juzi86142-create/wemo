@@ -12,6 +12,11 @@ import {
   MediaSignedUrlResponseSchema,
 } from "@wemo/contracts/content";
 import { EntityIdSchema } from "@wemo/contracts/common";
+import type { MediaAsset } from "@wemo/contracts/content";
+import { createHash } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import { z } from "zod";
 
 import { AUDIT_REPOSITORY, type AuditRepository } from "../audit/audit.repository";
@@ -125,6 +130,81 @@ export class MediaService {
         expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
         method: "GET",
       },
+    });
+  }
+
+  /** 媒体文件上传 需求 7.11 文件落本地媒体目录并登记资产 */
+  async uploadAsset(request: unknown) {
+    const actor = this.authorization.requireStaffPermission("media:write");
+    const context = this.requestContext.requireContext();
+    const fastifyRequest = request as {
+      file: () => Promise<{
+        filename: string;
+        mimetype: string;
+        file: NodeJS.ReadableStream;
+      } | undefined>;
+      body: Record<string, unknown>;
+    };
+
+    const part = await fastifyRequest.file();
+    if (!part) {
+      throw new NotFoundException("缺少上传文件");
+    }
+    const filename = part.filename;
+    const raw = fastifyRequest.body ?? {};
+    const visibility = String(raw.visibility ?? "public");
+    const type = String(raw.type ?? "asset");
+    const alt =
+      typeof raw.alt === "string" && raw.alt.length > 0 ? raw.alt : null;
+    const tagsRaw = raw.tags;
+    const tags = Array.isArray(tagsRaw)
+      ? tagsRaw.filter((tag): tag is string => typeof tag === "string")
+      : [];
+
+    const mediaDir = process.env.MEDIA_DIR ?? "uploads";
+    const dir = resolve(process.cwd(), mediaDir);
+    await mkdir(dir, { recursive: true });
+    const key = `${Date.now()}-${filename}`;
+    const target = resolve(dir, key);
+
+    const hash = createHash("sha256");
+    let size = 0;
+    await new Promise<void>((resolveWrite, rejectWrite) => {
+      const sink = createWriteStream(target);
+      part.file.on("data", (chunk: Buffer) => {
+        hash.update(chunk);
+        size += chunk.length;
+      });
+      part.file.on("error", rejectWrite);
+      part.file.pipe(sink);
+      sink.on("finish", resolveWrite);
+      sink.on("error", rejectWrite);
+    });
+
+    const item = await this.repository.createAsset({
+      type,
+      file_key: key,
+      mime: part.mimetype || "application/octet-stream",
+      size,
+      checksum: hash.digest("hex"),
+      alt,
+      visibility: visibility as MediaAsset["visibility"],
+      tags,
+      metadata: { original_name: filename },
+    });
+
+    await this.auditRepository.recordLog({
+      actor_id: actor.user_id,
+      action: "media.upload",
+      entity: "media_asset",
+      entity_id: item.id,
+      after: { file_key: item.file_key, size: item.size },
+      request_id: context.request_id,
+    });
+
+    return MediaAssetMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item,
     });
   }
 

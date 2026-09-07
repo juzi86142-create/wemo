@@ -118,13 +118,42 @@ export class NotificationsService {
       request_id: input.request_id,
     });
 
+    // 模板存在性校验 需求 19.2 模板变量缺失时不发送并记录错误
+    const templates = await this.repository.listTemplates({
+      page: 1,
+      page_size: 200,
+    });
+    const template = templates.items.find(
+      (entry) => entry.code === input.template_code,
+    );
+    if (!template) {
+      await this.repository.updateDeliveryResult(item.id, {
+        status: "failed",
+        provider_message_id: null,
+        failure_reason: `模板 ${input.template_code} 不存在`,
+      });
+      return (await this.repository.getNotificationDeliveryById(item.id)) ?? item;
+    }
+    const payloadRecord = (input.payload ?? {}) as Record<string, unknown>;
+    const missingVariables = (template.variables ?? []).filter(
+      (variable) => payloadRecord[variable] === undefined,
+    );
+    if (missingVariables.length > 0) {
+      await this.repository.updateDeliveryResult(item.id, {
+        status: "failed",
+        provider_message_id: null,
+        failure_reason: `模板变量缺失: ${missingVariables.join(", ")}`,
+      });
+      return (await this.repository.getNotificationDeliveryById(item.id)) ?? item;
+    }
+
     // 邮件渠道真实投递 本地经 Mailpit SMTP 需求 19.2 发送状态可追踪
     if (input.channel === "email") {
       const email = await this.emailSender.lookupEmail(input.recipient_user_id);
       if (email !== null) {
         const result = await this.emailSender.send(
           email,
-          `WEMOVE 通知 ${input.template_code}`,
+          template.subject ?? `WEMOVE 通知 ${input.template_code}`,
           JSON.stringify(input.payload, null, 2),
         );
         await this.repository.updateDeliveryResult(item.id, {
@@ -132,10 +161,26 @@ export class NotificationsService {
           provider_message_id: result.provider_message_id,
           failure_reason: result.failure_reason,
         });
-        return (
-          (await this.repository.getNotificationDeliveryById(item.id)) ?? item
-        );
       }
+      // 内部收件组 需求 19.2 按模板类别投递到后台配置的收件组
+      const group = await this.emailSender.lookupNotificationGroup(
+        input.template_code,
+      );
+      for (const groupEmail of group) {
+        const result = await this.emailSender.send(
+          groupEmail,
+          template.subject ?? `WEMOVE 通知 ${input.template_code}`,
+          JSON.stringify(input.payload, null, 2),
+        );
+        if (!result.sent) {
+          await this.repository.updateDeliveryResult(item.id, {
+            status: "failed",
+            provider_message_id: result.provider_message_id,
+            failure_reason: result.failure_reason,
+          });
+        }
+      }
+      return (await this.repository.getNotificationDeliveryById(item.id)) ?? item;
     }
 
     return item;

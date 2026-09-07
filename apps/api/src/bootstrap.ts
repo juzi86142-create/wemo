@@ -38,7 +38,7 @@ export async function createApiApp(
     }),
   );
 
-  configureApplication(app);
+  await configureApplication(app);
 
   return app;
 }

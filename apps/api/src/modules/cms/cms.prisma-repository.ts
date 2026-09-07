@@ -140,6 +140,7 @@ export class CmsPrismaRepository implements CmsRepository {
         body: input.body as never,
         seo: (input.seo ?? {}) as never,
         status: input.status ?? "draft",
+        translationStatus: input.translation_status ?? "published",
       },
     });
 
@@ -160,6 +161,9 @@ export class CmsPrismaRepository implements CmsRepository {
         ...(input.body !== undefined ? { body: input.body as never } : {}),
         ...(input.seo !== undefined ? { seo: input.seo as never } : {}),
         ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.translation_status !== undefined
+          ? { translationStatus: input.translation_status }
+          : {}),
       },
     });
 
@@ -303,7 +307,7 @@ export class CmsPrismaRepository implements CmsRepository {
       status: this.effectiveStatus(entry),
       locale: entry.locale,
       market: entry.market,
-      translation_status: "published",
+      translation_status: entry.translationStatus as ContentEntry["translation_status"],
       linked_product_ids: [],
       media_asset_ids: [],
       published_at: entry.publishedAt?.toISOString() ?? null,

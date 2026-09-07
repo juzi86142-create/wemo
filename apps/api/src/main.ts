@@ -19,6 +19,6 @@ const app = await NestFactory.create<NestFastifyApplication>(
   new FastifyAdapter({ logger: true, requestIdHeader: "x-request-id" }),
 );
 
-configureApplication(app);
+await configureApplication(app);
 
 await app.listen(port, "0.0.0.0");

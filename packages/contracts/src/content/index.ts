@@ -140,6 +140,33 @@ export const ContentEntryListQuerySchema = PaginationSchema.extend({
   q: z.string().min(1).optional(),
 });
 
+/** 首页模块类型 需求 ADM-C-002 模块化配置 */
+export const HomeModuleTypeSchema = z.enum([
+  "hero",
+  "category_cards",
+  "product_collection",
+  "content_collection",
+  "brand_values",
+  "dealer_cta",
+  "subscription",
+]);
+
+export const HomeModuleSchema = z
+  .object({
+    type: HomeModuleTypeSchema,
+    title: z.string().min(1).optional(),
+    config: JsonValueSchema,
+  })
+  .strict()
+  .passthrough();
+
+export const HomePageBodySchema = z
+  .object({
+    modules: z.array(HomeModuleSchema),
+  })
+  .strict()
+  .passthrough();
+
 /** CMS 发布与预览 需求 ADM-C-003/004 */
 export const ContentEntryPublishSchema = z
   .object({

@@ -7,7 +7,9 @@ import {
   Param,
   Post,
   Query,
+  Req,
 } from "@nestjs/common";
+import type { FastifyRequest } from "fastify";
 
 import { MediaService } from "./media.service";
 
@@ -52,5 +54,11 @@ export class MediaController {
   @HttpCode(200)
   createAsset(@Body() body: unknown) {
     return this.mediaService.createAsset(body);
+  }
+
+  @Post("admin/media/upload")
+  @HttpCode(200)
+  uploadAsset(@Req() request: FastifyRequest) {
+    return this.mediaService.uploadAsset(request);
   }
 }

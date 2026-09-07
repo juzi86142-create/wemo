@@ -10,6 +10,7 @@ import {
   ContentEntryUpdateSchema,
   ContentEntryVersionListResponseSchema,
   ContentNavigationListResponseSchema,
+  HomePageBodySchema,
 } from "@wemo/contracts/content";
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
@@ -81,6 +82,7 @@ export class CmsService {
     this.authorization.requireStaffPermission("content:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(ContentEntryCreateSchema, body);
+    this.validateHomeBody(input.type, input.body);
     const item = await this.repository.createContentEntry(input);
 
     return ContentEntryMutationResponseSchema.parse({
@@ -94,6 +96,9 @@ export class CmsService {
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ContentIdParamSchema, { id });
     const input = parseInput(ContentEntryUpdateSchema, body);
+    if (input.body !== undefined) {
+      this.validateHomeBody(input.type, input.body);
+    }
     const item = await this.repository.updateContentEntry(
       parsedId.id,
       input as any,
@@ -197,5 +202,11 @@ export class CmsService {
       this.requestContext.getLocale(),
     );
     return ContentNavigationListResponseSchema.parse(listResponse(items));
+  }
+
+  /** 首页类型内容校验模块结构 需求 ADM-C-002 */
+  private validateHomeBody(type: string | undefined, body: unknown): void {
+    if (type !== "home") return;
+    parseInput(HomePageBodySchema, body);
   }
 }

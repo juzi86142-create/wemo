@@ -79,7 +79,7 @@ describe("Localization HTTP", () => {
       }),
       { logger: false },
     );
-    configureApplication(app);
+    await configureApplication(app);
     await app.init();
   });
 

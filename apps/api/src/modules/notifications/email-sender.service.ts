@@ -32,6 +32,19 @@ export class EmailSenderService {
     return user?.email ?? null;
   }
 
+  /** 内部收件组 需求 19.2 按模板类别读取系统配置的收件组邮箱 */
+  async lookupNotificationGroup(templateCode: string): Promise<string[]> {
+    const category = templateCode.split("_")[0] ?? "general";
+    const setting = await this.database.systemSetting.findFirst({
+      where: { groupName: "notification_groups", key: category },
+    });
+    if (!setting) return [];
+    const value = setting.value as unknown;
+    return Array.isArray(value)
+      ? value.filter((entry): entry is string => typeof entry === "string")
+      : [];
+  }
+
   async send(to: string, subject: string, text: string): Promise<EmailSendResult> {
     try {
       const info = await this.transport.sendMail({

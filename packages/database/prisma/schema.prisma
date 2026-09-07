@@ -405,18 +405,19 @@ model ReturnRequest {
 
 // === 内容 ===
 model ContentEntry {
-  id          Int       @id @default(autoincrement())
-  type        String
-  locale      String
-  market      String
-  slug        String
-  title       String
-  body        Json
-  seo         Json
-  status      String    @default("draft")
-  publishedAt DateTime? @map("published_at")
-  archivedAt  DateTime? @map("archived_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  id                Int       @id @default(autoincrement())
+  type              String
+  locale            String
+  market            String
+  slug              String
+  title             String
+  body              Json
+  seo               Json
+  status            String    @default("draft")
+  translationStatus String    @default("published") @map("translation_status")
+  publishedAt       DateTime? @map("published_at")
+  archivedAt        DateTime? @map("archived_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   @@unique([market, locale, slug])
   @@index([type, status])

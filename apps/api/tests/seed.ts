@@ -1,4 +1,5 @@
 import { createDatabase } from "@wemo/database";
+import { Redis } from "ioredis";
 
 import { hashPassword } from "../src/modules/auth/password";
 import { loadEnvFile } from "../src/runtime/env";
@@ -6,6 +7,11 @@ import { loadEnvFile } from "../src/runtime/env";
 loadEnvFile();
 
 const database = createDatabase();
+const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6380", {
+  maxRetriesPerRequest: 2,
+});
+
+const NOTIFICATION_TEMPLATES_KEY = "wemo:notifications:templates";
 
 /** 演示账号统一密码 登录文档与前端联调用 */
 const DEMO_PASSWORD = "Demo1234!";
@@ -26,6 +32,7 @@ async function main() {
   await seedProducts();
   await seedContent();
   await seedSettings();
+  await seedNotificationTemplates();
 
   console.log("Seeding 完成！已有数据未被修改。");
 }
@@ -704,6 +711,27 @@ async function seedSettings() {
     { groupName: "platform", key: "site_name", value: "WEMOVE SPORTS" },
     { groupName: "platform", key: "default_market", value: "US" },
     { groupName: "platform", key: "default_locale", value: "en-US" },
+    // 内部收件组 需求 19.2 后台可配置
+    {
+      groupName: "notification_groups",
+      key: "order",
+      value: ["orders@wemovetoy.com"],
+    },
+    {
+      groupName: "notification_groups",
+      key: "quote",
+      value: ["sales@wemovetoy.com"],
+    },
+    {
+      groupName: "notification_groups",
+      key: "dealer",
+      value: ["dealer@wemovetoy.com"],
+    },
+    {
+      groupName: "notification_groups",
+      key: "contact",
+      value: ["support@wemovetoy.com"],
+    },
   ];
 
   let created = 0;
@@ -716,7 +744,7 @@ async function seedSettings() {
       data: {
         groupName: setting.groupName,
         key: setting.key,
-        value: setting.value,
+        value: setting.value as never,
         version: "1",
         updatedBy: 1,
       },
@@ -727,6 +755,153 @@ async function seedSettings() {
   console.log(`  ✓ 创建 ${created} 个系统设置（跳过 ${settings.length - created}）`);
 }
 
+/** 事务邮件模板 需求 19.1 六类模板 变量与业务事件载荷对齐 */
+async function seedNotificationTemplates() {
+  console.log(" seeding notification templates...");
+
+  const templates = [
+    {
+      code: "account_email_verification",
+      audience: "user",
+      category: "account",
+      subject: "Verify your WEMOVE email",
+      body: "Your verification code: {{token}}",
+      variables: ["email", "token"],
+    },
+    {
+      code: "account_password_reset",
+      audience: "user",
+      category: "account",
+      subject: "Reset your WEMOVE password",
+      body: "Your reset code: {{token}}",
+      variables: ["email", "token"],
+    },
+    {
+      code: "account_mfa_challenge",
+      audience: "staff",
+      category: "account",
+      subject: "WEMOVE 后台登录验证码",
+      body: "验证码: {{code}}",
+      variables: ["email", "code"],
+    },
+    {
+      code: "dealer_application_submitted",
+      audience: "dealer",
+      category: "dealer",
+      subject: "Dealer application submitted",
+      body: "申请编号: {{application_no}}",
+      variables: ["application_no"],
+    },
+    {
+      code: "dealer_application_reviewed",
+      audience: "dealer",
+      category: "dealer",
+      subject: "Dealer application reviewed",
+      body: "申请编号 {{application_no}} 状态 {{status}}",
+      variables: ["application_no", "status"],
+    },
+    {
+      code: "quote_requested",
+      audience: "dealer",
+      category: "quote",
+      subject: "Quote requested",
+      body: "报价编号: {{quote_id}}",
+      variables: ["quote_id"],
+    },
+    {
+      code: "quote_reviewed",
+      audience: "dealer",
+      category: "quote",
+      subject: "Quote reviewed",
+      body: "报价 {{quote_id}} 状态 {{status}}",
+      variables: ["quote_id", "status"],
+    },
+    {
+      code: "quote_accepted",
+      audience: "dealer",
+      category: "quote",
+      subject: "Quote accepted",
+      body: "报价 {{quote_id}} 已接受",
+      variables: ["quote_id"],
+    },
+    {
+      code: "order_confirmation",
+      audience: "user",
+      category: "order",
+      subject: "Order confirmation",
+      body: "订单 {{order_no}} 状态 {{status}}",
+      variables: ["order_no", "status"],
+    },
+    {
+      code: "order_pending_review",
+      audience: "dealer",
+      category: "order",
+      subject: "Order pending review",
+      body: "订单 {{order_no}} 待审核",
+      variables: ["order_no", "status"],
+    },
+    {
+      code: "return_requested",
+      audience: "user",
+      category: "order",
+      subject: "Return requested",
+      body: "售后编号: {{return_id}}",
+      variables: ["return_id"],
+    },
+    {
+      code: "contact_submission",
+      audience: "user",
+      category: "contact",
+      subject: "We received your message",
+      body: "工单编号: {{submission_no}}",
+      variables: ["submission_no"],
+    },
+  ];
+
+  const existingRaw = await redis.hgetall(NOTIFICATION_TEMPLATES_KEY);
+  const existingCodes = new Set(
+    Object.values(existingRaw)
+      .map((raw) => {
+        try {
+          return (JSON.parse(raw) as { code?: string }).code;
+        } catch {
+          return undefined;
+        }
+      })
+      .filter((code): code is string => typeof code === "string"),
+  );
+
+  let created = 0;
+  const now = new Date().toISOString();
+  for (const template of templates) {
+    if (existingCodes.has(template.code)) continue;
+    const id = await redis.incr("wemo:notifications:templates:next");
+    await redis.hset(
+      NOTIFICATION_TEMPLATES_KEY,
+      String(id),
+      JSON.stringify({
+        id,
+        code: template.code,
+        audience: template.audience,
+        channel: "email",
+        locale: "en-US",
+        subject: template.subject,
+        body: template.body,
+        variables: template.variables,
+        category: template.category,
+        active: true,
+        created_at: now,
+        updated_at: now,
+      }),
+    );
+    created += 1;
+  }
+
+  console.log(
+    `  ✓ 创建 ${created} 个通知模板（跳过 ${templates.length - created}）`,
+  );
+}
+
 main()
   .catch((error) => {
     console.error(error);
@@ -734,4 +909,5 @@ main()
   })
   .finally(async () => {
     await database.$disconnect();
+    await redis.quit();
   });
