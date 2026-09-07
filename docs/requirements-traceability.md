@@ -9,7 +9,7 @@
 | 来源                          | 责任模块                                                                                           | 主要验收物                                              | 状态        |
 | ----------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ----------- |
 | 需求第 1 章：目标与定位       | 全部应用、`packages/ui`、架构文档                                                                  | 动态运营、角色隔离、移动优先和配置化评审                | planned     |
-| 需求第 2 章：角色权限         | `apps/api/src/modules/auth`、`apps/api/src/modules/identity`、`apps/storefront/src/features/admin` | RBAC、企业边界、审计和登录策略测试                      | planned     |
+| 需求第 2 章：角色权限         | `apps/api/src/modules/auth`、`apps/api/src/modules/identity`、`apps/storefront/src/features/admin` | RBAC、企业边界、审计和登录策略测试                      | in-progress |
 | 需求第 3 章：信息架构         | 唯一 React 应用的四个路由区域                                                                      | 页面路由与导航自动化巡检                                | planned     |
 | 需求第 4 章：前台官网         | `apps/storefront/src/features/public-site` 与对应 API                                              | P/FE/HOME/PLP/PDP/CNT/DLR/CT 全量验收                   | planned     |
 | 需求第 5 章：用户中心         | `apps/storefront/src/features/account` 与身份、购物车、订单 API                                    | 用户账户和 B2C 全流程                                   | planned     |
@@ -23,14 +23,14 @@
 | 需求第 13 章：UI/UX           | `packages/ui` 与 `apps/storefront`                                                                 | 组件、响应式、表单、WCAG 2.2 AA                         | planned     |
 | 需求第 14 章：数据模型        | `packages/database`、`packages/contracts`                                                          | 核心实体/字段字典（30 张核心/支撑表落 PostgreSQL）；零物理外键；购物车/预占/订阅/地址/通知/分析事件/集成/作业/报表等非核心数据持久化在 Redis（键前缀 `wemo:`，不设 TTL），契约与实现对齐 | in-progress |
 | 需求第 15 章：接口集成        | `apps/api/src/modules/integrations`、`packages/contracts`                                          | Adapter、版本 API、错误结构、幂等任务（集成配置与作业执行记录持久化在 Redis——`integrations`、`jobs:runs`；统一错误结构与 request_id 真实生效） | in-progress |
-| 需求第 16 章：安全隐私合规    | auth/identity/media/payments/forms                                                                 | OWASP、隐私同意、儿童数据禁收、PCI 范围确认             | planned     |
+| 需求第 16 章：安全隐私合规    | auth/identity/media/payments/forms                                                                 | OWASP、隐私同意、儿童数据禁收、PCI 范围确认             | in-progress |
 | 需求第 17 章：性能可用性运维  | 全部应用、基础设施                                                                                 | CWV、P95、缓存、备份恢复、监控告警                      | in-progress |
 | 需求第 18 章：数据分析        | analytics/reports                                                                                  | 事件字典与六类运营报表                                  | done        |
 | 需求第 19 章：通知            | notifications                                                                                      | 多语言模板、变量校验、追踪重试与收件组（通知模板与投递持久化在 Redis——`notifications:templates`、`notifications:deliveries`） | in-progress |
 | 需求第 20 章：迁移上线        | 迁移脚本与部署配置                                                                                 | `www.wemovetoy.com` 资产/URL 盘点、映射、环境和上线清单 | planned     |
 | 需求第 21 章：验收            | 全部工作区测试                                                                                     | 功能、兼容性、无障碍、性能、安全证据包                  | done        |
 | 需求第 22 章：技术架构        | 根工程、单前端、单体 API、共享包                                                                   | 前后端分离、SSR、PostgreSQL、Redis、存储、监控          | done        |
-| 需求附录 A：权限矩阵          | identity/dealers/orders/content                                                                    | 权限矩阵自动化测试                                      | planned     |
+| 需求附录 A：权限矩阵          | identity/dealers/orders/content                                                                    | 权限矩阵自动化测试                                      | in-progress |
 | 需求附录 B：页面功能清单      | 唯一 React 应用                                                                                    | 全路由清单及角色访问测试                                | planned     |
 | 需求附录 C：核心 API          | `apps/api`、contracts                                                                              | API 版本、OpenAPI 与契约测试                            | done        |
 | 需求附录 D：状态枚举          | contracts 与各业务模块                                                                             | 共享枚举和状态机测试                                    | done        |
@@ -67,7 +67,7 @@
 | 后台内容     | `ADM-C-001`, `ADM-C-002`, `ADM-C-003`, `ADM-C-004`, `ADM-C-005`, `ADM-C-006`                                                                             | `apps/storefront/src/features/admin`                                                                                      | cms/media/seo/audit/jobs                        | planned |
 | 搜索         | `SEA-001`, `SEA-002`, `SEA-003`, `SEA-004`, `SEA-005`, `SEA-006`, `SEA-007`                                                                              | `apps/storefront/src/features/public-site`                                                                                | search/analytics                                | planned |
 | SEO          | `SEO-001`, `SEO-002`, `SEO-003`, `SEO-004`, `SEO-005`, `SEO-006`, `SEO-007`, `SEO-008`                                                                   | `apps/storefront/src/features/platform`、`apps/storefront/src/features/public-site`、`apps/storefront/src/features/admin` | seo/cms/catalog                                 | planned |
-| 安全         | `SEC-001`, `SEC-002`, `SEC-003`, `SEC-004`, `SEC-005`, `SEC-006`, `SEC-007`, `SEC-008`                                                                   | 单前端四区域安全交互                                                                                                      | auth/identity/forms/media/audit/integrations    | planned |
+| 安全         | `SEC-001`, `SEC-002`, `SEC-003`, `SEC-004`, `SEC-005`, `SEC-006`, `SEC-007`, `SEC-008`                                                                   | 单前端四区域安全交互                                                                                                      | auth/identity/forms/media/audit/integrations    | in-progress |
 | 性能         | `PERF-001`, `PERF-002`, `PERF-003`, `PERF-004`, `PERF-005`, `PERF-006`                                                                                   | 唯一前端                                                                                                                  | api/media/cache/observability                   | planned |
 | 最终功能验收 | `ACC-001`, `ACC-002`, `ACC-003`, `ACC-004`, `ACC-005`, `ACC-006`, `ACC-007`, `ACC-008`, `ACC-009`, `ACC-010`                                             | 全部                                                                                                                      | 全部                                            | planned |
 
@@ -113,3 +113,14 @@
 ## 证据登记模板
 
 实现时在对应行增加“证据”列或链接到测试报告，至少写明：代码入口、测试用例、执行环境、结果日期、验收人。仅创建目录或 README 不构成功能完成证据。
+
+## 后端二轮核对补齐证据（2026-09-07）
+
+| 模块切片 | 已实现范围 | 代码与测试入口 | 结果 |
+| --- | --- | --- | --- |
+| 认证与授权 | 服务端会话解析替代客户端身份头（`Authorization: Bearer`）；scrypt 密码哈希；随机 32 字节会话令牌；邮箱验证令牌化（Redis）；修改密码与退出其他设备；角色权限落库（roles.permissions Json，迁移 `20260907014206_add_role_permissions`）；RBAC 模块:动作粒度；限流复用 @nestjs/throttler（登录/表单 10 次/分，搜索 60 次/分，全局 100 次/分）；错误结构统一（登录失败 401 带 request_id） | `apps/api/src/modules/auth/session-actor-resolver.ts`、`auth/password.ts`、`runtime/request-context.store.ts`、`http/request-id.interceptor.ts`、`tests/integration/api.integration.test.ts` | typecheck 0；Vitest 39 passed + 1 skipped；真实 HTTP 冒烟：无令牌/伪造 x-wemo-actor → 401，admin/dealer 令牌 → 200/200 |
+| 附录 C 核心 API 补齐 | POST /checkout（结算快照+幂等）；GET /dealer/catalog（授权分类+公司计价+库存档位）；POST /dealer/quick-order（SKU 解析、逐行 MOQ/库存/授权错误）；GET /downloads 与 GET /dealer/downloads（可见性分级） | `apps/api/src/modules/orders/orders.service.ts`、`modules/catalog/catalog.service.ts`、`modules/media/media.service.ts`、`packages/contracts/src/commerce` | typecheck 0；真实 HTTP 冒烟 200（dealer 价格 3999/零售 4999/MOQ 10/库存档位正确） |
+| 业务事件通知 | 订单创建（B2C 确认/B2B 待审）、报价提交与审核、经销商申请提交与审核、退货申请、联系表单提交均触发通知投递（Redis 持久化）；auth 复用 NotificationsService 消除重复投递实现 | `apps/api/src/modules/notifications/notifications.service.ts`（emitBusinessNotification）、orders/quotes/dealers/returns/forms 各 service | typecheck 0；真实 HTTP 冒烟：checkout 后 Redis `wemo:notifications:deliveries` 出现 order_confirmation 投递 |
+| 价格有效期 | previewPricing 仅匹配 valid_from/valid_to 有效期内的价格记录，未设置视为永久有效 | `apps/api/src/modules/pricing/pricing.prisma-repository.ts` | typecheck 0；39 测试通过 |
+| 框架能力复用 | 健康检查改用 @nestjs/terminus（PG+Redis 真实探活）；限流改用 @nestjs/throttler；listResponse 三处本地复制统一到 runtime 公共工具；bootstrap 复用 configureApplication；seed 脚本移入 tests 且非破坏性（按自然键跳过已存在，绝不删数据） | `apps/api/src/health/*`、`runtime/runtime.module.ts`、`app.module.ts`、`tests/seed.ts` | typecheck 0；/api/v1/health 返回 database/redis up；seed 两次运行零删除 |
+| 工具函数去重 | listResponse/nowIso/redis-hash/pagination 公共工具统一使用，模块内不再各自实现 | `apps/api/src/runtime/*`、各模块 service | typecheck 0 |
