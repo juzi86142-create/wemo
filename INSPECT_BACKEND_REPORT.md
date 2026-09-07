@@ -30,3 +30,9 @@
 ## 建议实施顺序
 
 先为每个领域建立 Prisma repository（按 schema 原子表读写，事务内处理逻辑关联），再将 service 的 StateStore 注入替换为 repository；DTO 聚合字段通过 mapper 从多表组装，写入时拆分到对应表。先补 schema 缺失实体/列和 migration（不使用物理外键），再迁移 identity/catalog/commerce，最后 platform/content。保留 StateStore 仅作测试 double，并在 Nest testing module 中显式替换 provider。Localization snapshot 应去掉对 ExperienceStateStore 的优先分支，统一由 repository 生成。
+
+## 2026-09-07 实施结果
+
+以上盘点记录的是改造前状态。当前版本已完成后端实体与 Prisma schema 对齐，生产路径通过 Prisma Client 访问真实数据库表；订单、售后、报价历史和明细写入规范化表，旧 StateStore mock 持久化路径已移除。
+
+验证结果：`pnpm -r typecheck`、`pnpm -r build` 和 `pnpm --filter @wemo/api test` 均通过，Prisma schema 校验通过。
