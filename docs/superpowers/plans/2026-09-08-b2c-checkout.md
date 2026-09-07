@@ -36,7 +36,7 @@
 - `CheckoutFormValues` contains `name`, `email`, `phone`, `addressLine1`, `addressLine2`, `city`, `region`, `postalCode`, `country`, `couponCode`, and `note` strings.
 - `validateCheckoutFields(values: CheckoutFormValues)` returns `Record<string, string>` with field-level messages and does not calculate money.
 
-- [ ] **Step 1: Write failing adapter tests**
+- [x] **Step 1: Write failing adapter tests**
 
 Mock the existing `requestJson` boundary using the same Vitest module-mocking pattern already used by `api-client.test.ts`. Cover:
 
@@ -66,7 +66,7 @@ it("propagates API and contract errors", async () => {
 
 Use a local fixture matching `OrderSchema`; do not import a database model or invent price fields in the input.
 
-- [ ] **Step 2: Run the adapter test and confirm it fails**
+- [x] **Step 2: Run the adapter test and confirm it fails**
 
 Run:
 
@@ -76,11 +76,11 @@ pnpm --filter @wemo/storefront test -- src/features/commerce/checkout-adapter.te
 
 Expected: FAIL because `checkout-adapter.ts` and `createCheckout` do not exist yet.
 
-- [ ] **Step 3: Write failing validation tests**
+- [x] **Step 3: Write failing validation tests**
 
 Cover empty contact/address fields, malformed email, a valid guest form, optional coupon/note, and an address containing Unicode text. Assert that valid values return `{}` and invalid values expose stable field keys (`name`, `email`, `addressLine1`, `city`, `postalCode`, `country`).
 
-- [ ] **Step 4: Implement the adapter and validation function**
+- [x] **Step 4: Implement the adapter and validation function**
 
 Use the exact contract imports and keep the validation implementation small:
 
@@ -99,7 +99,7 @@ export async function createCheckout(input: CheckoutCreateInput): Promise<Order>
 
 `validateCheckoutFields` should trim checks for required text, use a simple email shape consistent with `validateAuthFields`, and never validate server-owned totals.
 
-- [ ] **Step 5: Export and run focused tests**
+- [x] **Step 5: Export and run focused tests**
 
 Export the adapter and validation functions from `features/commerce/index.ts`, then run:
 
@@ -109,7 +109,7 @@ pnpm --filter @wemo/storefront test -- src/features/commerce/checkout-adapter.te
 
 Expected: all focused tests pass.
 
-- [ ] **Step 6: Commit the adapter slice**
+- [x] **Step 6: Commit the adapter slice**
 
 ```text
 git add apps/storefront/src/features/commerce/checkout-adapter.ts apps/storefront/src/features/commerce/checkout-validation.ts apps/storefront/src/features/commerce/checkout-adapter.test.ts apps/storefront/src/features/commerce/checkout-validation.test.ts apps/storefront/src/features/commerce/index.ts
@@ -128,11 +128,11 @@ git commit -m "feat: add contract validated checkout adapter"
 - `readOrderSuccessSnapshot(): Order | null` returns a parsed order or `null` for absent, malformed, or unavailable storage.
 - `clearOrderSuccessSnapshot(): void` removes the key without throwing in non-browser contexts.
 
-- [ ] **Step 1: Write failing storage tests**
+- [x] **Step 1: Write failing storage tests**
 
 Mock a minimal `window.sessionStorage` implementation and cover round-trip parsing, malformed JSON returning `null`, schema-invalid JSON returning `null`, clearing after read, and server-side execution where `window` is undefined.
 
-- [ ] **Step 2: Run the storage test and confirm it fails**
+- [x] **Step 2: Run the storage test and confirm it fails**
 
 Run:
 
@@ -142,11 +142,11 @@ pnpm --filter @wemo/storefront test -- src/features/commerce/order-success-snaps
 
 Expected: FAIL because the snapshot module does not exist.
 
-- [ ] **Step 3: Implement the bounded storage helper**
+- [x] **Step 3: Implement the bounded storage helper**
 
 Use a single constant key such as `wemo_checkout_order_snapshot`; store only the validated `Order` object returned from checkout. Catch storage access errors and return `null` rather than leaking browser quota or privacy-mode failures into the success page.
 
-- [ ] **Step 4: Run tests and commit**
+- [x] **Step 4: Run tests and commit**
 
 ```text
 pnpm --filter @wemo/storefront test -- src/features/commerce/order-success-snapshot.test.ts
@@ -167,11 +167,11 @@ git commit -m "feat: preserve checkout success snapshot safely"
 - `CheckoutForm({ cart, profile, addresses }: { cart: Cart; profile?: AccountProfile; addresses: AccountAddresses })` owns input state and calls `createCheckout`.
 - The form creates `CheckoutCreateInput` with `items` from `cart.items`, `contact`, `shipping_address`, optional `coupon_code`, and optional `note`; it never submits client totals or user IDs.
 
-- [ ] **Step 1: Add the route-level HTML assertions**
+- [x] **Step 1: Add the route-level HTML assertions**
 
 Use a PowerShell server HTML check rather than JSX rendering. The check must assert that `/checkout` exposes a checkout heading, contact/address labels, and an unavailable/preview message when the API origin is unset. Assert the response contains no `{Product}`, `{Price}`, or `{Count}` tokens.
 
-- [ ] **Step 2: Implement server data loading and safe branches**
+- [x] **Step 2: Implement server data loading and safe branches**
 
 In `app/(public)/checkout/page.tsx`:
 
@@ -192,7 +192,7 @@ return <main className="checkout-page"><CheckoutForm cart={result.cart} profile=
 
 Use explicit `try/catch` around optional profile/address prefill reads. A prefill failure must not turn a live cart into preview data or prevent guest checkout.
 
-- [ ] **Step 3: Implement the form structure and prefill mapping**
+- [x] **Step 3: Implement the form structure and prefill mapping**
 
 Render a two-column desktop layout: form sections for contact and shipping address on the left, backend cart summary on the right. On mobile, stack form before summary. Map `IdentityProfileResponseSchema` values only into display defaults; the user can edit them. Address payloads remain JSON-compatible and no address id is submitted as authority.
 
@@ -209,15 +209,15 @@ Required controls:
 
 Include phone, address line 2, city, region, postal code, country, coupon, note, a `type="submit"` button, and a visible order summary using `formatMoney(cart.total_minor, cart.currency)` only as a pre-submit estimate.
 
-- [ ] **Step 4: Implement submit/error/success behavior**
+- [x] **Step 4: Implement submit/error/success behavior**
 
 On submit: run `validateCheckoutFields`, convert values to `CheckoutCreateInput`, set pending, call `createCheckout`, write the validated order snapshot, track the checkout result, and navigate to `/order/success`. On error: restore the editable form, map `ApiError.fieldErrors`, show the request id, and provide a link back to `/cart`. Disable the submit button while pending.
 
-- [ ] **Step 5: Add checkout styles without changing the source palette**
+- [x] **Step 5: Add checkout styles without changing the source palette**
 
 Add focused styles for `.checkout-page`, `.checkout-layout`, `.checkout-form`, `.checkout-summary`, `.checkout-section`, `.checkout-error`, and `.checkout-preview`. Reuse existing border, surface, type, button, status, and responsive tokens. At `max-width: 960px`, use one column; at `max-width: 620px`, keep controls full width and avoid fixed-width fields.
 
-- [ ] **Step 6: Run typecheck and inspect the route**
+- [x] **Step 6: Run typecheck and inspect the route**
 
 Run:
 
@@ -228,7 +228,7 @@ Invoke-WebRequest http://localhost:3000/checkout | Select-Object -ExpandProperty
 
 Expected: typecheck passes and the route shows a controlled unavailable/preview state when the API is not configured.
 
-- [ ] **Step 7: Commit the checkout route**
+- [x] **Step 7: Commit the checkout route**
 
 ```text
 git add "apps/storefront/src/app/(public)/checkout/page.tsx" apps/storefront/src/features/commerce/checkout-form.tsx apps/storefront/src/features/commerce/index.ts apps/storefront/src/app/globals.css
@@ -247,11 +247,11 @@ git commit -m "feat: add live b2c checkout page"
 - `OrderSuccessPage` renders the public shell route and delegates browser-only snapshot reading to `OrderSuccessView`.
 - `OrderSuccessView` reads `readOrderSuccessSnapshot()` once on mount, clears the snapshot after loading, and exposes a safe empty state if no valid order is present.
 
-- [ ] **Step 1: Write the empty-state HTML check**
+- [x] **Step 1: Write the empty-state HTML check**
 
 Request `/order/success` and assert that its server-rendered shell contains a non-success fallback heading, a product link, and no order number or fabricated total. The client success state will be checked in the browser after a controlled checkout response.
 
-- [ ] **Step 2: Implement the client success view**
+- [x] **Step 2: Implement the client success view**
 
 Render two states:
 
@@ -265,11 +265,11 @@ return <section className="order-success"><p className="eyebrow">ORDER CONFIRMED
 
 Use `order.items`, `order.status`, `order.total_minor`, and `order.currency` from the validated response. Do not fetch a guest order by id and do not place address/payment snapshots in the URL.
 
-- [ ] **Step 3: Add styles and links**
+- [x] **Step 3: Add styles and links**
 
 Use the existing editorial section/card hierarchy. Provide `/products`, `/`, and `/account/orders` links; the account link can remain available even when the current user is a guest because the route will enforce the session state.
 
-- [ ] **Step 4: Run typecheck, server HTML, and commit**
+- [x] **Step 4: Run typecheck, server HTML, and commit**
 
 ```text
 pnpm --filter @wemo/storefront typecheck
@@ -293,15 +293,15 @@ git commit -m "feat: add safe order success page"
 - `analyticsEvents` gains `beginCheckout`, `checkoutSuccess`, and `checkoutFailure`; `trackEvent` receives only safe scalar properties.
 - Live cart quantity changes continue to use existing POST `/cart/items`; live remove remains a controlled `501` error because no remove contract exists.
 
-- [ ] **Step 1: Add pure analytics/cart assertions**
+- [x] **Step 1: Add pure analytics/cart assertions**
 
 Assert analytics event names are stable and cart preview/live branches do not claim a successful mutation when `removeCartItem` throws. Keep tests free of JSX imports.
 
-- [ ] **Step 2: Implement minimal cart changes**
+- [x] **Step 2: Implement minimal cart changes**
 
 Add an explicit preview notice to the checkout CTA area and render a `CheckoutLink` client wrapper that tracks `begin_checkout` on click only when the cart has items. Do not add a request to an invented endpoint and do not change server totals.
 
-- [ ] **Step 3: Run focused tests and commit**
+- [x] **Step 3: Run focused tests and commit**
 
 ```text
 pnpm --filter @wemo/storefront test -- src/features/commerce/cart-adapter.test.ts src/features/platform/analytics.test.ts
@@ -316,7 +316,7 @@ git commit -m "feat: connect cart to checkout states"
 - Modify: `docs/superpowers/verification/2026-09-08-b2c-checkout.md`
 - Modify: `docs/requirements-traceability.md`
 
-- [ ] **Step 1: Run the automated gate**
+- [x] **Step 1: Run the automated gate**
 
 Run each command separately:
 
@@ -329,7 +329,7 @@ pnpm --filter @wemo/storefront build
 
 Expected: every command exits `0`; test output reports zero failures and the build includes `/checkout` and `/order/success`.
 
-- [ ] **Step 2: Verify preview safety**
+- [x] **Step 2: Verify preview safety**
 
 With the API origin absent or unreachable, request `/cart`, `/checkout`, and `/order/success`. Confirm the checkout page displays unavailable/preview copy, no submit path can create an order, and no `{Product}`, `{Price}`, or `{Count}` token appears in server HTML.
 
@@ -346,15 +346,15 @@ authenticated profile/address prefill -> editable form
 
 Do not use real payment credentials or send data outside the local environment.
 
-- [ ] **Step 4: Inspect desktop/mobile browser states**
+- [x] **Step 4: Inspect desktop/mobile browser states**
 
 Check live success, empty cart, preview/unavailable, validation error, API error, pending submission, and success snapshot fallback. Confirm keyboard focus, no horizontal overflow, correct summary totals, and readable order rows at narrow widths.
 
-- [ ] **Step 5: Record evidence and update traceability**
+- [x] **Step 5: Record evidence and update traceability**
 
 Record exact command output, route list, API configuration state, preview safety result, live-mode result or blocker, browser routes, and remaining payment limitations in `docs/superpowers/verification/2026-09-08-b2c-checkout.md`. Move only checkout/order-success rows with evidence to `in-progress` or `done`; keep full B2C acceptance `in-progress` while payment remains out of scope.
 
-- [ ] **Step 6: Commit verification evidence**
+- [x] **Step 6: Commit verification evidence**
 
 ```text
 git add docs/superpowers/verification/2026-09-08-b2c-checkout.md docs/requirements-traceability.md
