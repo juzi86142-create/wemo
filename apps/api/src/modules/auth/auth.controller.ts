@@ -44,6 +44,12 @@ export class AuthController {
     return this.authService.forgotPassword(body);
   }
 
+  @Post("reset-password")
+  @HttpCode(200)
+  resetPassword(@Body() body: unknown) {
+    return this.authService.resetPassword(body);
+  }
+
   @Post("change-password")
   @HttpCode(200)
   changePassword(@Body() body: unknown) {

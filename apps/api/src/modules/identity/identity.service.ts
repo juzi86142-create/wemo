@@ -14,6 +14,10 @@ import {
   IdentityDataRequestCreateSchema,
   IdentityDataRequestListResponseSchema,
   IdentityDataRequestMutationResponseSchema,
+  IdentityFavoriteCreateSchema,
+  IdentityFavoriteDeleteSchema,
+  IdentityFavoriteListResponseSchema,
+  IdentityFavoriteMutationResponseSchema,
   IdentityNotificationListQuerySchema,
   IdentityNotificationListResponseSchema,
   IdentityPermissionUpdateSchema,
@@ -24,7 +28,11 @@ import {
   IdentitySubscriptionListResponseSchema,
   IdentitySubscriptionMutationResponseSchema,
   IdentitySubscriptionUpsertSchema,
+  IdentityUserListQuerySchema,
+  IdentityUserListResponseSchema,
   IdentityUserMutationResponseSchema,
+  IdentityUserRoleAssignSchema,
+  IdentityUserStatusUpdateSchema,
 } from "@wemo/contracts/identity";
 import type { IdentityNotificationListQuery } from "@wemo/contracts/identity";
 import { z } from "zod";
@@ -109,6 +117,69 @@ export class IdentityService {
     });
   }
 
+  async updateAddress(id: unknown, body: unknown) {
+    const actor = this.authorization.requireActor();
+    const context = this.requestContext.requireContext();
+    const parsedId = parseInput(UserIdParamSchema, { id });
+    const input = parseInput(IdentityAddressCreateSchema, body);
+    const item = await this.repository.updateAddress(
+      actor.user_id,
+      parsedId.id,
+      input,
+    );
+    if (!item) {
+      throw new NotFoundException("地址不存在");
+    }
+
+    return IdentityAddressMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item,
+    });
+  }
+
+  async deleteAddress(id: unknown) {
+    const actor = this.authorization.requireActor();
+    const context = this.requestContext.requireContext();
+    const parsedId = parseInput(UserIdParamSchema, { id });
+    await this.repository.deleteAddress(actor.user_id, parsedId.id);
+
+    return {
+      request_id: context.request_id,
+      item: { deleted: true },
+    };
+  }
+
+  async listFavorites() {
+    const actor = this.authorization.requireActor();
+    return IdentityFavoriteListResponseSchema.parse(
+      listResponse(await this.repository.listFavorites(actor.user_id)),
+    );
+  }
+
+  async addFavorite(body: unknown) {
+    const actor = this.authorization.requireActor();
+    const context = this.requestContext.requireContext();
+    const input = parseInput(IdentityFavoriteCreateSchema, body);
+    const item = await this.repository.addFavorite(actor.user_id, input.product_id);
+
+    return IdentityFavoriteMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item,
+    });
+  }
+
+  async removeFavorite(body: unknown) {
+    const actor = this.authorization.requireActor();
+    const context = this.requestContext.requireContext();
+    const input = parseInput(IdentityFavoriteDeleteSchema, body);
+    await this.repository.removeFavorite(actor.user_id, input.product_id);
+
+    return {
+      request_id: context.request_id,
+      item: { removed: true },
+    };
+  }
+
   async listSubscriptions() {
     const actor = this.authorization.requireActor();
     return IdentitySubscriptionListResponseSchema.parse(
@@ -181,6 +252,49 @@ export class IdentityService {
     return IdentityRoleListResponseSchema.parse(
       listResponse(await this.repository.listRoles()),
     );
+  }
+
+  /** 后台用户管理 需求 7.9 搜索/状态变更/角色分配 */
+  async listUsers(query: unknown) {
+    this.authorization.requireStaffPermission("identity:read");
+    const parsed = parseInput(IdentityUserListQuerySchema, query);
+    const result = await this.repository.listUsers({
+      page: parsed.page,
+      page_size: parsed.page_size,
+      ...(parsed.email !== undefined ? { email: parsed.email } : {}),
+      ...(parsed.status !== undefined ? { status: parsed.status } : {}),
+      ...(parsed.audience !== undefined ? { audience: parsed.audience } : {}),
+    });
+    return IdentityUserListResponseSchema.parse(result);
+  }
+
+  async updateUserStatus(id: unknown, body: unknown) {
+    this.authorization.requireStaffPermission("identity:write");
+    const context = this.requestContext.requireContext();
+    const parsedId = parseInput(UserIdParamSchema, { id });
+    const parsedBody = parseInput(IdentityUserStatusUpdateSchema, body);
+    const item = await this.repository.updateUserStatus(
+      parsedId.id,
+      parsedBody.status,
+    );
+
+    return IdentityUserMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item,
+    });
+  }
+
+  async assignRole(id: unknown, body: unknown) {
+    this.authorization.requireStaffPermission("identity:write");
+    const context = this.requestContext.requireContext();
+    const parsedId = parseInput(UserIdParamSchema, { id });
+    const parsedBody = parseInput(IdentityUserRoleAssignSchema, body);
+    await this.repository.assignRole(parsedId.id, parsedBody.role_id);
+
+    return IdentityRoleMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item: { user_id: parsedId.id, role_id: parsedBody.role_id },
+    });
   }
 
   async updatePermissions(id: unknown, body: unknown) {

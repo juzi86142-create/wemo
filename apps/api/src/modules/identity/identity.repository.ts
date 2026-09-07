@@ -4,6 +4,7 @@ import type {
   IdentityAddress,
   IdentityAddressCreateInput,
   IdentityDataRequest,
+  IdentityFavorite,
   IdentityNotification,
   IdentityNotificationListQuery,
   IdentityProfileUpdate,
@@ -61,6 +62,11 @@ export interface IdentityRepository {
   listAddresses(userId: number): Promise<IdentityAddress[]>;
   upsertAddress(userId: number, input: IdentityAddressCreateInput): Promise<IdentityAddress>;
   createAddress(userId: number, input: IdentityAddressCreateInput): Promise<IdentityAddress>;
+  updateAddress(
+    userId: number,
+    addressId: number,
+    input: IdentityAddressCreateInput,
+  ): Promise<IdentityAddress | null>;
   deleteAddress(userId: number, addressId: number): Promise<void>;
   listSubscriptions(userId: number): Promise<IdentitySubscription[]>;
   upsertSubscription(
@@ -83,4 +89,7 @@ export interface IdentityRepository {
   listNotifications(
     query: IdentityNotificationListQuery,
   ): Promise<IdentityNotificationListResult>;
+  listFavorites(userId: number): Promise<IdentityFavorite[]>;
+  addFavorite(userId: number, productId: number): Promise<IdentityFavorite>;
+  removeFavorite(userId: number, productId: number): Promise<void>;
 }

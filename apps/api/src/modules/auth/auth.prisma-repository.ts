@@ -259,6 +259,48 @@ export class AuthPrismaRepository implements AuthRepository {
     return entry.user_id;
   }
 
+  async storePasswordResetToken(
+    email: string,
+    token: string,
+    userId: number,
+  ): Promise<void> {
+    const entry: VerificationEntry = { token, user_id: userId };
+    await writeHashObject(
+      this.redis,
+      `${REDIS_KEY_PREFIX}:password-resets`,
+      email,
+      entry,
+    );
+  }
+
+  async consumePasswordResetToken(
+    email: string,
+    token: string,
+  ): Promise<number | null> {
+    const entry = await readHashOne<VerificationEntry>(
+      this.redis,
+      `${REDIS_KEY_PREFIX}:password-resets`,
+      email,
+      (raw) => JSON.parse(raw) as VerificationEntry,
+    );
+    if (!entry || entry.token !== token) {
+      return null;
+    }
+    await this.redis.hdel(`${REDIS_KEY_PREFIX}:password-resets`, email);
+    return entry.user_id;
+  }
+
+  async resetPassword(
+    userId: number,
+    newPassword: string,
+  ): Promise<IdentityUser> {
+    const user = await this.database.user.update({
+      where: { id: userId },
+      data: { passwordHash: hashPassword(newPassword) },
+    });
+    return this.mapUser(user);
+  }
+
   async changePassword(
     userId: number,
     newPassword: string,

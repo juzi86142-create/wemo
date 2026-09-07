@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import {
   InventoryBalanceListQuerySchema,
   InventoryBalanceListResponseSchema,
@@ -32,6 +32,7 @@ export class InventoryService {
   ) {}
 
   async listBalances(query: unknown) {
+    this.authorization.requireStaffPermission("inventory:read");
     const parsed = parseInput(InventoryBalanceListQuerySchema, query);
     const list = await this.repository.listBalances(parsed);
     return InventoryBalanceListResponseSchema.parse(list);
@@ -45,6 +46,7 @@ export class InventoryService {
   }
 
   async reserve(body: unknown) {
+    this.authorization.requireStaffPermission("inventory:read");
     const context = this.requestContext.requireContext();
     const input = parseInput(InventoryReservationCreateSchema, body);
     const item = await this.repository.createReservation(input);
@@ -54,15 +56,17 @@ export class InventoryService {
     });
   }
 
-  confirm(id: unknown, body: unknown) {
-    const parsedId = parseInput(ReservationIdParamSchema, { id });
+  async confirm(id: unknown, body: unknown) {
+    this.authorization.requireStaffPermission("inventory:read");
     void body;
+    const parsedId = parseInput(ReservationIdParamSchema, { id });
+    const item = await this.repository.confirmReservation(parsedId.id);
+    if (!item) {
+      throw new NotFoundException("预占不存在或已处理");
+    }
     return InventoryReservationMutationResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,
-      item: {
-        id: parsedId.id,
-        status: "active",
-      },
+      item,
     });
   }
 

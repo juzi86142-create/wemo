@@ -184,6 +184,26 @@ export class InventoryPrismaRepository implements InventoryRepository {
     await writeHashObject(this.redis, RESERVATIONS_KEY, reservationId, released);
   }
 
+  async confirmReservation(
+    reservationId: number,
+  ): Promise<InventoryReservation | null> {
+    const reservation = await readHashOne<InventoryReservation>(
+      this.redis,
+      RESERVATIONS_KEY,
+      reservationId,
+      (raw) => JSON.parse(raw) as InventoryReservation,
+    );
+    if (!reservation || reservation.status !== "active") return null;
+
+    const confirmed: InventoryReservation = {
+      ...reservation,
+      status: "confirmed",
+      updated_at: new Date().toISOString(),
+    };
+    await writeHashObject(this.redis, RESERVATIONS_KEY, reservationId, confirmed);
+    return confirmed;
+  }
+
   private mapBalance(balance: any): InventoryBalance {
     return {
       id: balance.id,

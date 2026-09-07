@@ -115,6 +115,32 @@ export const IdentityDataRequestSchema = z
   .strict()
   .passthrough();
 
+export const IdentityFavoriteSchema = z
+  .object({
+    product_id: EntityIdSchema,
+    created_at: z.string().datetime(),
+  })
+  .strict()
+  .passthrough();
+
+export const IdentityFavoriteCreateSchema = z
+  .object({
+    product_id: EntityIdSchema,
+  })
+  .strict();
+
+export const IdentityFavoriteDeleteSchema = z
+  .object({
+    product_id: EntityIdSchema,
+  })
+  .strict();
+
+export const IdentityFavoriteListResponseSchema = createListResponseSchema(
+  IdentityFavoriteSchema,
+);
+export const IdentityFavoriteMutationResponseSchema =
+  createItemResponseSchema(IdentityFavoriteSchema);
+
 export const IdentityNotificationSchema = z
   .object({
     id: EntityIdSchema,
@@ -174,6 +200,14 @@ export const AuthVerifyEmailSchema = z
 export const AuthPasswordChangeSchema = z
   .object({
     current_password: z.string().min(1).max(128),
+    new_password: z.string().min(8).max(128),
+  })
+  .strict();
+
+export const AuthPasswordResetSchema = z
+  .object({
+    email: z.string().trim().email(),
+    token: z.string().min(16).max(128),
     new_password: z.string().min(8).max(128),
   })
   .strict();
@@ -238,6 +272,29 @@ export const IdentityPermissionUpdateSchema = z
   .object({
     permissions: z.array(PermissionCodeSchema),
     reason: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+export const IdentityUserListQuerySchema = PaginationSchema.extend({
+  email: z.string().trim().min(1).optional(),
+  status: AccountStatusSchema.optional(),
+  audience: AccountAudienceSchema.optional(),
+});
+
+export const IdentityUserListResponseSchema = createListResponseSchema(
+  IdentityUserSchema,
+);
+
+export const IdentityUserStatusUpdateSchema = z
+  .object({
+    status: AccountStatusSchema,
+    reason: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+export const IdentityUserRoleAssignSchema = z
+  .object({
+    role_id: EntityIdSchema,
   })
   .strict();
 
@@ -312,6 +369,7 @@ export type IdentityUser = z.infer<typeof IdentityUserSchema>;
 export type AuthSession = z.infer<typeof AuthSessionSchema>;
 export type IdentityAddress = z.infer<typeof IdentityAddressSchema>;
 export type IdentitySubscription = z.infer<typeof IdentitySubscriptionSchema>;
+export type IdentityFavorite = z.infer<typeof IdentityFavoriteSchema>;
 export type IdentityDataRequest = z.infer<typeof IdentityDataRequestSchema>;
 export type IdentityNotification = z.infer<typeof IdentityNotificationSchema>;
 export type IdentityRole = z.infer<typeof IdentityRoleSchema>;
@@ -320,6 +378,7 @@ export type AuthRegisterInput = z.infer<typeof AuthRegisterSchema>;
 export type AuthLoginInput = z.infer<typeof AuthLoginSchema>;
 export type AuthVerifyEmailInput = z.infer<typeof AuthVerifyEmailSchema>;
 export type AuthPasswordChangeInput = z.infer<typeof AuthPasswordChangeSchema>;
+export type AuthPasswordResetInput = z.infer<typeof AuthPasswordResetSchema>;
 export type AuthForgotPasswordInput = z.infer<typeof AuthForgotPasswordSchema>;
 export type AuthSessionRevokeInput = z.infer<typeof AuthSessionRevokeSchema>;
 export type AuthSessionListQuery = z.infer<typeof AuthSessionListQuerySchema>;

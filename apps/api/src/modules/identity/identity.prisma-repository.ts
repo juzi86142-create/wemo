@@ -8,6 +8,7 @@ import type {
   IdentityAddress,
   IdentityAddressCreateInput,
   IdentityDataRequest,
+  IdentityFavorite,
   IdentityNotification,
   IdentityNotificationListQuery,
   IdentityProfileUpdate,
@@ -47,6 +48,10 @@ function userSubscriptionsKey(userId: number): string {
 
 function userDataRequestsKey(userId: number): string {
   return `${REDIS_KEY_PREFIX}:user:${userId}:data-requests`;
+}
+
+function userFavoritesKey(userId: number): string {
+  return `${REDIS_KEY_PREFIX}:user:${userId}:favorites`;
 }
 
 function notificationDeliveriesKey(): string {
@@ -141,6 +146,69 @@ export class IdentityPrismaRepository implements IdentityRepository {
 
   async deleteAddress(userId: number, addressId: number): Promise<void> {
     await this.redis.hdel(userAddressesKey(userId), String(addressId));
+  }
+
+  async updateAddress(
+    userId: number,
+    addressId: number,
+    input: IdentityAddressCreateInput,
+  ): Promise<IdentityAddress | null> {
+    const existing = await readHashOne<IdentityAddress>(
+      this.redis,
+      userAddressesKey(userId),
+      addressId,
+      (raw) => JSON.parse(raw) as IdentityAddress,
+    );
+    if (!existing) return null;
+    const updated: IdentityAddress = {
+      ...existing,
+      kind: input.kind,
+      payload: input.payload,
+    };
+    await writeHashObject(
+      this.redis,
+      userAddressesKey(userId),
+      addressId,
+      updated,
+    );
+    return updated;
+  }
+
+  async listFavorites(userId: number): Promise<IdentityFavorite[]> {
+    const favorites = await readHashAll<IdentityFavorite>(
+      this.redis,
+      userFavoritesKey(userId),
+      (raw) => JSON.parse(raw) as IdentityFavorite,
+    );
+    return favorites.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+
+  async addFavorite(
+    userId: number,
+    productId: number,
+  ): Promise<IdentityFavorite> {
+    const existing = await readHashOne<IdentityFavorite>(
+      this.redis,
+      userFavoritesKey(userId),
+      productId,
+      (raw) => JSON.parse(raw) as IdentityFavorite,
+    );
+    if (existing) return existing;
+    const favorite: IdentityFavorite = {
+      product_id: productId,
+      created_at: new Date().toISOString(),
+    };
+    await writeHashObject(
+      this.redis,
+      userFavoritesKey(userId),
+      productId,
+      favorite,
+    );
+    return favorite;
+  }
+
+  async removeFavorite(userId: number, productId: number): Promise<void> {
+    await this.redis.hdel(userFavoritesKey(userId), String(productId));
   }
 
   async listSubscriptions(userId: number): Promise<IdentitySubscription[]> {

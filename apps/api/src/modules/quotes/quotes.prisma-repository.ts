@@ -246,6 +246,24 @@ export class QuotesPrismaRepository implements QuotesRepository {
         ? pricing.currency
         : "USD";
 
+    // 转单行项的 SKU 与名称以变体/翻译真实数据为准 不依赖快照里的可选字段
+    const lineVariantIds = (prevSnapshot.items ?? [])
+      .map((item) => Number((item as Record<string, unknown>).variant_id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    const lineVariants = await this.database.variant.findMany({
+      where: { id: { in: lineVariantIds } },
+    });
+    const lineTranslations = await this.database.productTranslation.findMany({
+      where: { productId: { in: lineVariants.map((v) => v.productId) } },
+    });
+    const skuByVariant = new Map(lineVariants.map((v) => [v.id, v.sku]));
+    const nameByProduct = new Map<string, string>();
+    for (const translation of lineTranslations) {
+      if (!nameByProduct.has(String(translation.productId))) {
+        nameByProduct.set(String(translation.productId), translation.name);
+      }
+    }
+
     await this.database.$transaction(async (tx) => {
       const order = await tx.order.create({
         data: {
@@ -274,6 +292,7 @@ export class QuotesPrismaRepository implements QuotesRepository {
 
       const orderItems = (prevSnapshot.items ?? []).map((item, index) => {
         const raw = item as Record<string, unknown>;
+        const variantId = Number(raw.variant_id);
         const quantity =
           typeof raw.quantity === "number" && raw.quantity > 0
             ? (raw.quantity as number)
@@ -282,11 +301,14 @@ export class QuotesPrismaRepository implements QuotesRepository {
           typeof raw.unit_price_minor === "number"
             ? (raw.unit_price_minor as number)
             : 0;
+        const variant = lineVariants.find((v) => v.id === variantId);
         return {
           orderId: order.id,
-          variantId: Number(raw.variant_id),
-          skuSnapshot: String(raw.sku ?? raw.variant_id),
-          nameSnapshot: String(raw.name ?? raw.variant_id),
+          variantId,
+          skuSnapshot: variant?.sku ?? String(variantId),
+          nameSnapshot: variant
+            ? (nameByProduct.get(String(variant.productId)) ?? `Variant ${variantId}`)
+            : String(variantId),
           quantity,
           unitPriceMinor: unitPrice,
           taxMinor: 0,

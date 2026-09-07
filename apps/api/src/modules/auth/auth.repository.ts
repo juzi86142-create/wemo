@@ -52,6 +52,16 @@ export interface AuthRepository {
     email: string,
     token: string,
   ): Promise<number | null>;
+  storePasswordResetToken(
+    email: string,
+    token: string,
+    userId: number,
+  ): Promise<void>;
+  consumePasswordResetToken(
+    email: string,
+    token: string,
+  ): Promise<number | null>;
+  resetPassword(userId: number, newPassword: string): Promise<IdentityUser>;
   changePassword(userId: number, newPassword: string): Promise<IdentityUser>;
   getPasswordHash(userId: number): Promise<string | null>;
   getActiveDealerMembership(

@@ -8,6 +8,7 @@ import {
   AuthForgotPasswordSchema,
   AuthLoginSchema,
   AuthPasswordChangeSchema,
+  AuthPasswordResetSchema,
   AuthRegisterSchema,
   AuthRevokeOthersResponseSchema,
   AuthSessionListQuerySchema,
@@ -122,6 +123,13 @@ export class AuthService {
     const input = parseInput(AuthForgotPasswordSchema, body);
     const user = await this.repository.getUserByEmail(input.email);
     const resetToken = user ? randomBytes(24).toString("hex") : null;
+    if (user && resetToken) {
+      await this.repository.storePasswordResetToken(
+        input.email,
+        resetToken,
+        user.id,
+      );
+    }
     const item = await this.notifications.emitBusinessNotification({
       template_code: "account_password_reset",
       recipient_user_id: user?.id ?? null,
@@ -133,6 +141,24 @@ export class AuthService {
     });
 
     return NotificationDeliveryMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item,
+    });
+  }
+
+  async resetPassword(body: unknown) {
+    const context = this.requestContext.requireContext();
+    const input = parseInput(AuthPasswordResetSchema, body);
+    const userId = await this.repository.consumePasswordResetToken(
+      input.email,
+      input.token,
+    );
+    if (userId === null) {
+      throw new UnauthorizedException("密码重置令牌无效或已过期");
+    }
+    const item = await this.repository.resetPassword(userId, input.new_password);
+
+    return IdentityUserMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
     });
