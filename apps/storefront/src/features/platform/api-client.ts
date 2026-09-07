@@ -1,6 +1,7 @@
 import { ApiErrorSchema } from "@wemo/contracts";
 
 const API_PREFIX = "/api/v1";
+const SESSION_TOKEN_KEY = "wemo_session_token";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -46,14 +47,30 @@ export async function requestJson<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
+  const configuredBase =
+    process.env.NEXT_PUBLIC_API_BASE_URL ?? process.env.WEMO_API_ORIGIN;
+  if (typeof window === "undefined" && !configuredBase) {
+    throw new ApiError("The API origin is not configured.", 0);
+  }
+
   let response: Response;
 
   try {
+    const token =
+      typeof window !== "undefined"
+        ? window.sessionStorage.getItem(SESSION_TOKEN_KEY)
+        : null;
+    const timeout =
+      typeof AbortSignal.timeout === "function"
+        ? AbortSignal.timeout(4000)
+        : undefined;
     response = await fetch(resolveUrl(path), {
       ...init,
       credentials: "include",
+      ...(init.signal || !timeout ? {} : { signal: timeout }),
       headers: {
         Accept: "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(init.body ? { "Content-Type": "application/json" } : {}),
         ...init.headers,
       },
@@ -88,6 +105,18 @@ export async function requestJson<T>(
   }
 
   return payload as T;
+}
+
+export function storeSessionToken(token: string) {
+  if (typeof window !== "undefined") {
+    window.sessionStorage.setItem(SESSION_TOKEN_KEY, token);
+  }
+}
+
+export function clearSessionToken() {
+  if (typeof window !== "undefined") {
+    window.sessionStorage.removeItem(SESSION_TOKEN_KEY);
+  }
 }
 
 export function toQueryString(values: Record<string, string | number | undefined>) {

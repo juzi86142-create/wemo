@@ -5,3 +5,8 @@ export const accountModule = {
   routeScope: "/account, /cart, /checkout, /order/success",
   purpose: "注册用户中心与可选 B2C 交易体验",
 } satisfies FrontendModuleManifest;
+
+export * from "./account-adapter";
+export * from "./account-shell";
+export * from "./account-validation";
+export * from "./auth-form";
