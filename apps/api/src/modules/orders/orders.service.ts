@@ -6,12 +6,16 @@ import {
   OrderListResponseSchema,
   OrderMutationResponseSchema,
   OrderStatusSchema,
+  ShipmentCreateSchema,
+  ShipmentListResponseSchema,
+  ShipmentMutationResponseSchema,
 } from "@wemo/contracts/commerce";
 import type { JsonValue } from "@wemo/contracts/common";
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
+import { listResponse } from "../../runtime/list-response";
 import { NotificationsService } from "../notifications/notifications.service";
 import { OrdersPrismaRepository } from "./orders.prisma-repository";
 import { ORDERS_REPOSITORY } from "./orders.repository";
@@ -325,6 +329,44 @@ export class OrdersService {
     return OrderMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
+    });
+  }
+
+  /** 分批发货 需求 ORD-B2B-005/ADM-O-005 仅员工可创建 */
+  async listShipments(id: unknown) {
+    const actor = this.authorization.requireActor();
+    const parsedId = parseInput(OrderIdParamSchema, { id });
+    const order = await this.repository.getOrderById(parsedId.id);
+    if (!order) {
+      throw new NotFoundException("订单不存在");
+    }
+    if (
+      actor.audience !== "staff" &&
+      order.user_id !== actor.user_id &&
+      order.company_id !== actor.company_id
+    ) {
+      throw new ForbiddenException("不能查看其他订单的发货记录");
+    }
+    return ShipmentListResponseSchema.parse(
+      listResponse(await this.repository.listShipments(parsedId.id)),
+    );
+  }
+
+  async createShipment(id: unknown, body: unknown) {
+    const actor = this.authorization.requireAudience("staff");
+    const context = this.requestContext.requireContext();
+    const parsedId = parseInput(OrderIdParamSchema, { id });
+    const input = parseInput(ShipmentCreateSchema, body);
+    const result = await this.repository.createShipment(
+      parsedId.id,
+      input,
+      actor.user_id,
+      context.request_id,
+    );
+
+    return ShipmentMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item: result.shipment,
     });
   }
 

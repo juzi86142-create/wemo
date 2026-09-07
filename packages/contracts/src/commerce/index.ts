@@ -394,6 +394,39 @@ export const CouponUpsertSchema = z
 export const CouponListResponseSchema = createListResponseSchema(CouponSchema);
 export const CouponMutationResponseSchema = createItemResponseSchema(CouponSchema);
 
+/** 分批发货 需求 ORD-B2B-005/ADM-O-005 */
+export const ShipmentItemSchema = z
+  .object({
+    order_item_id: EntityIdSchema,
+    quantity: z.number().int().positive(),
+  })
+  .strict();
+
+export const ShipmentSchema = z
+  .object({
+    id: EntityIdSchema,
+    order_id: EntityIdSchema,
+    carrier: z.string().min(1).nullable(),
+    tracking_no: z.string().min(1).nullable(),
+    status: z.enum(["created", "in_transit", "delivered"]),
+    items: z.array(ShipmentItemSchema),
+    shipped_at: z.string().datetime().nullable(),
+    created_at: z.string().datetime(),
+  })
+  .strict()
+  .passthrough();
+
+export const ShipmentCreateSchema = z
+  .object({
+    carrier: z.string().trim().min(1),
+    tracking_no: z.string().trim().min(1),
+    items: z.array(ShipmentItemSchema).min(1),
+  })
+  .strict();
+
+export const ShipmentListResponseSchema = createListResponseSchema(ShipmentSchema);
+export const ShipmentMutationResponseSchema = createItemResponseSchema(ShipmentSchema);
+
 export const InventoryBalanceListResponseSchema =
   createListResponseSchema(InventoryBalanceSchema);
 
@@ -803,6 +836,8 @@ export type PricingPreviewItem = z.infer<typeof PricingPreviewItemSchema>;
 export type PricingPreviewRequest = z.infer<typeof PricingPreviewRequestSchema>;
 export type PricingRecord = z.infer<typeof PricingRecordSchema>;
 export type Coupon = z.infer<typeof CouponSchema>;
+export type Shipment = z.infer<typeof ShipmentSchema>;
+export type ShipmentCreateInput = z.infer<typeof ShipmentCreateSchema>;
 export type CouponUpsertInput = z.infer<typeof CouponUpsertSchema>;
 export type PricingRecordListQuery = z.infer<typeof PricingRecordListQuerySchema>;
 export type Quote = z.infer<typeof QuoteSchema>;

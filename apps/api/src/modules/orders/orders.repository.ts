@@ -1,4 +1,11 @@
-import type { Order, OrderItem, OrderListQuery, OrderStatus } from "@wemo/contracts";
+import type {
+  Order,
+  OrderItem,
+  OrderListQuery,
+  OrderStatus,
+  Shipment,
+  ShipmentCreateInput,
+} from "@wemo/contracts";
 import type { JsonValue } from "@wemo/contracts/common";
 
 export const ORDERS_REPOSITORY = Symbol("ORDERS_REPOSITORY");
@@ -39,4 +46,12 @@ export interface OrdersRepository {
   ): Promise<Map<number, { sku: string; name: string; product_id: number }>>;
   /** 变体可售库存合计 */
   getAvailableStock(variantIds: number[], market: string): Promise<Map<number, number>>;
+  /** 分批发货 需求 ORD-B2B-005/ADM-O-005 */
+  listShipments(orderId: number): Promise<Shipment[]>;
+  createShipment(
+    orderId: number,
+    input: ShipmentCreateInput,
+    actorId: number,
+    requestId: string,
+  ): Promise<{ shipment: Shipment; order: Order }>;
 }

@@ -1,4 +1,9 @@
-import { Inject, Injectable } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import type { Redis } from "ioredis";
 import type { DatabaseClient } from "@wemo/database";
 
@@ -16,6 +21,8 @@ import type {
   OrderItem,
   OrderListQuery,
   OrderStatus,
+  Shipment,
+  ShipmentCreateInput,
 } from "@wemo/contracts";
 import { DATABASE_CLIENT } from "../../database/database.constants";
 import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
@@ -255,5 +262,117 @@ export class OrdersPrismaRepository implements OrdersRepository {
       );
     }
     return stock;
+  }
+
+  async listShipments(orderId: number): Promise<Shipment[]> {
+    const rows = await this.database.shipment.findMany({
+      where: { orderId },
+      orderBy: { createdAt: "desc" },
+    });
+    return rows.map((row) => this.mapShipment(row));
+  }
+
+  async createShipment(
+    orderId: number,
+    input: ShipmentCreateInput,
+    actorId: number,
+    requestId: string,
+  ): Promise<{ shipment: Shipment; order: Order }> {
+    const order = await this.database.order.findUnique({ where: { id: orderId } });
+    if (!order) {
+      throw new NotFoundException("订单不存在");
+    }
+
+    const orderItems = await this.database.orderItem.findMany({
+      where: { orderId },
+    });
+    const shipments = await this.database.shipment.findMany({
+      where: { orderId },
+    });
+    const shippedByItem = new Map<number, number>();
+    for (const shipment of shipments) {
+      for (const item of (shipment.items ?? []) as Array<{
+        order_item_id: number;
+        quantity: number;
+      }>) {
+        shippedByItem.set(
+          item.order_item_id,
+          (shippedByItem.get(item.order_item_id) ?? 0) + item.quantity,
+        );
+      }
+    }
+    for (const item of input.items) {
+      const orderItem = orderItems.find((row) => row.id === item.order_item_id);
+      if (!orderItem) {
+        throw new NotFoundException(`订单行 ${item.order_item_id} 不存在`);
+      }
+      const remaining =
+        orderItem.quantity - (shippedByItem.get(item.order_item_id) ?? 0);
+      if (item.quantity > remaining) {
+        throw new ForbiddenException(
+          `订单行 ${item.order_item_id} 可发货数量仅剩 ${remaining}`,
+        );
+      }
+    }
+
+    const shipped = await this.database.shipment.create({
+      data: {
+        orderId,
+        carrier: input.carrier,
+        trackingNo: input.tracking_no,
+        status: "created",
+        items: input.items as never,
+        shippedAt: new Date(),
+      },
+    });
+
+    // 全部行项发满则整单 shipped 否则 partially_shipped（需求 8.3/8.4 分批发货）
+    const afterShippedByItem = new Map(shippedByItem);
+    for (const item of input.items) {
+      afterShippedByItem.set(
+        item.order_item_id,
+        (afterShippedByItem.get(item.order_item_id) ?? 0) + item.quantity,
+      );
+    }
+    const allShipped = orderItems.every(
+      (orderItem) =>
+        (afterShippedByItem.get(orderItem.id) ?? 0) >= orderItem.quantity,
+    );
+    const nextStatus = allShipped ? "shipped" : "partially_shipped";
+    const updatedOrder = await this.database.order.update({
+      where: { id: orderId },
+      data: { status: nextStatus },
+    });
+    await this.audit.recordLog({
+      actor_id: actorId,
+      action: `order.shipment.created`,
+      entity: "order",
+      entity_id: orderId,
+      after: {
+        shipment_id: shipped.id,
+        tracking_no: input.tracking_no,
+        status: nextStatus,
+      },
+      request_id: requestId,
+      ip: null,
+    });
+
+    return {
+      shipment: this.mapShipment(shipped),
+      order: await this.toOrder(updatedOrder),
+    };
+  }
+
+  private mapShipment(row: any): Shipment {
+    return {
+      id: row.id,
+      order_id: row.orderId,
+      carrier: row.carrier,
+      tracking_no: row.trackingNo,
+      status: row.status,
+      items: row.items ?? [],
+      shipped_at: row.shippedAt ? row.shippedAt.toISOString() : null,
+      created_at: row.createdAt.toISOString(),
+    };
   }
 }

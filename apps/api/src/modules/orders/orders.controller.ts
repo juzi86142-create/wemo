@@ -57,4 +57,15 @@ export class OrdersController {
   updateAdminStatus(@Param("id") id: string, @Body() body: unknown) {
     return this.ordersService.updateStatus(id, body);
   }
+
+  @Get("orders/:id/shipments")
+  listShipments(@Param("id") id: string) {
+    return this.ordersService.listShipments(id);
+  }
+
+  @Post("admin/orders/:id/shipments")
+  @HttpCode(200)
+  createShipment(@Param("id") id: string, @Body() body: unknown) {
+    return this.ordersService.createShipment(id, body);
+  }
 }
