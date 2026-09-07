@@ -18,6 +18,8 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+typecheck-errors.txt
+typecheck-errors-current.txt
 
 # Framework outputs
 .next/
