@@ -9,5 +9,6 @@ export const platformModule = {
 export * from "./analytics";
 export * from "./api-client";
 export * from "./pagination";
+export * from "./pagination-control";
 export * from "./site-shell";
 export * from "./status-panel";

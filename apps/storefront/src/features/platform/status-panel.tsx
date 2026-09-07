@@ -7,7 +7,7 @@ interface StatusPanelProps {
   kind: StatusKind;
   title: string;
   description: string;
-  requestId?: string;
+  requestId?: string | undefined;
   action?: ReactNode;
 }
 
