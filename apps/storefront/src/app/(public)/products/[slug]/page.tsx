@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { getPreviewProducts, getPublicProduct, ProductCard, ProductGallery } from "../../../../features/public-site";
+import { formatAgeRange, getPreviewProducts, getPublicProduct, ProductCard, ProductGallery } from "../../../../features/public-site";
 import { StatusPanel } from "../../../../features/platform";
 
 type Params = { slug: string };
@@ -24,7 +24,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<Pa
   }
 
   const product = result.product;
-  const related = getPreviewProducts().filter((item) => item.id !== product.id).slice(0, 2);
+  const related = result.preview ? getPreviewProducts().filter((item) => item.id !== product.id).slice(0, 2) : [];
 
   return (
     <main className="page-main">
@@ -37,21 +37,21 @@ export default async function ProductDetailPage({ params }: { params: Promise<Pa
           <p className="product-lede">{product.description ?? product.short_description}</p>
           <div className="detail-rule" />
           <div className="detail-facts">
-            <div><span>Best for</span><strong>{product.age_min === null && product.age_max === null ? "Everyone" : (product.age_min ?? "") + "–" + (product.age_max ?? "") + " years"}</strong></div>
+            <div><span>Best for</span><strong>{formatAgeRange(product.age_min, product.age_max)}</strong></div>
             <div><span>Made for</span><strong>{product.tags.slice(0, 2).join(" + ") || "Shared play"}</strong></div>
           </div>
           <button className="button button-dark add-button" type="button">Add to cart <span aria-hidden="true">+</span></button>
           {result.preview ? <p className="preview-note">Preview product. Cart actions will connect to the API when enabled.</p> : null}
           <div className="detail-accordion">
-            <details open><summary>Why families like it</summary><p>{product.short_description} Designed for repeat play, easy setup, and a little more movement.</p></details>
-            <details><summary>What is included</summary><p>Product contents and specifications will be supplied by the live catalogue.</p></details>
+            <details open><summary>Why families like it</summary><p>{product.short_description}</p></details>
+            <details><summary>Product information</summary><p>{product.description ?? "Product contents and specifications will be supplied by the live catalogue."}</p></details>
           </div>
         </div>
       </section>
-      <section className="related-section" aria-labelledby="related-title">
+      {related.length > 0 ? <section className="related-section" aria-labelledby="related-title">
         <div className="section-heading"><p className="eyebrow">KEEP MOVING</p><h2 id="related-title">You might also like.</h2></div>
         <div className="product-grid compact-grid">{related.map((item) => <ProductCard key={item.id} product={item} />)}</div>
-      </section>
+      </section> : null}
     </main>
   );
 }

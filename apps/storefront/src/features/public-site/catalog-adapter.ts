@@ -17,7 +17,7 @@ const previewProducts: CatalogProduct[] = [
     age_min: 3,
     age_max: 8,
     tags: ["coordination", "indoor", "family"],
-    primary_image_url: "https://lh3.googleusercontent.com/aida-public/AB6AXuBJ3wsYlAOvM_repZdAW2WfAah-_nbCpKvr7w4Vcm2Eba2CArTI1d31_sM6thH1CVdO0izPQpBsQVYSe44TcKoQMJ0DyHqcr-e0dfDKX_px-Kl1zX80rcfmf2Bqu9Cj442CnpBW6YB9y7j_b9UQCeEig0zi5wBMuOBS-6l2TNsC4ovtXcHVT7eHjSaEPal1ON90zc1LhcqP5fOY7Rw8bi_KCCaQm2m_QmtY0Yc5QmMGRm0MFbIJbsSj",
+    primary_image_url: "https://lh3.googleusercontent.com/aida-public/AB6AXuB5LU_83Pxty5O-PdOFUh5IjTYFQ3AvgaE4WcgytxApZuMB3TMI1TVmyN0ChbS0lOoU-jgzbBcMnt0mlUMFkvrnufTzZX3RTq1VNPUGaewobf4U-qENo7GtwkQc5msxidKbmFDZkUnQzpFPrOLF4QNakNmpmKgaFrrcLRgLKPEFbwa9P3ri1OpJeRou_amKyRemYs6SZc6DIDE0DbY9dQgv-htc2iahmJxpZI4RCZUJsX4LeN_KFKKB",
     status: "active",
     primary_category_id: 1,
     category_ids: [1],
