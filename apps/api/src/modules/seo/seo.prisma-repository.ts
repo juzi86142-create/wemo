@@ -124,7 +124,7 @@ export class SeoPrismaRepository implements SeoRepository {
       )
       .map((translation) => ({
         url: `${baseUrl}/${translation.market.toLowerCase()}/products/${translation.slug}`,
-        lastmod: new Date().toISOString().slice(0, 10),
+        lastmod: new Date().toISOString(),
         locale: translation.locale,
         market: translation.market,
         changefreq: "weekly" as const,
@@ -133,7 +133,7 @@ export class SeoPrismaRepository implements SeoRepository {
 
     const categoryEntries = categories.map((category) => ({
       url: `${baseUrl}/categories/${category.slug}`,
-      lastmod: new Date().toISOString().slice(0, 10),
+      lastmod: new Date().toISOString(),
       locale: "en-US",
       market: "US",
       changefreq: "weekly" as const,
@@ -147,7 +147,7 @@ export class SeoPrismaRepository implements SeoRepository {
       )
       .map((entry) => ({
         url: `${baseUrl}/${entry.market.toLowerCase()}/${entry.locale.toLowerCase()}/${entry.slug}`,
-        lastmod: entry.updatedAt.toISOString().slice(0, 10),
+        lastmod: entry.updatedAt.toISOString(),
         locale: entry.locale,
         market: entry.market,
         changefreq: "monthly" as const,

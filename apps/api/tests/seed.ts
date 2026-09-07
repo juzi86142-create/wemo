@@ -176,6 +176,7 @@ async function seedRoles() {
     "seo:write",
     "settings:read",
     "settings:write",
+    "localization:manage",
   ];
   const contentEditorPermissions = [
     "content:read",
@@ -240,15 +241,21 @@ async function seedRoles() {
       where: { code: role.code },
     });
     if (existing) {
-      // 存量角色权限为空时补齐为种子定义 其余字段不动
-      if (
-        role.permissions.length > 0 &&
-        (existing.permissions as unknown[]).length === 0
-      ) {
+      // 存量角色权限为空时补齐为种子定义 admin 角色并集补缺 其余字段不动
+      const existingPermissions = (existing.permissions ?? []) as string[];
+      if (role.permissions.length > 0 && existingPermissions.length === 0) {
         await database.role.update({
           where: { id: existing.id },
           data: { permissions: role.permissions },
         });
+      } else if (role.code === "admin") {
+        const merged = [...new Set([...existingPermissions, ...role.permissions])];
+        if (merged.length > existingPermissions.length) {
+          await database.role.update({
+            where: { id: existing.id },
+            data: { permissions: merged },
+          });
+        }
       }
       continue;
     }

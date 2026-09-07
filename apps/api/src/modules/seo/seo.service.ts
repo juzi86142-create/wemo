@@ -50,7 +50,7 @@ export class SeoService {
     const entries = await this.repository.listSitemapEntries();
     return SeoSitemapResponseSchema.parse({
       request_id: context.request_id,
-      item: entries,
+      item: { generated_at: new Date().toISOString(), entries },
     });
   }
 
