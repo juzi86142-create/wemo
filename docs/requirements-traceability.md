@@ -114,6 +114,16 @@
 
 实现时在对应行增加“证据”列或链接到测试报告，至少写明：代码入口、测试用例、执行环境、结果日期、验收人。仅创建目录或 README 不构成功能完成证据。
 
+## 后端三轮核对证据（2026-09-07 傍晚）
+
+| 模块切片 | 已实现范围 | 代码与测试入口 | 结果 |
+| --- | --- | --- | --- |
+| 服务端越权封堵 | GET /orders 需登录并按身份收敛（游客不可列全量订单）；quotes/:id/versions 校验企业归属；pricing/preview 的 dealer 维度仅员工或本企业可查；订单状态变更仅员工且按 8.3/8.4 状态机迁移（B2C 不可设 confirmed 等跨通道状态）；createQuote 企业归属以会话为准；退货发起校验订单存在/归属/可售后状态 | `apps/api/src/modules/orders/orders.service.ts`、`quotes/quotes.service.ts`、`pricing/pricing.service.ts`、`returns/returns.service.ts` | typecheck 0；39 测试 + 1 skipped；真实 HTTP 冒烟：伪造身份头 → 401，非法状态迁移 → 403 |
+| 账户闭环与用户中心 | reset-password 令牌闭环（Redis 一次性令牌）；收藏 USR-005（Redis hash，增删查）；地址簿 update/delete；后台用户管理 7.9（listUsers/updateUserStatus/assignRole 路由化）；库存接口员工权限 + confirm 真实落状态 | `apps/api/src/modules/auth/auth.service.ts`、`apps/api/src/modules/identity/identity.service.ts`、`apps/api/src/modules/inventory/inventory.service.ts` | typecheck 0；39 测试 + 1 skipped |
+| 数据读取来源单一化 | 市场/语言/币种唯一来源=请求上下文（环境配置 .env，请求头显式覆盖）；catalog/search/seo 查询契约移除 market/locale 冗余参数；cart 上下文直读；analytics 事件事实取客户端上报；pricing preview currency 必填直读；经销商必填字段直读缺失即报错不伪造；审计 actor_id 真实化（可空，系统事件不再伪造 admin）；通知模板创建/更新契约分离 | `apps/api/src/runtime/env.ts`、`runtime/request-context.store.ts`、`modules/dealers/dealers.prisma-repository.ts`、`modules/audit/audit.prisma-repository.ts` | typecheck 0；39 测试 + 1 skipped；真实 HTTP 冒烟：产品列表返回 env 市场语言对应文案，/search 200 契约形状正确 |
+| 报价与订单正确性 | 报价 current_version 随评审/转单递增；转单写入订单行（真实 SKU/名称）；过期报价禁转单；价格优先级对齐 6.4（企业>价格表>等级>默认）；订单快照固化真实 SKU/名称并提交节点校验库存；订单号/申请号统一 generateBusinessNo；表单工单状态机收紧附录 D 六态 | `apps/api/src/modules/quotes/quotes.prisma-repository.ts`、`apps/api/src/modules/pricing/pricing.prisma-repository.ts`、`apps/api/src/modules/orders/orders.service.ts`、`apps/api/src/modules/forms/forms.service.ts` | typecheck 0；39 测试 + 1 skipped |
+| 框架能力复用与去重 | terminus/throttler 落地；listResponse 统一；cms 模块重复表单实现移除；orders 模块死代码（reserveInventory/releaseInventory/updateOrderStatus）移除；seed 移入 tests 且非破坏性 | `apps/api/src/health/health.controller.ts`、`apps/api/src/runtime/env.ts`、`apps/api/tests/seed.ts` | pnpm check 全绿（212 ID 覆盖/架构/无物理外键/typecheck/39测试/构建/运行时健康） |
+
 ## 后端二轮核对补齐证据（2026-09-07）
 
 | 模块切片 | 已实现范围 | 代码与测试入口 | 结果 |
