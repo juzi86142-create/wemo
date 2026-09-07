@@ -253,7 +253,7 @@ export class CmsPrismaRepository implements CmsRepository {
       priority: "normal",
       tags: [],
       internal_note: null,
-      status: submission.status,
+      status: submission.status as FormSubmission["status"],
       request_id: submission.submissionNo,
       created_at: submission.createdAt.toISOString(),
       updated_at: submission.updatedAt.toISOString(),

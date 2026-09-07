@@ -181,6 +181,16 @@ export const MediaVisibilitySchema = z.enum([
   "internal",
 ]);
 
+/** 表单工单状态机 需求 7.12 与附录 D */
+export const FormSubmissionStatusSchema = z.enum([
+  "new",
+  "assigned",
+  "in_progress",
+  "waiting_customer",
+  "resolved",
+  "closed",
+]);
+
 const MediaVersionSchema = z
   .object({
     version: z.string().min(1),
@@ -270,7 +280,7 @@ export const FormSubmissionSchema = z
     priority: z.string().min(1),
     tags: z.array(z.string().min(1)),
     internal_note: z.string().min(1).nullable(),
-    status: z.string().min(1),
+    status: FormSubmissionStatusSchema,
     request_id: RequestIdSchema,
     created_at: z.string().datetime(),
     updated_at: z.string().datetime(),
@@ -302,7 +312,7 @@ export const FormSubmissionUpdateSchema = z
     priority: z.string().min(1).optional(),
     tags: z.array(z.string().min(1)).optional(),
     internal_note: z.string().min(1).nullable().optional(),
-    status: z.string().min(1).optional(),
+    status: FormSubmissionStatusSchema.optional(),
   })
   .strict();
 

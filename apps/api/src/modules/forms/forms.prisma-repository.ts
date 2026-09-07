@@ -189,7 +189,7 @@ export class FormsPrismaRepository implements FormsRepository {
       priority: "normal",
       tags: [],
       internal_note: null,
-      status: row.status,
+      status: row.status as FormSubmission["status"],
       request_id: row.submissionNo,
       created_at: row.createdAt.toISOString(),
       updated_at: row.updatedAt.toISOString(),
