@@ -4,6 +4,7 @@ import { ApiError, requestJson } from "./api-client";
 
 describe("requestJson", () => {
   it("retains the request id from a failed API response", async () => {
+    process.env.WEMO_API_ORIGIN = "http://test.invalid";
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -24,5 +25,6 @@ describe("requestJson", () => {
     expect(error).toMatchObject({ status: 503, requestId: "req-1" });
 
     vi.unstubAllGlobals();
+    delete process.env.WEMO_API_ORIGIN;
   });
 });
