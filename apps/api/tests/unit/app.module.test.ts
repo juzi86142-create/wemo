@@ -1,8 +1,8 @@
 import { NestFactory } from "@nestjs/core";
 import { describe, expect, it } from "vitest";
 
-import { AppModule } from "../src/app.module";
-import { LocalizationService } from "../src/modules/localization/localization.service";
+import { AppModule } from "../../src/app.module";
+import { LocalizationService } from "../../src/modules/localization/localization.service";
 
 describe("AppModule 生产装配", () => {
   it("装配真实 LocalizationService 与 Prisma repository", async () => {

@@ -10,8 +10,8 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   LocalizationRepository,
   PageResult,
-} from "../../src/../src/modules/localization/localization.repository";
-import { LocalizationService } from "../../src/../src/modules/localization/localization.service";
+} from "../../src/modules/localization/localization.repository";
+import { LocalizationService } from "../../src/modules/localization/localization.service";
 
 const english: Language = {
   id: 1,

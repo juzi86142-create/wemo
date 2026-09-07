@@ -26,6 +26,7 @@ const SeoRedirectIdParamSchema = z.object({
 
 @Injectable()
 export class SeoService {
+
   constructor(
     @Inject(ExperienceRepository)
     private readonly stateStore: ExperienceRepository,
