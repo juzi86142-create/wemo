@@ -11,10 +11,8 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { PaymentsPrismaRepository } from "./payments.prisma-repository";
-import { PAYMENTS_REPOSITORY } from "./payments.repository";
-import { ORDERS_REPOSITORY } from "../orders/orders.repository";
-import type { OrdersRepository } from "../orders/orders.repository";
+import { CommerceRepository } from "../../runtime/commerce.state";
+import { PlatformRepository } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
@@ -25,10 +23,10 @@ const PaymentIdParamSchema = z.object({
 @Injectable()
 export class PaymentsService {
   constructor(
-    @Inject(PAYMENTS_REPOSITORY)
-    private readonly paymentsRepository: PaymentsPrismaRepository,
-    @Inject(ORDERS_REPOSITORY)
-    private readonly ordersRepository: OrdersRepository,
+    @Inject(CommerceRepository)
+    private readonly stateStore: CommerceRepository,
+    @Inject(PlatformRepository)
+    private readonly platformState: PlatformRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -38,18 +36,13 @@ export class PaymentsService {
   async listPayments(query: unknown) {
     this.authorization.requireStaffPermission("payments:read");
     const parsed = parseInput(PaymentListQuerySchema, query);
-    return PaymentListResponseSchema.parse(
-      await this.paymentsRepository.listPayments(parsed),
-    );
+    return PaymentListResponseSchema.parse(await this.stateStore.listPayments(parsed));
   }
 
   async createPayment(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(PaymentCreateSchema, body);
-    const order = await this.ordersRepository.getOrderById(input.order_id);
-    if (!order) {
-      throw new NotFoundException("订单不存在");
-    }
+    const order = await this.stateStore.getOrderById(input.order_id);
     const actor = context.actor;
     if (
       actor &&
@@ -65,12 +58,11 @@ export class PaymentsService {
         ? { ...(input.payload as Record<string, unknown>) }
         : {};
 
-    const item = await this.paymentsRepository.createPayment({
+    const item = await this.stateStore.createPayment({
       amount_minor: input.amount_minor ?? order.total_minor,
       idempotency_key: input.idempotency_key,
       order_id: input.order_id,
       provider: input.provider,
-      currency: order.currency,
       request_id: context.request_id,
       payload: {
         ...payload,
@@ -81,6 +73,17 @@ export class PaymentsService {
       status: "pending",
     });
 
+    await this.platformState.recordAudit({
+      actor_id: actor?.user_id ?? 1,
+      action: "payments.create",
+      entity: "payment",
+      entity_id: item.id,
+      before: null,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
+
     return PaymentMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
@@ -89,21 +92,23 @@ export class PaymentsService {
 
   async capturePayment(id: unknown, body: unknown) {
     const context = this.requestContext.requireContext();
-    this.authorization.requireActor();
+    const actor = this.authorization.requireActor();
     const parsedId = parseInput(PaymentIdParamSchema, { id });
     const input = parseInput(PaymentCaptureSchema, body);
-    const item = await this.paymentsRepository.capturePayment(
-      parsedId.id,
-      context.request_id,
-      input,
-    );
-    await this.ordersRepository.transitionOrder(
-      item.order_id,
-      "paid",
-      context.request_id,
-      context.actor?.user_id ?? null,
-      "payment captured",
-    );
+    const before = await this.stateStore.getPaymentById(parsedId.id);
+    const item = await this.stateStore.capturePayment(parsedId.id, context.request_id, input);
+    await this.stateStore.transitionOrder(item.order_id, "paid", context.request_id, "payment captured");
+
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "payments.capture",
+      entity: "payment",
+      entity_id: item.id,
+      before,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
 
     return PaymentMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -113,23 +118,33 @@ export class PaymentsService {
 
   async refundPayment(id: unknown, body: unknown) {
     const context = this.requestContext.requireContext();
-    this.authorization.requireActor();
+    const actor = this.authorization.requireActor();
     const parsedId = parseInput(PaymentIdParamSchema, { id });
     const input = parseInput(PaymentRefundSchema, body);
-    const item = await this.paymentsRepository.refundPayment(parsedId.id, input, context.request_id);
+    const before = await this.stateStore.getPaymentById(parsedId.id);
+    const item = await this.stateStore.refundPayment(
+      parsedId.id,
+      context.request_id,
+      input as { amount_minor?: number; reason?: string },
+    );
     if (item.status === "refunded") {
       try {
-        await this.ordersRepository.transitionOrder(
-          item.order_id,
-          "refunded",
-          context.request_id,
-          context.actor?.user_id ?? null,
-          input.reason,
-        );
+        await this.stateStore.transitionOrder(item.order_id, "refunded", context.request_id, input.reason);
       } catch {
         // keep payment history even if order status no longer accepts refund transition
       }
     }
+
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "payments.refund",
+      entity: "payment",
+      entity_id: item.id,
+      before,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
 
     return PaymentMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -137,3 +152,4 @@ export class PaymentsService {
     });
   }
 }
+

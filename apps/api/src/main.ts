@@ -8,9 +8,6 @@ import {
 
 import { AppModule } from "./app.module";
 import { configureApplication } from "./http/configure-application";
-import { loadEnvFile } from "./runtime/env";
-
-loadEnvFile();
 
 const port = Number(process.env.API_PORT ?? 4000);
 
@@ -19,6 +16,6 @@ const app = await NestFactory.create<NestFastifyApplication>(
   new FastifyAdapter({ logger: true, requestIdHeader: "x-request-id" }),
 );
 
-await configureApplication(app);
+configureApplication(app);
 
 await app.listen(port, "0.0.0.0");

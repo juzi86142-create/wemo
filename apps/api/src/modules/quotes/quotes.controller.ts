@@ -31,12 +31,6 @@ export class QuotesController {
     return this.quotesService.reviewQuote(id, body);
   }
 
-  @Post("quotes/:id/accept")
-  @HttpCode(200)
-  acceptQuote(@Param("id") id: string, @Body() body: unknown) {
-    return this.quotesService.acceptQuote(id, body);
-  }
-
   @Post("quotes/:id/convert")
   @HttpCode(200)
   convertQuote(@Param("id") id: string, @Body() body: unknown) {

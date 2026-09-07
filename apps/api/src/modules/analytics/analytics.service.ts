@@ -7,16 +7,15 @@ import {
 } from "@wemo/contracts/platform";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { AnalyticsRedisRepository } from "./analytics.redis-repository";
-import { ANALYTICS_REPOSITORY } from "./analytics.repository";
-import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
+import { PlatformRepository } from "../../runtime/platform-state.store";
+import { RequestContextStore } from "../../runtime/request-context.store";
 
 @Injectable()
 export class AnalyticsService {
   constructor(
-    @Inject(ANALYTICS_REPOSITORY)
-    private readonly repository: AnalyticsRedisRepository,
+    @Inject(PlatformRepository)
+    private readonly stateStore: PlatformRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -26,7 +25,10 @@ export class AnalyticsService {
   async recordEvents(body: unknown) {
     const context = this.requestContext.requireContext();
     const parsed = parseInput(AnalyticsEventBatchSchema, body);
-    const result = await this.repository.recordEvents(parsed.events, context);
+    const result = await this.stateStore.recordAnalyticsEvents(
+      parsed.events,
+      context,
+    );
 
     return AnalyticsEventIngestResponseSchema.parse({
       request_id: context.request_id,
@@ -40,7 +42,8 @@ export class AnalyticsService {
     this.authorization.requireStaffPermission("analytics:read");
     const parsed = parseInput(AnalyticsEventListQuerySchema, query);
     return AnalyticsEventListResponseSchema.parse(
-      await this.repository.queryAnalytics(parsed),
+      await this.stateStore.listAnalyticsEvents(parsed),
     );
   }
 }
+

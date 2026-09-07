@@ -1,23 +1,12 @@
 import { Module } from "@nestjs/common";
 
-import { DatabaseModule } from "../../database/database.module";
-import { AnalyticsModule } from "../analytics/analytics.module";
-import { NotificationsModule } from "../notifications/notifications.module";
-import { OrdersModule } from "../orders/orders.module";
+import { CommerceStateModule } from "../../runtime/commerce-state.module";
 import { QuotesController } from "./quotes.controller";
-import { QuotesPrismaRepository } from "./quotes.prisma-repository";
-import { QUOTES_REPOSITORY } from "./quotes.repository";
 import { QuotesService } from "./quotes.service";
 
 @Module({
-  imports: [DatabaseModule, NotificationsModule, OrdersModule, AnalyticsModule],
+  imports: [CommerceStateModule],
   controllers: [QuotesController],
-  providers: [
-    QuotesService,
-    {
-      provide: QUOTES_REPOSITORY,
-      useClass: QuotesPrismaRepository,
-    },
-  ],
+  providers: [QuotesService],
 })
 export class QuotesModule {}

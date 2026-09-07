@@ -7,40 +7,13 @@ import {
   FormSubmissionUpdateSchema,
 } from "@wemo/contracts/content";
 import { EntityIdSchema } from "@wemo/contracts/common";
-import { PaginationSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
-const FormDefinitionIdSchema = z.object({
-  id: EntityIdSchema,
-});
-
-const FormDefinitionListSchema = PaginationSchema;
-
-const FormDefinitionCreateSchema = z
-  .object({
-    name: z.string().trim().min(1),
-    description: z.string().trim().min(1).optional(),
-    fields: z.array(z.unknown()).default([]),
-    is_active: z.boolean().optional(),
-  })
-  .strict();
-
-const FormDefinitionUpdateSchema = z
-  .object({
-    name: z.string().trim().min(1).optional(),
-    description: z.string().trim().min(1).nullable().optional(),
-    fields: z.array(z.unknown()).optional(),
-    is_active: z.boolean().optional(),
-  })
-  .strict();
-
-import { ANALYTICS_REPOSITORY, type AnalyticsRepository } from "../analytics/analytics.repository";
-import { AUDIT_REPOSITORY, type AuditRepository } from "../audit/audit.repository";
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { NotificationsService } from "../notifications/notifications.service";
+import { ExperienceRepository } from "../../runtime/experience.state";
+import { PlatformRepository } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
-import { FORMS_REPOSITORY, type FormsRepository } from "./forms.repository";
 
 const FormSubmissionIdParamSchema = z.object({
   id: EntityIdSchema,
@@ -49,89 +22,33 @@ const FormSubmissionIdParamSchema = z.object({
 @Injectable()
 export class FormsService {
   constructor(
-    @Inject(FORMS_REPOSITORY)
-    private readonly repository: FormsRepository,
-    @Inject(NotificationsService)
-    private readonly notifications: NotificationsService,
-    @Inject(ANALYTICS_REPOSITORY)
-    private readonly analyticsRepository: AnalyticsRepository,
+    @Inject(ExperienceRepository)
+    private readonly stateStore: ExperienceRepository,
+    @Inject(PlatformRepository)
+    private readonly platformState: PlatformRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
-    @Inject(AUDIT_REPOSITORY)
-    private readonly auditRepository: AuditRepository,
     @Inject(RequestContextStore)
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  /** 联系类型表单定义管理 需求 CT-001 后台可配置 */
-  async listFormDefinitions(query: unknown) {
-    this.authorization.requireStaffPermission("forms:read");
-    const parsed = parseInput(FormDefinitionListSchema, query);
-    return {
-      ...(await this.repository.listForms({
-        page: parsed.page,
-        page_size: parsed.page_size,
-      })),
-    };
-  }
-
-  async createFormDefinition(body: unknown) {
-    this.authorization.requireStaffPermission("forms:write");
-    const input = parseInput(FormDefinitionCreateSchema, body);
-    const item = await this.repository.createForm(input);
-    return {
-      request_id: this.requestContext.requireContext().request_id,
-      item,
-    };
-  }
-
-  async updateFormDefinition(id: unknown, body: unknown) {
-    this.authorization.requireStaffPermission("forms:write");
-    const parsedId = parseInput(FormDefinitionIdSchema, { id });
-    const input = parseInput(FormDefinitionUpdateSchema, body);
-    const item = await this.repository.updateForm(parsedId.id, input);
-    return {
-      request_id: this.requestContext.requireContext().request_id,
-      item,
-    };
-  }
-
   async submit(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(FormSubmissionCreateSchema, body);
-    const item = await this.repository.submitForm(input);
-
-    const actor = this.requestContext.getActor();
-    await this.analyticsRepository.recordEvents(
-      [
-        {
-          name: "contact_submit",
-          payload: {
-            submission_no: item.submission_no,
-            type: item.type,
-            source: item.source,
-          },
-          market: context.market,
-          locale: context.locale,
-          role: actor?.audience ?? "user",
-          dedupe_key: `contact_submit:${context.request_id}`,
-        },
-      ],
-      context,
-    );
-
-    await this.notifications.emitBusinessNotification({
-      template_code: "contact_submission",
-      recipient_user_id: actor?.user_id ?? null,
-      company_id: actor?.company_id ?? null,
-      audience: actor?.audience ?? "user",
-      channel: "email",
+    const item = await this.stateStore.createFormSubmission({
+      ...input,
       request_id: context.request_id,
-      payload: {
-        submission_no: item.submission_no,
-        type: item.type,
-        source: item.source,
-      },
+    });
+
+    await this.platformState.recordAudit({
+      actor_id: context.actor?.user_id ?? 1,
+      action: "forms.submission.create",
+      entity: "form_submission",
+      entity_id: item.id,
+      before: null,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
     });
 
     return FormSubmissionMutationResponseSchema.parse({
@@ -143,8 +60,9 @@ export class FormsService {
   async listSubmissions(query: unknown) {
     this.authorization.requireStaffPermission("forms:read");
     const parsed = parseInput(FormSubmissionListQuerySchema, query);
-    const result = await this.repository.listSubmissions(parsed);
-    return FormSubmissionListResponseSchema.parse(result);
+    return FormSubmissionListResponseSchema.parse(
+      await this.stateStore.listFormSubmissions(parsed),
+    );
   }
 
   async updateSubmission(id: unknown, body: unknown) {
@@ -152,13 +70,22 @@ export class FormsService {
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(FormSubmissionIdParamSchema, { id });
     const input = parseInput(FormSubmissionUpdateSchema, body);
-    const item = await this.repository.updateSubmission(parsedId.id, input);
-    await this.auditRepository.recordLog({
+    const before = await this.stateStore.getFormSubmissionById(parsedId.id);
+    const item = await this.stateStore.updateFormSubmission(
+      parsedId.id,
+      input,
+      context.request_id,
+      actor.user_id,
+    );
+
+    await this.platformState.recordAudit({
       actor_id: actor.user_id,
-      action: "forms.update_submission",
+      action: "forms.submission.update",
       entity: "form_submission",
-      entity_id: parsedId.id,
-      after: input as unknown as import("@wemo/contracts/common").JsonValue,
+      entity_id: item.id,
+      before,
+      after: item,
+      ip: context.ip ?? null,
       request_id: context.request_id,
     });
 
@@ -168,3 +95,4 @@ export class FormsService {
     });
   }
 }
+

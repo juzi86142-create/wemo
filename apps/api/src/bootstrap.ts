@@ -1,8 +1,8 @@
 import "reflect-metadata";
 
+import { randomUUID } from "node:crypto";
 import type { Http2ServerRequest } from "node:http2";
 import type { IncomingMessage } from "node:http";
-import { randomUUID } from "node:crypto";
 
 import { NestFactory } from "@nestjs/core";
 import {
@@ -11,23 +11,23 @@ import {
 } from "@nestjs/platform-fastify";
 
 import { AppModule } from "./app.module";
-import { configureApplication } from "./http/configure-application";
-import { loadEnvFile } from "./runtime/env";
+import { ApiErrorFilter, normalizeApiError } from "./runtime/api-error.filter";
+import {
+  createRequestContext,
+  RequestContextStore,
+} from "./runtime/request-context.store";
 
 export interface CreateApiAppOptions {
   logger?: boolean;
 }
 
-/** 创建并配置 NestJS 应用 异常过滤与请求上下文由全局模块通过 APP_FILTER 与 APP_INTERCEPTOR 装配 */
 export async function createApiApp(
   options: CreateApiAppOptions = {},
 ): Promise<NestFastifyApplication> {
-  loadEnvFile();
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
       logger: options.logger ?? true,
-      requestIdHeader: "x-request-id",
       genReqId: (request: IncomingMessage | Http2ServerRequest) => {
         const header = request.headers["x-request-id"];
         if (typeof header === "string" && header.trim()) {
@@ -38,7 +38,32 @@ export async function createApiApp(
     }),
   );
 
-  await configureApplication(app);
+  const requestContextStore = app.get(RequestContextStore);
+  const fastify = app.getHttpAdapter().getInstance();
+
+  fastify.addHook("onRequest", (request, reply, done) => {
+    try {
+      const context = createRequestContext(request);
+      reply.header("x-request-id", context.request_id);
+      requestContextStore.run(context, () => {
+        done();
+      });
+    } catch (error) {
+      const requestId =
+        typeof request.id === "string" && request.id.trim()
+          ? request.id
+          : randomUUID();
+      const { status, body } = normalizeApiError(error, requestId);
+      reply.header("x-request-id", requestId).status(status).send(body);
+    }
+  });
+
+  app.setGlobalPrefix("api/v1");
+  app.enableCors({
+    credentials: true,
+    origin: [process.env.STOREFRONT_URL ?? "http://localhost:3000"],
+  });
+  app.useGlobalFilters(new ApiErrorFilter(requestContextStore));
 
   return app;
 }

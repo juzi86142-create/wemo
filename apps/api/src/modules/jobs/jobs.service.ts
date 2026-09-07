@@ -15,9 +15,8 @@ import {
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { JobsRedisRepository } from "./jobs.redis-repository";
-import { JOBS_REPOSITORY } from "./jobs.repository";
 import { parseInput } from "../../runtime/validation";
+import { PlatformRepository } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
 
 const JobIdParamSchema = z.object({
@@ -36,8 +35,8 @@ const JobFailureSchema = z.object({
 @Injectable()
 export class JobsService {
   constructor(
-    @Inject(JOBS_REPOSITORY)
-    private readonly repository: JobsRedisRepository,
+    @Inject(PlatformRepository)
+    private readonly stateStore: PlatformRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -47,26 +46,21 @@ export class JobsService {
   async listJobs(query: unknown) {
     this.authorization.requireStaffPermission("jobs:read");
     const parsed = parseInput(JobListQuerySchema, query);
-    return JobListResponseSchema.parse(
-      await this.repository.listExecutions(parsed),
-    );
+    return JobListResponseSchema.parse(await this.stateStore.listJobs(parsed));
   }
 
   async listOutbox(query: unknown) {
     this.authorization.requireStaffPermission("jobs:read");
     const parsed = parseInput(OutboxEventQuerySchema, query);
-    return OutboxEventListResponseSchema.parse({
-      items: [],
-      total: 0,
-      page: parsed.page,
-      page_size: parsed.page_size,
-    });
+    return OutboxEventListResponseSchema.parse(
+      await this.stateStore.listOutboxEvents(parsed),
+    );
   }
 
   async getJob(id: unknown) {
     this.authorization.requireStaffPermission("jobs:read");
     const parsed = parseInput(JobIdParamSchema, { id });
-    const job = await this.repository.getDefinition(parsed.id);
+    const job = await this.stateStore.getJob(parsed.id);
     return JobMutationResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,
       item: job,
@@ -77,7 +71,15 @@ export class JobsService {
     this.authorization.requireStaffPermission("jobs:write");
     const parsed = parseInput(JobCreateSchema, body);
     const context = this.requestContext.requireContext();
-    const item = await this.repository.createDefinition(parsed);
+    const item = await this.stateStore.createJobRun({
+      kind: parsed.kind,
+      payload: parsed.payload,
+      idempotency_key: parsed.idempotency_key,
+      max_attempts: parsed.max_attempts,
+      request_id: context.request_id,
+      actor_id: context.actor?.user_id ?? null,
+      company_id: context.actor?.company_id ?? null,
+    });
 
     return JobMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -88,9 +90,14 @@ export class JobsService {
   async retryJob(id: unknown, body: unknown) {
     this.authorization.requireStaffPermission("jobs:write");
     const parsedId = parseInput(JobIdParamSchema, { id });
-    parseInput(JobRetrySchema, body);
+    const parsedBody = parseInput(JobRetrySchema, body);
     const context = this.requestContext.requireContext();
-    const item = await this.repository.updateExecutionStatus(parsedId.id, "running");
+    const item = await this.stateStore.retryJob(
+      parsedId.id,
+      context.request_id,
+      context.actor?.user_id ?? 1,
+      parsedBody.reason,
+    );
 
     return JobMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -103,9 +110,10 @@ export class JobsService {
     const parsedId = parseInput(JobIdParamSchema, { id });
     const parsedBody = parseInput(JobCompletionSchema, body);
     const context = this.requestContext.requireContext();
-    const item = await this.repository.updateExecutionStatus(
+    const item = await this.stateStore.completeJob(
       parsedId.id,
-      "succeeded",
+      context.request_id,
+      context.actor?.user_id ?? 1,
       parsedBody.result,
     );
 
@@ -120,9 +128,13 @@ export class JobsService {
     const parsedId = parseInput(JobIdParamSchema, { id });
     const parsedBody = parseInput(JobFailureSchema, body);
     const context = this.requestContext.requireContext();
-    const item = await this.repository.updateExecutionStatus(parsedId.id, "failed", {
-      error: parsedBody.reason,
-    });
+    const item = await this.stateStore.failJob(
+      parsedId.id,
+      context.request_id,
+      context.actor?.user_id ?? 1,
+      parsedBody.reason,
+      parsedBody.last_error,
+    );
 
     return JobMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -130,3 +142,4 @@ export class JobsService {
     });
   }
 }
+

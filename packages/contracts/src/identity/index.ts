@@ -115,32 +115,6 @@ export const IdentityDataRequestSchema = z
   .strict()
   .passthrough();
 
-export const IdentityFavoriteSchema = z
-  .object({
-    product_id: EntityIdSchema,
-    created_at: z.string().datetime(),
-  })
-  .strict()
-  .passthrough();
-
-export const IdentityFavoriteCreateSchema = z
-  .object({
-    product_id: EntityIdSchema,
-  })
-  .strict();
-
-export const IdentityFavoriteDeleteSchema = z
-  .object({
-    product_id: EntityIdSchema,
-  })
-  .strict();
-
-export const IdentityFavoriteListResponseSchema = createListResponseSchema(
-  IdentityFavoriteSchema,
-);
-export const IdentityFavoriteMutationResponseSchema =
-  createItemResponseSchema(IdentityFavoriteSchema);
-
 export const IdentityNotificationSchema = z
   .object({
     id: EntityIdSchema,
@@ -193,53 +167,6 @@ export const AuthLoginSchema = z
 export const AuthVerifyEmailSchema = z
   .object({
     email: z.string().trim().email(),
-    token: z.string().min(16).max(128),
-  })
-  .strict();
-
-export const AuthPasswordChangeSchema = z
-  .object({
-    current_password: z.string().min(1).max(128),
-    new_password: z.string().min(8).max(128),
-  })
-  .strict();
-
-export const AuthPasswordResetSchema = z
-  .object({
-    email: z.string().trim().email(),
-    token: z.string().min(16).max(128),
-    new_password: z.string().min(8).max(128),
-  })
-  .strict();
-
-/** 后台员工强制 MFA 两步登录 需求 SEC-002/2.3 */
-export const AuthMfaChallengeResponseSchema = z
-  .object({
-    request_id: RequestIdSchema,
-    item: z
-      .object({
-        mfa_required: z.literal(true),
-        challenge_token: z.string().min(16),
-        expires_at: z.string().datetime(),
-      })
-      .strict(),
-  })
-  .strict();
-
-export const AuthMfaVerifySchema = z
-  .object({
-    challenge_token: z.string().min(16).max(128),
-    code: z.string().regex(/^\d{6}$/),
-  })
-  .strict();
-
-export const AuthRevokeOthersResponseSchema = z
-  .object({
-    request_id: RequestIdSchema,
-    item: z.object({
-      revoked_count: z.number().int().min(0),
-      remaining: z.array(AuthSessionSchema),
-    }),
   })
   .strict();
 
@@ -293,29 +220,6 @@ export const IdentityPermissionUpdateSchema = z
   .object({
     permissions: z.array(PermissionCodeSchema),
     reason: z.string().trim().min(1).optional(),
-  })
-  .strict();
-
-export const IdentityUserListQuerySchema = PaginationSchema.extend({
-  email: z.string().trim().min(1).optional(),
-  status: AccountStatusSchema.optional(),
-  audience: AccountAudienceSchema.optional(),
-});
-
-export const IdentityUserListResponseSchema = createListResponseSchema(
-  IdentityUserSchema,
-);
-
-export const IdentityUserStatusUpdateSchema = z
-  .object({
-    status: AccountStatusSchema,
-    reason: z.string().trim().min(1).optional(),
-  })
-  .strict();
-
-export const IdentityUserRoleAssignSchema = z
-  .object({
-    role_id: EntityIdSchema,
   })
   .strict();
 
@@ -390,7 +294,6 @@ export type IdentityUser = z.infer<typeof IdentityUserSchema>;
 export type AuthSession = z.infer<typeof AuthSessionSchema>;
 export type IdentityAddress = z.infer<typeof IdentityAddressSchema>;
 export type IdentitySubscription = z.infer<typeof IdentitySubscriptionSchema>;
-export type IdentityFavorite = z.infer<typeof IdentityFavoriteSchema>;
 export type IdentityDataRequest = z.infer<typeof IdentityDataRequestSchema>;
 export type IdentityNotification = z.infer<typeof IdentityNotificationSchema>;
 export type IdentityRole = z.infer<typeof IdentityRoleSchema>;
@@ -398,9 +301,6 @@ export type IdentityProfileUpdate = z.infer<typeof IdentityProfileUpdateSchema>;
 export type AuthRegisterInput = z.infer<typeof AuthRegisterSchema>;
 export type AuthLoginInput = z.infer<typeof AuthLoginSchema>;
 export type AuthVerifyEmailInput = z.infer<typeof AuthVerifyEmailSchema>;
-export type AuthPasswordChangeInput = z.infer<typeof AuthPasswordChangeSchema>;
-export type AuthPasswordResetInput = z.infer<typeof AuthPasswordResetSchema>;
-export type AuthMfaVerifyInput = z.infer<typeof AuthMfaVerifySchema>;
 export type AuthForgotPasswordInput = z.infer<typeof AuthForgotPasswordSchema>;
 export type AuthSessionRevokeInput = z.infer<typeof AuthSessionRevokeSchema>;
 export type AuthSessionListQuery = z.infer<typeof AuthSessionListQuerySchema>;

@@ -159,76 +159,6 @@ export const CartMergeSchema = z
 export const CartListResponseSchema = createListResponseSchema(CartSchema);
 export const CartMutationResponseSchema = createItemResponseSchema(CartSchema);
 
-export const DealerCatalogStockBandSchema = z.enum([
-  "in_stock",
-  "low_stock",
-  "out_of_stock",
-]);
-
-export const DealerCatalogItemSchema = z
-  .object({
-    product_id: EntityIdSchema,
-    slug: z.string().min(1),
-    name: z.string().min(1),
-    variant_id: EntityIdSchema,
-    sku: z.string().min(1),
-    retail_price_minor: z.number().int().nullable(),
-    dealer_price_minor: z.number().int().nullable(),
-    currency: z.string().length(3),
-    price_type: z.string().min(1),
-    valid_from: z.string().datetime().nullable(),
-    valid_to: z.string().datetime().nullable(),
-    moq: z.number().int().nonnegative(),
-    case_pack: z.number().int().positive().nullable(),
-    lead_time_days: z.number().int().nonnegative().nullable(),
-    stock_band: DealerCatalogStockBandSchema,
-  })
-  .strict();
-
-export const DealerCatalogListResponseSchema =
-  createListResponseSchema(DealerCatalogItemSchema);
-
-export const DealerQuickOrderLineSchema = z
-  .object({
-    sku: z.string().min(1),
-    quantity: z.number().int().positive(),
-  })
-  .strict();
-
-export const DealerQuickOrderInputSchema = z
-  .object({
-    lines: z.array(DealerQuickOrderLineSchema).min(1).optional(),
-    text: z.string().min(1).optional(),
-  })
-  .strict()
-  .refine((input) => input.lines !== undefined || input.text !== undefined, {
-    message: "lines 与 text 至少提供一个",
-  });
-
-export const DealerQuickOrderLineResultSchema = z
-  .object({
-    line_no: z.number().int().positive(),
-    sku: z.string().min(1),
-    quantity: z.number().int().positive(),
-    variant_id: EntityIdSchema.nullable(),
-    name: z.string().min(1).nullable(),
-    dealer_price_minor: z.number().int().nullable(),
-    currency: z.string().length(3).nullable(),
-    moq: z.number().int().nonnegative().nullable(),
-    errors: z.array(z.string().min(1)),
-  })
-  .strict();
-
-export const DealerQuickOrderResultSchema = z
-  .object({
-    lines: z.array(DealerQuickOrderLineResultSchema),
-    valid_count: z.number().int().nonnegative(),
-  })
-  .strict();
-
-export const DealerQuickOrderResponseSchema =
-  createItemResponseSchema(DealerQuickOrderResultSchema);
-
 export const PricingPreviewItemSchema = z
   .object({
     variant_id: EntityIdSchema,
@@ -262,7 +192,7 @@ export const PricingPreviewRequestSchema = z
       )
       .min(1),
     market: z.string().min(1).optional(),
-    currency: z.string().length(3),
+    currency: z.string().length(3).optional(),
     dealer_company_id: EntityIdSchema.optional(),
     dealer_tier_id: EntityIdSchema.optional(),
     price_list_id: EntityIdSchema.optional(),
@@ -353,99 +283,8 @@ export const InventoryBalanceListQuerySchema = PageListSchema.extend({
   warehouse_code: z.string().min(1).optional(),
 });
 
-/** 库存盘点/手工调整 需求 7.6 库存来源可为后台手工 */
-export const InventoryAdjustSchema = z
-  .object({
-    variant_id: EntityIdSchema,
-    market: z.string().min(1),
-    warehouse_code: z.string().min(1),
-    on_hand: z.number().int().nonnegative(),
-    source: z.string().min(1),
-  })
-  .strict();
-
-/** 折扣码 需求 ADM-PR-004 与 5.2 结算优惠码 */
-export const CouponKindSchema = z.enum(["percent", "fixed", "free_shipping"]);
-
-export const CouponSchema = z
-  .object({
-    id: EntityIdSchema,
-    code: z.string().trim().min(1),
-    kind: CouponKindSchema,
-    value_minor: z.number().int().nonnegative(),
-    min_amount_minor: z.number().int().nonnegative().nullable(),
-    market: z.string().min(1).nullable(),
-    product_ids: z.array(EntityIdSchema),
-    user_ids: z.array(EntityIdSchema),
-    usage_limit: z.number().int().positive().nullable(),
-    usage_count: z.number().int().nonnegative(),
-    valid_from: z.string().datetime().nullable(),
-    valid_to: z.string().datetime().nullable(),
-    active: z.boolean(),
-    created_at: z.string().datetime(),
-    updated_at: z.string().datetime(),
-  })
-  .strict()
-  .passthrough();
-
-export const CouponUpsertSchema = z
-  .object({
-    code: z.string().trim().min(1),
-    kind: CouponKindSchema,
-    value_minor: z.number().int().nonnegative(),
-    min_amount_minor: z.number().int().nonnegative().nullable().optional(),
-    market: z.string().min(1).nullable().optional(),
-    product_ids: z.array(EntityIdSchema).default([]),
-    // 限定用户 空为不限 需求 ADM-PR-004
-    user_ids: z.array(EntityIdSchema).default([]),
-    usage_limit: z.number().int().positive().nullable().optional(),
-    valid_from: z.string().datetime().nullable().optional(),
-    valid_to: z.string().datetime().nullable().optional(),
-    active: z.boolean().optional(),
-  })
-  .strict();
-
-export const CouponListResponseSchema = createListResponseSchema(CouponSchema);
-export const CouponMutationResponseSchema = createItemResponseSchema(CouponSchema);
-
-/** 分批发货 需求 ORD-B2B-005/ADM-O-005 */
-export const ShipmentItemSchema = z
-  .object({
-    order_item_id: EntityIdSchema,
-    quantity: z.number().int().positive(),
-  })
-  .strict();
-
-export const ShipmentSchema = z
-  .object({
-    id: EntityIdSchema,
-    order_id: EntityIdSchema,
-    carrier: z.string().min(1).nullable(),
-    tracking_no: z.string().min(1).nullable(),
-    status: z.enum(["created", "in_transit", "delivered"]),
-    items: z.array(ShipmentItemSchema),
-    shipped_at: z.string().datetime().nullable(),
-    created_at: z.string().datetime(),
-  })
-  .strict()
-  .passthrough();
-
-export const ShipmentCreateSchema = z
-  .object({
-    carrier: z.string().trim().min(1),
-    tracking_no: z.string().trim().min(1),
-    items: z.array(ShipmentItemSchema).min(1),
-  })
-  .strict();
-
-export const ShipmentListResponseSchema = createListResponseSchema(ShipmentSchema);
-export const ShipmentMutationResponseSchema = createItemResponseSchema(ShipmentSchema);
-
 export const InventoryBalanceListResponseSchema =
   createListResponseSchema(InventoryBalanceSchema);
-
-export const InventoryBalanceMutationResponseSchema =
-  createItemResponseSchema(InventoryBalanceSchema);
 
 export const InventoryReservationSchema = z
   .object({
@@ -560,38 +399,6 @@ export const OrderCreateSchema = z
     address_snapshot: JsonValueSchema,
     cart_id: EntityIdSchema.optional(),
     quote_id: EntityIdSchema.optional(),
-    coupon_code: z.string().trim().min(1).optional(),
-    // B2B 采购订单号与结算方式 需求 ORD-B2B-001/002
-    po_number: z.string().trim().min(1).optional(),
-    payment_method: z.string().trim().min(1).optional(),
-    note: z.string().min(1).optional(),
-  })
-  .strict();
-
-export const CheckoutCreateSchema = z
-  .object({
-    items: z
-      .array(
-        z
-          .object({
-            variant_id: EntityIdSchema,
-            quantity: z.number().int().positive(),
-          })
-          .strict(),
-      )
-      .min(1),
-    contact: z
-      .object({
-        email: z.string().trim().email(),
-        name: z.string().trim().min(1).max(120),
-        phone: z.string().trim().min(1).optional(),
-      })
-      .strict(),
-    shipping_address: JsonValueSchema,
-    billing_address: JsonValueSchema.optional(),
-    shipping_method: z.string().trim().min(1).optional(),
-    coupon_code: z.string().trim().min(1).optional(),
-    payment_method: z.string().trim().min(1).optional(),
     note: z.string().min(1).optional(),
   })
   .strict();
@@ -731,13 +538,6 @@ export const QuoteReviewSchema = z
   })
   .strict();
 
-/** 经销商接受报价 需求 QTE-004 */
-export const QuoteAcceptSchema = z
-  .object({
-    note: z.string().min(1).optional(),
-  })
-  .strict();
-
 export const QuoteConvertSchema = z
   .object({
     order_channel: z.enum(["b2c", "b2b"]),
@@ -851,9 +651,6 @@ export type InventoryReservationListQuery = z.infer<
 export type Order = z.infer<typeof OrderSchema>;
 export type OrderItem = z.infer<typeof OrderItemSchema>;
 export type OrderCreateInput = z.infer<typeof OrderCreateSchema>;
-export type CheckoutCreateInput = z.infer<typeof CheckoutCreateSchema>;
-export type DealerCatalogItem = z.infer<typeof DealerCatalogItemSchema>;
-export type DealerQuickOrderInput = z.infer<typeof DealerQuickOrderInputSchema>;
 export type OrderListQuery = z.infer<typeof OrderListQuerySchema>;
 export type Payment = z.infer<typeof PaymentSchema>;
 export type PaymentCaptureInput = z.infer<typeof PaymentCaptureSchema>;
@@ -862,10 +659,6 @@ export type PaymentListQuery = z.infer<typeof PaymentListQuerySchema>;
 export type PricingPreviewItem = z.infer<typeof PricingPreviewItemSchema>;
 export type PricingPreviewRequest = z.infer<typeof PricingPreviewRequestSchema>;
 export type PricingRecord = z.infer<typeof PricingRecordSchema>;
-export type Coupon = z.infer<typeof CouponSchema>;
-export type Shipment = z.infer<typeof ShipmentSchema>;
-export type ShipmentCreateInput = z.infer<typeof ShipmentCreateSchema>;
-export type CouponUpsertInput = z.infer<typeof CouponUpsertSchema>;
 export type PricingRecordListQuery = z.infer<typeof PricingRecordListQuerySchema>;
 export type Quote = z.infer<typeof QuoteSchema>;
 export type QuoteCreateInput = z.infer<typeof QuoteCreateSchema>;

@@ -1,24 +1,12 @@
 import { Module } from "@nestjs/common";
 
-import { DatabaseModule } from "../../database/database.module";
-import { NotificationsModule } from "../notifications/notifications.module";
+import { IdentityStateModule } from "../identity/identity-state.module";
 import { AuthController } from "./auth.controller";
-import { AuthPrismaRepository } from "./auth.prisma-repository";
-import { AUTH_REPOSITORY } from "./auth.repository";
 import { AuthService } from "./auth.service";
-import { SessionActorResolver } from "./session-actor-resolver";
 
 @Module({
-  imports: [DatabaseModule, NotificationsModule],
+  imports: [IdentityStateModule],
   controllers: [AuthController],
-  providers: [
-    AuthService,
-    SessionActorResolver,
-    {
-      provide: AUTH_REPOSITORY,
-      useClass: AuthPrismaRepository,
-    },
-  ],
-  exports: [SessionActorResolver],
+  providers: [AuthService],
 })
 export class AuthModule {}

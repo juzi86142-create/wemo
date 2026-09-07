@@ -1,4 +1,4 @@
-import { Inject, Module, type OnApplicationShutdown } from "@nestjs/common";
+import { Global, Inject, Module, type OnApplicationShutdown } from "@nestjs/common";
 import { createDatabase, type DatabaseClient } from "@wemo/database";
 
 import { DATABASE_CLIENT } from "./database.constants";
@@ -13,6 +13,7 @@ class DatabaseLifecycle implements OnApplicationShutdown {
   }
 }
 
+@Global()
 @Module({
   providers: [
     { provide: DATABASE_CLIENT, useFactory: createDatabase },

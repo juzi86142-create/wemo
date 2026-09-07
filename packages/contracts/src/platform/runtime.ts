@@ -20,9 +20,6 @@ export const RequestContextSchema = z.object({
   currency: z.string().length(3),
   ip: z.string().min(1).nullable().optional(),
   user_agent: z.string().min(1).nullable().optional(),
-  session_token: z.string().min(16).nullable().optional(),
-  // 游客购物车标识 客户端本地保存 需求 5.2
-  cart_id: z.string().min(1).nullable().optional(),
   actor: SessionActorSchema.nullable().optional(),
 });
 

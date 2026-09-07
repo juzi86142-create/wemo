@@ -2,7 +2,6 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
-  NotFoundException,
 } from "@nestjs/common";
 import {
   EntityIdSchema,
@@ -14,10 +13,6 @@ import {
   IdentityDataRequestCreateSchema,
   IdentityDataRequestListResponseSchema,
   IdentityDataRequestMutationResponseSchema,
-  IdentityFavoriteCreateSchema,
-  IdentityFavoriteDeleteSchema,
-  IdentityFavoriteListResponseSchema,
-  IdentityFavoriteMutationResponseSchema,
   IdentityNotificationListQuerySchema,
   IdentityNotificationListResponseSchema,
   IdentityPermissionUpdateSchema,
@@ -28,36 +23,41 @@ import {
   IdentitySubscriptionListResponseSchema,
   IdentitySubscriptionMutationResponseSchema,
   IdentitySubscriptionUpsertSchema,
-  IdentityUserListQuerySchema,
-  IdentityUserListResponseSchema,
   IdentityUserMutationResponseSchema,
-  IdentityUserRoleAssignSchema,
-  IdentityUserStatusUpdateSchema,
-  IdentityDataRequestStatusSchema,
 } from "@wemo/contracts/identity";
-import type { IdentityNotificationListQuery } from "@wemo/contracts/identity";
 import { z } from "zod";
 
-const IdentityDataRequestStatusUpdateSchema = z.object({
-  status: IdentityDataRequestStatusSchema,
-});
-
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { listResponse } from "../../runtime/list-response";
+import { PlatformRepository } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
-import { IdentityPrismaRepository } from "./identity.prisma-repository";
-import { IDENTITY_REPOSITORY } from "./identity.repository";
+import { IdentityRepository } from "./identity.state";
 
 const UserIdParamSchema = z.object({
   id: EntityIdSchema,
 });
 
+function listResponse<T>(items: T[]): {
+  items: T[];
+  page: number;
+  page_size: number;
+  total: number;
+} {
+  return {
+    items,
+    page: 1,
+    page_size: Math.max(items.length, 1),
+    total: items.length,
+  };
+}
+
 @Injectable()
 export class IdentityService {
   constructor(
-    @Inject(IDENTITY_REPOSITORY)
-    private readonly repository: IdentityPrismaRepository,
+    @Inject(IdentityRepository)
+    private readonly stateStore: IdentityRepository,
+    @Inject(PlatformRepository)
+    private readonly platformState: PlatformRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -67,22 +67,12 @@ export class IdentityService {
   async getProfile() {
     const actor = this.authorization.requireActor();
     const context = this.requestContext.requireContext();
-    const user = await this.repository.getUserById(actor.user_id);
-    if (!user) {
-      throw new NotFoundException("用户不存在");
-    }
-    const [addresses, subscriptions, dealerContext] = await Promise.all([
-      this.repository.listAddresses(actor.user_id),
-      this.repository.listSubscriptions(actor.user_id),
-      this.repository.getDealerContextForUser(actor.user_id),
-    ]);
-
     const item = {
-      user,
+      user: await this.stateStore.getUserById(actor.user_id),
       permissions: actor.permissions,
-      addresses,
-      subscriptions,
-      dealer_context: dealerContext,
+      addresses: await this.stateStore.listAddresses(actor.user_id),
+      subscriptions: await this.stateStore.listSubscriptions(actor.user_id),
+      dealer_context: await this.stateStore.getDealerContextForUser(actor.user_id),
     };
 
     return IdentityProfileResponseSchema.parse({
@@ -95,7 +85,19 @@ export class IdentityService {
     const actor = this.authorization.requireActor();
     const context = this.requestContext.requireContext();
     const input = parseInput(IdentityProfileUpdateSchema, body);
-    const item = await this.repository.updateProfile(actor.user_id, input);
+    const before = await this.stateStore.getUserById(actor.user_id);
+    const item = await this.stateStore.updateProfile(actor.user_id, input);
+
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "identity.profile.update",
+      entity: "user",
+      entity_id: actor.user_id,
+      before,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
 
     return IdentityUserMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -106,7 +108,7 @@ export class IdentityService {
   async listAddresses() {
     const actor = this.authorization.requireActor();
     return IdentityAddressListResponseSchema.parse(
-      listResponse(await this.repository.listAddresses(actor.user_id)),
+      listResponse(await this.stateStore.listAddresses(actor.user_id)),
     );
   }
 
@@ -114,81 +116,29 @@ export class IdentityService {
     const actor = this.authorization.requireActor();
     const context = this.requestContext.requireContext();
     const input = parseInput(IdentityAddressCreateSchema, body);
-    const item = await this.repository.createAddress(actor.user_id, input);
+    const item = await this.stateStore.addAddress(actor.user_id, input);
+
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "identity.address.create",
+      entity: "address",
+      entity_id: item.id,
+      before: null,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
 
     return IdentityAddressMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
     });
-  }
-
-  async updateAddress(id: unknown, body: unknown) {
-    const actor = this.authorization.requireActor();
-    const context = this.requestContext.requireContext();
-    const parsedId = parseInput(UserIdParamSchema, { id });
-    const input = parseInput(IdentityAddressCreateSchema, body);
-    const item = await this.repository.updateAddress(
-      actor.user_id,
-      parsedId.id,
-      input,
-    );
-    if (!item) {
-      throw new NotFoundException("地址不存在");
-    }
-
-    return IdentityAddressMutationResponseSchema.parse({
-      request_id: context.request_id,
-      item,
-    });
-  }
-
-  async deleteAddress(id: unknown) {
-    const actor = this.authorization.requireActor();
-    const context = this.requestContext.requireContext();
-    const parsedId = parseInput(UserIdParamSchema, { id });
-    await this.repository.deleteAddress(actor.user_id, parsedId.id);
-
-    return {
-      request_id: context.request_id,
-      item: { deleted: true },
-    };
-  }
-
-  async listFavorites() {
-    const actor = this.authorization.requireActor();
-    return IdentityFavoriteListResponseSchema.parse(
-      listResponse(await this.repository.listFavorites(actor.user_id)),
-    );
-  }
-
-  async addFavorite(body: unknown) {
-    const actor = this.authorization.requireActor();
-    const context = this.requestContext.requireContext();
-    const input = parseInput(IdentityFavoriteCreateSchema, body);
-    const item = await this.repository.addFavorite(actor.user_id, input.product_id);
-
-    return IdentityFavoriteMutationResponseSchema.parse({
-      request_id: context.request_id,
-      item,
-    });
-  }
-
-  async removeFavorite(body: unknown) {
-    const actor = this.authorization.requireActor();
-    const context = this.requestContext.requireContext();
-    const input = parseInput(IdentityFavoriteDeleteSchema, body);
-    await this.repository.removeFavorite(actor.user_id, input.product_id);
-
-    return {
-      request_id: context.request_id,
-      item: { removed: true },
-    };
   }
 
   async listSubscriptions() {
     const actor = this.authorization.requireActor();
     return IdentitySubscriptionListResponseSchema.parse(
-      listResponse(await this.repository.listSubscriptions(actor.user_id)),
+      listResponse(await this.stateStore.listSubscriptions(actor.user_id)),
     );
   }
 
@@ -196,7 +146,21 @@ export class IdentityService {
     const actor = this.authorization.requireActor();
     const context = this.requestContext.requireContext();
     const input = parseInput(IdentitySubscriptionUpsertSchema, body);
-    const item = await this.repository.upsertSubscription(actor.user_id, input);
+    const before = (await this.stateStore.listSubscriptions(actor.user_id)).find(
+      (entry) => entry.channel === input.channel,
+    );
+    const item = await this.stateStore.upsertSubscription(actor.user_id, input);
+
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "identity.subscription.upsert",
+      entity: "subscription",
+      entity_id: item.id,
+      before: before ?? null,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
 
     return IdentitySubscriptionMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -207,7 +171,7 @@ export class IdentityService {
   async listDataRequests() {
     const actor = this.authorization.requireActor();
     return IdentityDataRequestListResponseSchema.parse(
-      listResponse(await this.repository.listDataRequests(actor.user_id)),
+      listResponse(await this.stateStore.listDataRequests(actor.user_id)),
     );
   }
 
@@ -215,10 +179,21 @@ export class IdentityService {
     const actor = this.authorization.requireActor();
     const context = this.requestContext.requireContext();
     const input = parseInput(IdentityDataRequestCreateSchema, body);
-    const item = await this.repository.createDataRequest(actor.user_id, {
+    const item = await this.stateStore.createDataRequest(actor.user_id, {
       kind: input.kind,
       request_id: context.request_id,
       notes: input.notes ?? null,
+    });
+
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "identity.data_request.create",
+      entity: "data_request",
+      entity_id: item.id,
+      before: null,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
     });
 
     return IdentityDataRequestMutationResponseSchema.parse({
@@ -230,100 +205,49 @@ export class IdentityService {
   async listNotifications(query: unknown) {
     const actor = this.authorization.requireActor();
     const parsed = parseInput(IdentityNotificationListQuerySchema, query);
-    const repoQuery: IdentityNotificationListQuery = {
-      page: parsed.page,
-      page_size: parsed.page_size,
-      recipient_user_id: actor.user_id,
-      audience: actor.audience,
-      ...(parsed.status !== undefined ? { status: parsed.status } : {}),
-    };
+    const dealerContext = await this.stateStore.getDealerContextForUser(actor.user_id);
+    const companyId = dealerContext?.company_id ?? undefined;
+    if (
+      parsed.recipient_user_id !== undefined &&
+      parsed.recipient_user_id !== actor.user_id
+    ) {
+      throw new ForbiddenException("不能查看其他账号的通知");
+    }
+    if (
+      parsed.company_id !== undefined &&
+      parsed.company_id !== companyId
+    ) {
+      throw new ForbiddenException("不能查看其他企业的通知");
+    }
+    if (parsed.audience !== undefined && parsed.audience !== actor.audience) {
+      throw new ForbiddenException("不能查看其他受众的通知");
+    }
 
     return IdentityNotificationListResponseSchema.parse(
-      await this.repository.listNotifications(repoQuery),
+      await this.stateStore.listNotifications({
+        recipient_user_id: actor.user_id,
+        company_id: companyId,
+        audience: actor.audience,
+        status: parsed.status,
+        page: parsed.page,
+        page_size: parsed.page_size,
+      }),
     );
   }
 
   async listAdminNotifications(query: unknown) {
     this.authorization.requireStaffPermission("notifications:read");
     const parsed = parseInput(IdentityNotificationListQuerySchema, query);
-
     return IdentityNotificationListResponseSchema.parse(
-      await this.repository.listNotifications(parsed),
+      await this.stateStore.listNotifications(parsed),
     );
   }
 
   async listRoles() {
     this.authorization.requireStaffPermission("identity:read");
     return IdentityRoleListResponseSchema.parse(
-      listResponse(await this.repository.listRoles()),
+      listResponse(await this.stateStore.listRoles()),
     );
-  }
-
-  /** 后台用户管理 需求 7.9 搜索/状态变更/角色分配 */
-  async listUsers(query: unknown) {
-    this.authorization.requireStaffPermission("identity:read");
-    const parsed = parseInput(IdentityUserListQuerySchema, query);
-    const result = await this.repository.listUsers({
-      page: parsed.page,
-      page_size: parsed.page_size,
-      ...(parsed.email !== undefined ? { email: parsed.email } : {}),
-      ...(parsed.status !== undefined ? { status: parsed.status } : {}),
-      ...(parsed.audience !== undefined ? { audience: parsed.audience } : {}),
-    });
-    return IdentityUserListResponseSchema.parse(result);
-  }
-
-  async updateUserStatus(id: unknown, body: unknown) {
-    this.authorization.requireStaffPermission("identity:write");
-    const context = this.requestContext.requireContext();
-    const parsedId = parseInput(UserIdParamSchema, { id });
-    const parsedBody = parseInput(IdentityUserStatusUpdateSchema, body);
-    const item = await this.repository.updateUserStatus(
-      parsedId.id,
-      parsedBody.status,
-    );
-
-    return IdentityUserMutationResponseSchema.parse({
-      request_id: context.request_id,
-      item,
-    });
-  }
-
-  /** 后台数据请求工单处理 需求 7.9 */
-  async listAdminDataRequests() {
-    this.authorization.requireStaffPermission("identity:read");
-    return listResponse(await this.repository.listAllDataRequests());
-  }
-
-  async updateDataRequestStatus(id: unknown, body: unknown) {
-    this.authorization.requireStaffPermission("identity:write");
-    const context = this.requestContext.requireContext();
-    const parsedId = parseInput(UserIdParamSchema, { id });
-    const parsedBody = parseInput(IdentityDataRequestStatusUpdateSchema, body);
-    const item = await this.repository.updateDataRequestStatus(
-      parsedId.id,
-      parsedBody.status,
-    );
-    if (!item) {
-      throw new NotFoundException("数据请求不存在");
-    }
-    return {
-      request_id: context.request_id,
-      item,
-    };
-  }
-
-  async assignRole(id: unknown, body: unknown) {
-    this.authorization.requireStaffPermission("identity:write");
-    const context = this.requestContext.requireContext();
-    const parsedId = parseInput(UserIdParamSchema, { id });
-    const parsedBody = parseInput(IdentityUserRoleAssignSchema, body);
-    await this.repository.assignRole(parsedId.id, parsedBody.role_id);
-
-    return IdentityRoleMutationResponseSchema.parse({
-      request_id: context.request_id,
-      item: { user_id: parsedId.id, role_id: parsedBody.role_id },
-    });
   }
 
   async updatePermissions(id: unknown, body: unknown) {
@@ -331,10 +255,25 @@ export class IdentityService {
     const parsedId = parseInput(UserIdParamSchema, { id });
     const parsedBody = parseInput(IdentityPermissionUpdateSchema, body);
     const context = this.requestContext.requireContext();
-    const item = await this.repository.setUserPermissions(
+    const item = await this.stateStore.setUserPermissions(
       parsedId.id,
       parsedBody.permissions,
     );
+
+    await this.platformState.recordAudit({
+      actor_id: context.actor?.user_id ?? 1,
+      action: "identity.permission.update",
+      entity: "user_permission",
+      entity_id: parsedId.id,
+      before: null,
+      after: {
+        user_id: parsedId.id,
+        permissions: parsedBody.permissions,
+        reason: parsedBody.reason ?? null,
+      },
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
 
     return IdentityRoleMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -342,3 +281,4 @@ export class IdentityService {
     });
   }
 }
+

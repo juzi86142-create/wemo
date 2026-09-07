@@ -17,7 +17,7 @@ import type {
 } from "@wemo/database";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
-import { WemoHttpException } from "../../runtime/validation";
+import { ApiHttpException } from "../../http/api-http.exception";
 import type {
   LocalizationRepository,
   PageResult,
@@ -80,9 +80,11 @@ export class LocalizationPrismaRepository implements LocalizationRepository {
           where: { languageId: existing.id, status: "active" },
         });
         if (activeReferences > 0) {
-          throw new WemoHttpException(
+          throw new ApiHttpException(
             "LOCALIZATION_LANGUAGE_IN_USE",
-            "仍被市场使用的语言不能停用", [], 409);
+            "仍被市场使用的语言不能停用",
+            409,
+          );
         }
       }
 
@@ -113,9 +115,11 @@ export class LocalizationPrismaRepository implements LocalizationRepository {
         where: { code: { in: languageCodes }, status: "active" },
       });
       if (languages.length !== languageCodes.length) {
-        throw new WemoHttpException(
+        throw new ApiHttpException(
           "LOCALIZATION_LANGUAGE_NOT_FOUND",
-          "市场关联了不存在或已停用的语言", [], 409);
+          "市场关联了不存在或已停用的语言",
+          409,
+        );
       }
 
       const defaultLocale = input.locales.find((locale) => locale.is_default)!;
@@ -163,9 +167,11 @@ export class LocalizationPrismaRepository implements LocalizationRepository {
       where: { id: marketId },
     });
     if (!saved) {
-      throw new WemoHttpException(
+      throw new ApiHttpException(
         "LOCALIZATION_SAVE_FAILED",
-        "市场保存后无法读取", [], 500);
+        "市场保存后无法读取",
+        500,
+      );
     }
     return (await this.hydrateMarkets([saved]))[0]!;
   }
@@ -191,9 +197,11 @@ export class LocalizationPrismaRepository implements LocalizationRepository {
     return rows.map((row) => {
       const settings = MarketSettingsSchema.safeParse(row.settings);
       if (!settings.success) {
-        throw new WemoHttpException(
+        throw new ApiHttpException(
           "LOCALIZATION_DATA_INVALID",
-          `市场 ${row.code} 的回退配置无效`, [], 500);
+          `市场 ${row.code} 的回退配置无效`,
+          500,
+        );
       }
 
       const locales = localeRows
@@ -227,9 +235,11 @@ export class LocalizationPrismaRepository implements LocalizationRepository {
   ) {
     const language = languageById.get(row.languageId);
     if (!language) {
-      throw new WemoHttpException(
+      throw new ApiHttpException(
         "LOCALIZATION_DATA_INVALID",
-        `locale ${row.locale} 关联了不存在或已停用的语言`, [], 500);
+        `locale ${row.locale} 关联了不存在或已停用的语言`,
+        500,
+      );
     }
     return {
       locale: row.locale,

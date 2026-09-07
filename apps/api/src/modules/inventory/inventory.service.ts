@@ -1,9 +1,8 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import {
-  InventoryAdjustSchema,
   InventoryBalanceListQuerySchema,
   InventoryBalanceListResponseSchema,
-  InventoryBalanceMutationResponseSchema,
+  InventoryReservationActionSchema,
   InventoryReservationCreateSchema,
   InventoryReservationListQuerySchema,
   InventoryReservationListResponseSchema,
@@ -13,8 +12,8 @@ import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { InventoryPrismaRepository } from "./inventory.prisma-repository";
-import { INVENTORY_REPOSITORY } from "./inventory.repository";
+import { CommerceRepository } from "../../runtime/commerce.state";
+import { PlatformRepository } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
@@ -25,8 +24,10 @@ const ReservationIdParamSchema = z.object({
 @Injectable()
 export class InventoryService {
   constructor(
-    @Inject(INVENTORY_REPOSITORY)
-    private readonly repository: InventoryPrismaRepository,
+    @Inject(CommerceRepository)
+    private readonly stateStore: CommerceRepository,
+    @Inject(PlatformRepository)
+    private readonly platformState: PlatformRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -34,67 +35,92 @@ export class InventoryService {
   ) {}
 
   async listBalances(query: unknown) {
-    this.authorization.requireStaffPermission("inventory:read");
     const parsed = parseInput(InventoryBalanceListQuerySchema, query);
-    const list = await this.repository.listBalances(parsed);
-    return InventoryBalanceListResponseSchema.parse(list);
+    return InventoryBalanceListResponseSchema.parse(
+      await this.stateStore.listInventoryBalances(parsed),
+    );
   }
 
   async listReservations(query: unknown) {
     this.authorization.requireStaffPermission("inventory:read");
     const parsed = parseInput(InventoryReservationListQuerySchema, query);
-    const list = await this.repository.listReservations(parsed);
-    return InventoryReservationListResponseSchema.parse(list);
+    return InventoryReservationListResponseSchema.parse(
+      await this.stateStore.listInventoryReservations(parsed),
+    );
   }
 
   async reserve(body: unknown) {
-    this.authorization.requireStaffPermission("inventory:read");
     const context = this.requestContext.requireContext();
     const input = parseInput(InventoryReservationCreateSchema, body);
-    const item = await this.repository.createReservation(input);
-    return InventoryReservationMutationResponseSchema.parse({
+    const item = await this.stateStore.reserveInventory(input, context.request_id);
+    await this.platformState.recordAudit({
+      actor_id: context.actor?.user_id ?? 1,
+      action: "inventory.reserve",
+      entity: "inventory_reservation",
+      entity_id: item.id,
+      before: null,
+      after: item,
+      ip: context.ip ?? null,
       request_id: context.request_id,
-      item,
     });
-  }
-
-  /** 库存盘点 需求 7.6 库存来源可为后台手工 */
-  async adjustBalance(body: unknown) {
-    this.authorization.requireStaffPermission("inventory:read");
-    const context = this.requestContext.requireContext();
-    const input = parseInput(InventoryAdjustSchema, body);
-    const item = await this.repository.adjustBalance(input);
-
-    return InventoryBalanceMutationResponseSchema.parse({
+    return InventoryReservationMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
     });
   }
 
   async confirm(id: unknown, body: unknown) {
-    this.authorization.requireStaffPermission("inventory:read");
-    void body;
+    const actor = this.authorization.requireActor();
+    const context = this.requestContext.requireContext();
     const parsedId = parseInput(ReservationIdParamSchema, { id });
-    const item = await this.repository.confirmReservation(parsedId.id);
-    if (!item) {
-      throw new NotFoundException("预占不存在或已处理");
-    }
+    const input = parseInput(InventoryReservationActionSchema, body);
+    const before = await this.stateStore.getInventoryReservationById(parsedId.id);
+    const item = await this.stateStore.confirmInventoryReservation(
+      parsedId.id,
+      context.request_id,
+    );
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "inventory.confirm",
+      entity: "inventory_reservation",
+      entity_id: item.id,
+      before,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
+    void input;
     return InventoryReservationMutationResponseSchema.parse({
-      request_id: this.requestContext.requireContext().request_id,
+      request_id: context.request_id,
       item,
     });
   }
 
-  release(id: unknown, body: unknown) {
+  async release(id: unknown, body: unknown) {
+    const actor = this.authorization.requireActor();
+    const context = this.requestContext.requireContext();
     const parsedId = parseInput(ReservationIdParamSchema, { id });
-    void body;
-    this.repository.releaseReservation(parsedId.id);
+    const input = parseInput(InventoryReservationActionSchema, body);
+    const before = await this.stateStore.getInventoryReservationById(parsedId.id);
+    const item = await this.stateStore.releaseInventory(
+      parsedId.id,
+      context.request_id,
+      input.reason,
+    );
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "inventory.release",
+      entity: "inventory_reservation",
+      entity_id: item.id,
+      before,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
     return InventoryReservationMutationResponseSchema.parse({
-      request_id: this.requestContext.requireContext().request_id,
-      item: {
-        id: parsedId.id,
-        status: "released",
-      },
+      request_id: context.request_id,
+      item,
     });
   }
 }
+

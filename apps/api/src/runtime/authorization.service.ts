@@ -4,10 +4,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from "@nestjs/common";
-import {
-  type AccountAudience,
-  type SessionActor,
-} from "@wemo/contracts/identity";
+import { type AccountAudience, type SessionActor } from "@wemo/contracts/identity";
 
 import { RequestContextStore } from "./request-context.store";
 

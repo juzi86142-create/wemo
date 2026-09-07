@@ -1,0 +1,28 @@
+-- Align normalized entities with API contracts.
+ALTER TABLE "public"."users" ADD COLUMN "audience" TEXT NOT NULL DEFAULT 'user';
+ALTER TABLE "public"."roles" ADD COLUMN "permissions" JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE "public"."sessions" ADD COLUMN "token" TEXT;
+ALTER TABLE "public"."sessions" ADD COLUMN "company_id" INTEGER;
+ALTER TABLE "public"."sessions" ADD COLUMN "permissions" JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE "public"."sessions" ADD COLUMN "last_seen_at" TIMESTAMP(3);
+CREATE UNIQUE INDEX "sessions_token_key" ON "public"."sessions"("token");
+ALTER TABLE "public"."categories" ADD COLUMN "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "public"."categories" ADD COLUMN "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "public"."products" ADD COLUMN "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "public"."variants" ADD COLUMN "primary_image_url" TEXT;
+ALTER TABLE "public"."variants" ADD COLUMN "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "public"."variants" ADD COLUMN "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "public"."prices" ADD COLUMN "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "public"."inventory_reservations" ADD COLUMN "idempotency_key" TEXT;
+ALTER TABLE "public"."inventory_reservations" ADD COLUMN "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+CREATE UNIQUE INDEX "inventory_reservations_idempotency_key_key" ON "public"."inventory_reservations"("idempotency_key");
+ALTER TABLE "public"."carts" ADD COLUMN "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "public"."order_items" ADD COLUMN "shipping_minor" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "public"."quotes" ADD COLUMN "requested_by_user_id" INTEGER;
+ALTER TABLE "public"."quotes" ADD COLUMN "pricing_snapshot" JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE "public"."quotes" ADD COLUMN "terms_snapshot" JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE "public"."quotes" ADD COLUMN "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "public"."payments" ADD COLUMN "refunded_minor" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "public"."payments" ADD COLUMN "payload" JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE "public"."return_requests" ADD COLUMN "history" JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE "public"."return_requests" ADD COLUMN "refunded_at" TIMESTAMP(3);

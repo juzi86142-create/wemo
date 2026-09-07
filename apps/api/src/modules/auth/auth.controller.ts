@@ -7,12 +7,9 @@ import {
   Post,
   Query,
 } from "@nestjs/common";
-import { Throttle } from "@nestjs/throttler";
 
 import { AuthService } from "./auth.service";
 
-/** 登录注册找回等敏感接口每 IP 每分钟 10 次 */
-@Throttle({ default: { limit: 10, ttl: 60_000 } })
 @Controller("auth")
 export class AuthController {
   constructor(
@@ -32,12 +29,6 @@ export class AuthController {
     return this.authService.login(body);
   }
 
-  @Post("mfa/verify")
-  @HttpCode(200)
-  verifyMfa(@Body() body: unknown) {
-    return this.authService.verifyMfa(body);
-  }
-
   @Post("verify-email")
   @HttpCode(200)
   verifyEmail(@Body() body: unknown) {
@@ -50,27 +41,9 @@ export class AuthController {
     return this.authService.forgotPassword(body);
   }
 
-  @Post("reset-password")
-  @HttpCode(200)
-  resetPassword(@Body() body: unknown) {
-    return this.authService.resetPassword(body);
-  }
-
-  @Post("change-password")
-  @HttpCode(200)
-  changePassword(@Body() body: unknown) {
-    return this.authService.changePassword(body);
-  }
-
   @Get("sessions")
   listSessions(@Query() query: unknown) {
     return this.authService.listSessions(query);
-  }
-
-  @Post("revoke-other-sessions")
-  @HttpCode(200)
-  revokeOtherSessions() {
-    return this.authService.revokeOtherSessions();
   }
 
   @Post("logout")

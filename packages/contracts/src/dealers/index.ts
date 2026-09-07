@@ -6,7 +6,6 @@ import {
   EntityIdSchema,
   JsonValueSchema,
   PaginationSchema,
-  RequestIdSchema,
 } from "../common/index.js";
 
 export const DealerApplicationStatusSchema = z.enum([
@@ -152,9 +151,8 @@ export const DealerApplicationReviewSchema = z
     reason: z.string().min(1).optional(),
     tier_id: EntityIdSchema.nullable().optional(),
     price_list_id: EntityIdSchema.nullable().optional(),
-    // 通过配置必填 需求 ADM-D-003：付款条款与销售区域
-    payment_terms: z.string().min(1),
-    sales_territories: JsonValueSchema,
+    payment_terms: z.string().min(1).optional(),
+    sales_territories: JsonValueSchema.optional(),
     authorized_categories: JsonValueSchema.optional(),
     sales_rep: z.string().min(1).nullable().optional(),
     public_listing: z.boolean().optional(),
@@ -250,62 +248,6 @@ export const DealerAddressListResponseSchema =
 export const DealerPublicListingListResponseSchema =
   createListResponseSchema(DealerPublicListingSchema);
 
-/** 经销商等级主数据 需求 6.4 名称后台可配置 */
-export const DealerTierSchema = z
-  .object({
-    id: EntityIdSchema,
-    code: z.string().min(1),
-    name: z.string().min(1),
-    sort_order: z.number().int(),
-    status: z.enum(["active", "inactive"]),
-    created_at: z.string().datetime(),
-  })
-  .strict()
-  .passthrough();
-
-export const DealerTierUpsertSchema = z
-  .object({
-    code: z.string().min(1),
-    name: z.string().min(1),
-    sort_order: z.number().int().optional(),
-    status: z.enum(["active", "inactive"]).optional(),
-  })
-  .strict();
-
-export const DealerTierListResponseSchema = createListResponseSchema(
-  DealerTierSchema,
-);
-export const DealerTierMutationResponseSchema = createItemResponseSchema(
-  DealerTierSchema,
-);
-
-/** 经销商成员邀请 需求 6.7 一次性链接带有效期 */
-export const DealerMemberInviteSchema = z
-  .object({
-    email: z.string().trim().email(),
-    role: z.string().trim().min(1).optional(),
-  })
-  .strict();
-
-export const DealerMemberAcceptSchema = z
-  .object({
-    token: z.string().min(16).max(128),
-  })
-  .strict();
-
-export const DealerMemberInviteResponseSchema = z
-  .object({
-    request_id: RequestIdSchema,
-    item: z
-      .object({
-        token: z.string().min(16),
-        email: z.string().email(),
-        expires_at: z.string().datetime(),
-      })
-      .strict(),
-  })
-  .strict();
-
 export type DealerApplicationStatus = z.infer<
   typeof DealerApplicationStatusSchema
 >;
@@ -317,8 +259,6 @@ export type DealerCompany = z.infer<typeof DealerCompanySchema>;
 export type DealerMember = z.infer<typeof DealerMemberSchema>;
 export type DealerAddress = z.infer<typeof DealerAddressSchema>;
 export type DealerPublicListing = z.infer<typeof DealerPublicListingSchema>;
-export type DealerTier = z.infer<typeof DealerTierSchema>;
-export type DealerTierUpsertInput = z.infer<typeof DealerTierUpsertSchema>;
 export type DealerApplicationCreateInput = z.infer<
   typeof DealerApplicationCreateSchema
 >;

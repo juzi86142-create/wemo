@@ -4,23 +4,17 @@ import {
   ContentEntryListQuerySchema,
   ContentEntryListResponseSchema,
   ContentEntryMutationResponseSchema,
-  ContentEntryPreviewResponseSchema,
-  ContentEntryPreviewTokenSchema,
-  ContentEntryPublishSchema,
   ContentEntryUpdateSchema,
-  ContentEntryVersionListResponseSchema,
   ContentNavigationListResponseSchema,
-  HomePageBodySchema,
 } from "@wemo/contracts/content";
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
-import { AUDIT_REPOSITORY, type AuditRepository } from "../audit/audit.repository";
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { listResponse } from "../../runtime/list-response";
-import { CmsPrismaRepository } from "./cms.prisma-repository";
-import { CMS_REPOSITORY } from "./cms.repository";
+import { ExperienceRepository } from "../../runtime/experience.state";
+import { PlatformRepository } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
+import { listResponse } from "../../runtime/list-response";
 import { parseInput } from "../../runtime/validation";
 
 const ContentIdParamSchema = z.object({
@@ -34,12 +28,12 @@ const ContentSlugParamSchema = z.object({
 @Injectable()
 export class CmsService {
   constructor(
-    @Inject(CMS_REPOSITORY)
-    private readonly repository: CmsPrismaRepository,
+    @Inject(ExperienceRepository)
+    private readonly stateStore: ExperienceRepository,
+    @Inject(PlatformRepository)
+    private readonly platformState: PlatformRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
-    @Inject(AUDIT_REPOSITORY)
-    private readonly auditRepository: AuditRepository,
     @Inject(RequestContextStore)
     private readonly requestContext: RequestContextStore,
   ) {}
@@ -47,10 +41,7 @@ export class CmsService {
   async listEntries(query: unknown) {
     const parsed = parseInput(ContentEntryListQuerySchema, query);
     return ContentEntryListResponseSchema.parse(
-      await this.repository.listContentEntries({
-        ...parsed,
-        status: "published",
-      } as any),
+      await this.stateStore.listContentEntries({ ...parsed, status: "published" }),
     );
   }
 
@@ -58,18 +49,19 @@ export class CmsService {
     this.authorization.requireStaffPermission("content:read");
     const parsed = parseInput(ContentEntryListQuerySchema, query);
     return ContentEntryListResponseSchema.parse(
-      await this.repository.listContentEntries(parsed as any),
+      await this.stateStore.listContentEntries(parsed),
     );
   }
 
-  async getEntry(slug: unknown) {
+  async getEntry(slug: unknown, type?: unknown) {
     const parsedSlug = parseInput(ContentSlugParamSchema, { slug });
-    const entry = await this.repository.getContentEntry(
-      this.requestContext.getMarket(),
-      this.requestContext.getLocale(),
+    const parsedType =
+      type === undefined ? undefined : String(type).trim() || undefined;
+    const entry = await this.stateStore.getContentEntryBySlug(
       parsedSlug.slug,
+      parsedType as never,
     );
-    if (!entry || entry.status !== "published") {
+    if (entry.status !== "published") {
       throw new NotFoundException("内容不存在");
     }
     return ContentEntryMutationResponseSchema.parse({
@@ -79,11 +71,21 @@ export class CmsService {
   }
 
   async createEntry(body: unknown) {
-    this.authorization.requireStaffPermission("content:write");
+    const actor = this.authorization.requireStaffPermission("content:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(ContentEntryCreateSchema, body);
-    this.validateHomeBody(input.type, input.body);
-    const item = await this.repository.createContentEntry(input);
+    const item = await this.stateStore.upsertContentEntry(input);
+
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "content.entry.create",
+      entity: "content_entry",
+      entity_id: item.id,
+      before: null,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
 
     return ContentEntryMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -92,37 +94,24 @@ export class CmsService {
   }
 
   async updateEntry(id: unknown, body: unknown) {
-    this.authorization.requireStaffPermission("content:write");
-    const context = this.requestContext.requireContext();
-    const parsedId = parseInput(ContentIdParamSchema, { id });
-    const input = parseInput(ContentEntryUpdateSchema, body);
-    if (input.body !== undefined) {
-      this.validateHomeBody(input.type, input.body);
-    }
-    const item = await this.repository.updateContentEntry(
-      parsedId.id,
-      input as any,
-    );
-
-    return ContentEntryMutationResponseSchema.parse({
-      request_id: context.request_id,
-      item,
-    });
-  }
-
-  /** 发布支持定时发布与定时下线 需求 ADM-C-003 */
-  async publishEntry(id: unknown, body: unknown) {
     const actor = this.authorization.requireStaffPermission("content:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ContentIdParamSchema, { id });
-    const input = parseInput(ContentEntryPublishSchema, body);
-    const item = await this.repository.publishContentEntry(parsedId.id, input);
-    await this.auditRepository.recordLog({
+    const input = parseInput(ContentEntryUpdateSchema, body);
+    const before = await this.stateStore.getContentEntryById(parsedId.id);
+    const item = await this.stateStore.upsertContentEntry({
+      ...(input as any),
+      id: parsedId.id,
+    });
+
+    await this.platformState.recordAudit({
       actor_id: actor.user_id,
-      action: "cms.publish",
+      action: "content.entry.update",
       entity: "content_entry",
-      entity_id: parsedId.id,
-      after: { ...input, status: item.status } as unknown as import("@wemo/contracts/common").JsonValue,
+      entity_id: item.id,
+      before,
+      after: item,
+      ip: context.ip ?? null,
       request_id: context.request_id,
     });
 
@@ -132,61 +121,45 @@ export class CmsService {
     });
   }
 
-  /** 草稿预览链接 需求 ADM-C-004 */
-  async createPreviewToken(id: unknown) {
-    this.authorization.requireStaffPermission("content:write");
+  async publishEntry(id: unknown) {
+    const actor = this.authorization.requireStaffPermission("content:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ContentIdParamSchema, { id });
-    const entry = await this.repository.getContentEntryById(parsedId.id);
-    if (!entry) {
-      throw new NotFoundException("内容不存在");
-    }
-    const preview = await this.repository.createPreviewToken(parsedId.id);
+    const before = await this.stateStore.getContentEntryById(parsedId.id);
+    const item = await this.stateStore.publishContentEntry(parsedId.id);
 
-    return {
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "content.entry.publish",
+      entity: "content_entry",
+      entity_id: item.id,
+      before,
+      after: item,
+      ip: context.ip ?? null,
       request_id: context.request_id,
-      item: preview,
-    };
-  }
-
-  async previewEntry(token: unknown) {
-    const parsed = parseInput(ContentEntryPreviewTokenSchema, { token });
-    const entryId = await this.repository.getEntryIdByPreviewToken(parsed.token);
-    if (entryId === null) {
-      throw new NotFoundException("预览链接无效或已过期");
-    }
-    const entry = await this.repository.getContentEntryById(entryId);
-    if (!entry) {
-      throw new NotFoundException("内容不存在");
-    }
-    return ContentEntryPreviewResponseSchema.parse({
-      request_id: this.requestContext.requireContext().request_id,
-      item: entry,
     });
-  }
 
-  /** 内容版本历史 需求 ADM-C-005 */
-  async listVersions(id: unknown) {
-    this.authorization.requireStaffPermission("content:read");
-    const parsedId = parseInput(ContentIdParamSchema, { id });
-    return ContentEntryVersionListResponseSchema.parse(
-      listResponse(await this.repository.listVersions(parsedId.id)),
-    );
+    return ContentEntryMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item,
+    });
   }
 
   async archiveEntry(id: unknown) {
     const actor = this.authorization.requireStaffPermission("content:write");
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ContentIdParamSchema, { id });
-    const item = await this.repository.updateContentEntry(parsedId.id, {
-      status: "archived",
-    });
-    await this.auditRepository.recordLog({
+    const before = await this.stateStore.getContentEntryById(parsedId.id);
+    const item = await this.stateStore.archiveContentEntry(parsedId.id);
+
+    await this.platformState.recordAudit({
       actor_id: actor.user_id,
-      action: "cms.archive",
+      action: "content.entry.archive",
       entity: "content_entry",
-      entity_id: parsedId.id,
-      after: { status: "archived" },
+      entity_id: item.id,
+      before,
+      after: item,
+      ip: context.ip ?? null,
       request_id: context.request_id,
     });
 
@@ -197,16 +170,10 @@ export class CmsService {
   }
 
   async listNavigation() {
-    const items = await this.repository.getNavigation(
-      this.requestContext.getMarket(),
-      this.requestContext.getLocale(),
+    const items = await this.stateStore.listNavigation();
+    return ContentNavigationListResponseSchema.parse(
+      listResponse(items, 1, Math.max(items.length, 1)),
     );
-    return ContentNavigationListResponseSchema.parse(listResponse(items));
-  }
-
-  /** 首页类型内容校验模块结构 需求 ADM-C-002 */
-  private validateHomeBody(type: string | undefined, body: unknown): void {
-    if (type !== "home") return;
-    parseInput(HomePageBodySchema, body);
   }
 }
+

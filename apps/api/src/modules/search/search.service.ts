@@ -5,41 +5,48 @@ import {
   SearchSuggestionResponseSchema,
 } from "@wemo/contracts/content";
 
-import { SearchPrismaRepository } from "./search.prisma-repository";
-import { SEARCH_REPOSITORY } from "./search.repository";
+import { ExperienceRepository } from "../../runtime/experience.state";
+import { PlatformRepository } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
 @Injectable()
 export class SearchService {
   constructor(
-    @Inject(SEARCH_REPOSITORY)
-    private readonly repository: SearchPrismaRepository,
+    @Inject(ExperienceRepository)
+    private readonly stateStore: ExperienceRepository,
+    @Inject(PlatformRepository)
+    private readonly platformState: PlatformRepository,
     @Inject(RequestContextStore)
     private readonly requestContext: RequestContextStore,
   ) {}
 
   async search(query: unknown) {
     const parsed = parseInput(SearchQuerySchema, query);
+    const result = await this.stateStore.search(parsed);
     const context = this.requestContext.requireContext();
-    const result = await this.repository.search({
-      q: parsed.q,
-      page: parsed.page,
-      page_size: parsed.page_size,
-      ...(parsed.type !== undefined ? { type: parsed.type } : {}),
-      market: context.market,
-      locale: context.locale,
-    });
+    await this.platformState.recordAnalyticsEvents(
+      [
+        {
+          name: "search",
+          payload: {
+            query: parsed.q,
+            results_count: result.total,
+          },
+          market: parsed.market ?? context.market,
+          locale: parsed.locale ?? context.locale,
+          role: context.actor?.audience ?? "guest",
+          dedupe_key: `${context.request_id}:search:${parsed.q}`,
+        },
+      ],
+      context,
+    );
     return SearchResponseSchema.parse(result);
   }
 
   async suggest(query: unknown) {
     const parsed = parseInput(SearchQuerySchema, query);
-    const context = this.requestContext.requireContext();
-    const suggestions = await this.repository.suggest(parsed.q, context.locale);
-    return SearchSuggestionResponseSchema.parse({
-      q: parsed.q,
-      suggestions,
-    });
+    return SearchSuggestionResponseSchema.parse(await this.stateStore.suggest(parsed));
   }
 }
+

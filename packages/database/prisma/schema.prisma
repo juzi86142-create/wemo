@@ -8,118 +8,2202 @@ datasource db {
   relationMode = "prisma"
 }
 
-// Demo级别：仅保留核心实体和必需支撑表（共30张；购物车/收藏/订阅/通知/分析/集成/作业/报表等非核心数据持久化在 Redis，见 apps/api/src/modules/README.md）
+// 跨表只保存整数逻辑 ID；关联存在性、权限边界和生命周期由应用事务维护。
 
-// === 身份认证 ===
+// -----------------------------------------------------------------------------
+// Identity
+// -----------------------------------------------------------------------------
+
 model User {
-  id           Int       @id @default(autoincrement())
-  email        String    @unique
-  passwordHash String    @map("password_hash")
-  name         String
-  phone        String?
-  locale       String    @default("en-US")
-  audience     String    @default("user")
-  status       String    @default("pending_verification")
-  verifiedAt   DateTime? @map("verified_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  archivedAt   DateTime? @map("archived_at")
+  id                Int       @id @default(autoincrement())
+  email             String    @unique
+  passwordHash      String    @map("password_hash")
+  name              String
+  phone             String?
+  locale            String    @default("en-US")
+  status            String    @default("pending_verification")
+  verifiedAt        DateTime? @map("verified_at")
+  passwordChangedAt DateTime? @map("password_changed_at")
+  lastLoginAt       DateTime? @map("last_login_at")
+  lastLoginIp       String?   @map("last_login_ip")
+  failedLoginCount  Int       @default(0) @map("failed_login_count")
+  lockedUntil       DateTime? @map("locked_until")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  archivedAt        DateTime? @map("archived_at")
 
+  @@index([status, createdAt])
+  @@index([archivedAt])
   @@map("users")
 }
 
 model Role {
-  id          Int    @id @default(autoincrement())
-  code        String @unique
+  id          Int      @id @default(autoincrement())
+  code        String   @unique
   name        String
   audience    String
-  permissions Json   @default("[]")
+  description String?
+  status      String   @default("active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
+  @@index([audience, status])
   @@map("roles")
 }
 
+model Permission {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique
+  module      String
+  action      String
+  name        String
+  description String?
+  status      String   @default("active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([module, action])
+  @@index([module, status])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           Int      @id @default(autoincrement())
+  roleId       Int      @map("role_id")
+  permissionId Int      @map("permission_id")
+  effect       String   @default("allow")
+  assignedBy   Int?     @map("assigned_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
 model UserRole {
-  id        Int  @id @default(autoincrement())
-  userId    Int  @map("user_id")
-  roleId    Int  @map("role_id")
-  overrides Json
+  id         Int       @id @default(autoincrement())
+  userId     Int       @map("user_id")
+  roleId     Int       @map("role_id")
+  overrides  Json
+  status     String    @default("active")
+  assignedBy Int?      @map("assigned_by")
+  expiresAt  DateTime? @map("expires_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   @@unique([userId, roleId])
   @@index([userId])
+  @@index([userId, status])
   @@index([roleId])
   @@map("user_roles")
 }
 
+model UserPermission {
+  id           Int       @id @default(autoincrement())
+  userId       Int       @map("user_id")
+  permissionId Int       @map("permission_id")
+  effect       String    @default("allow")
+  assignedBy   Int?      @map("assigned_by")
+  expiresAt    DateTime? @map("expires_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@unique([userId, permissionId])
+  @@index([userId, expiresAt])
+  @@index([permissionId])
+  @@map("user_permissions")
+}
+
+model Address {
+  id            Int       @id @default(autoincrement())
+  userId        Int       @map("user_id")
+  kind          String
+  label         String?
+  recipientName String?   @map("recipient_name")
+  phone         String?
+  country       String?
+  region        String?
+  city          String?
+  postalCode    String?   @map("postal_code")
+  line1         String?
+  line2         String?
+  payload       Json
+  isDefault     Boolean   @default(false) @map("is_default")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  archivedAt    DateTime? @map("archived_at")
+
+  @@index([userId])
+  @@index([userId, kind, archivedAt])
+  @@map("addresses")
+}
+
 model Session {
-  id        Int       @id @default(autoincrement())
-  userId    Int       @map("user_id")
-  audience  String
-  token     String    @unique
-  expiresAt DateTime  @map("expires_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  revokedAt DateTime? @map("revoked_at")
+  id               Int       @id @default(autoincrement())
+  userId           Int       @map("user_id")
+  sessionTokenHash String    @unique @map("session_token_hash")
+  audience         String
+  userAgent        String?   @map("user_agent")
+  ip               String?
+  expiresAt        DateTime  @map("expires_at")
+  lastSeenAt       DateTime? @map("last_seen_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  revokedAt        DateTime? @map("revoked_at")
+  revokeReason     String?   @map("revoke_reason")
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([userId, revokedAt])
+  @@index([audience, expiresAt])
   @@map("sessions")
 }
 
-// === 经销商 ===
-model DealerCompany {
+model AuthChallenge {
+  id         Int       @id @default(autoincrement())
+  userId     Int?      @map("user_id")
+  email      String?
+  type       String
+  tokenHash  String    @unique @map("token_hash")
+  payload    Json?
+  attempts   Int       @default(0)
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, type, expiresAt])
+  @@index([email, type, expiresAt])
+  @@map("auth_challenges")
+}
+
+model MfaFactor {
+  id         Int       @id @default(autoincrement())
+  userId     Int       @map("user_id")
+  type       String
+  label      String?
+  secretRef  String?   @map("secret_ref")
+  publicKey  String?   @map("public_key")
+  status     String    @default("pending")
+  verifiedAt DateTime? @map("verified_at")
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  revokedAt  DateTime? @map("revoked_at")
+
+  @@index([userId, status])
+  @@map("mfa_factors")
+}
+
+model ConsentRecord {
+  id          Int       @id @default(autoincrement())
+  userId      Int?      @map("user_id")
+  email       String?
+  consentType String    @map("consent_type")
+  version     String
+  granted     Boolean
+  source      String
+  locale      String?
+  ip          String?
+  userAgent   String?   @map("user_agent")
+  recordedAt  DateTime  @default(now()) @map("recorded_at")
+  withdrawnAt DateTime? @map("withdrawn_at")
+
+  @@index([userId, consentType, recordedAt])
+  @@index([email, consentType, recordedAt])
+  @@map("consent_records")
+}
+
+model PrivacyRequest {
+  id          Int       @id @default(autoincrement())
+  requestNo   String    @unique @map("request_no")
+  userId      Int       @map("user_id")
+  type        String
+  status      String    @default("requested")
+  requestedAt DateTime  @default(now()) @map("requested_at")
+  completedAt DateTime? @map("completed_at")
+  completedBy Int?      @map("completed_by")
+  resultRef   String?   @map("result_ref")
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId, status])
+  @@index([status, requestedAt])
+  @@map("privacy_requests")
+}
+
+model UserStatusHistory {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  fromStatus String?  @map("from_status")
+  toStatus   String   @map("to_status")
+  reason     String?
+  changedBy  Int?     @map("changed_by")
+  requestId  String?  @map("request_id")
+  changedAt  DateTime @default(now()) @map("changed_at")
+
+  @@index([userId, changedAt])
+  @@index([toStatus, changedAt])
+  @@map("user_status_history")
+}
+
+// -----------------------------------------------------------------------------
+// Dealers
+// -----------------------------------------------------------------------------
+
+model DealerTier {
+  id                 Int       @id @default(autoincrement())
+  code               String    @unique
+  name               String
+  rank               Int       @default(0)
+  defaultPriceListId Int?      @map("default_price_list_id")
+  discountRules      Json
+  status             String    @default("active")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  archivedAt         DateTime? @map("archived_at")
+
+  @@index([status, rank])
+  @@map("dealer_tiers")
+}
+
+model DealerApplication {
+  id                      Int       @id @default(autoincrement())
+  applicationNo           String    @unique @map("application_no")
+  applicantUserId         Int?      @map("applicant_user_id")
+  legalName               String    @map("legal_name")
+  country                 String
+  contactName             String?   @map("contact_name")
+  contactEmail            String    @map("contact_email")
+  contactPhone            String?   @map("contact_phone")
+  businessType            String?   @map("business_type")
+  website                 String?
+  taxId                   String?   @map("tax_id")
+  paymentTerms            Json?     @map("payment_terms")
+  salesTerritories        Json?     @map("sales_territories")
+  authorizedCategories    Json?     @map("authorized_categories")
+  estimatedAnnualPurchase String?   @map("estimated_annual_purchase")
+  interestedProducts      Json?     @map("interested_products")
+  existingBrands          Json?     @map("existing_brands")
+  payload                 Json
+  status                  String    @default("draft")
+  submittedAt             DateTime? @map("submitted_at")
+  reviewedAt              DateTime? @map("reviewed_at")
+  reviewedBy              Int?      @map("reviewed_by")
+  approvedAt              DateTime? @map("approved_at")
+  rejectionReason         String?   @map("rejection_reason")
+  lastSavedAt             DateTime? @map("last_saved_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, country])
+  @@index([applicantUserId])
+  @@index([contactEmail, status])
+  @@map("dealer_applications")
+}
+
+model DealerApplicationAttachment {
+  id               Int       @id @default(autoincrement())
+  applicationId    Int       @map("application_id")
+  mediaAssetId     Int       @map("media_asset_id")
+  kind             String
+  fileNameSnapshot String?   @map("file_name_snapshot")
+  status           String    @default("active")
+  uploadedBy       Int?      @map("uploaded_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  archivedAt       DateTime? @map("archived_at")
+
+  @@index([applicationId, status])
+  @@index([mediaAssetId])
+  @@map("dealer_application_attachments")
+}
+
+model DealerApplicationConsent {
+  id            Int      @id @default(autoincrement())
+  applicationId Int      @map("application_id")
+  consentType   String   @map("consent_type")
+  version       String
+  accepted      Boolean
+  acceptedAt    DateTime @default(now()) @map("accepted_at")
+  ip            String?
+  userAgent     String?  @map("user_agent")
+
+  @@unique([applicationId, consentType, version])
+  @@index([applicationId])
+  @@map("dealer_application_consents")
+}
+
+model DealerApplicationReview {
+  id            Int      @id @default(autoincrement())
+  applicationId Int      @map("application_id")
+  reviewerId    Int?     @map("reviewer_id")
+  fromStatus    String?  @map("from_status")
+  toStatus      String   @map("to_status")
+  decision      String
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([applicationId, createdAt])
+  @@index([reviewerId, createdAt])
+  @@map("dealer_application_reviews")
+}
+
+model DealerSupplementRequest {
   id            Int       @id @default(autoincrement())
-  legalName     String    @map("legal_name")
-  displayName   String    @map("display_name")
-  country       String
-  tierId        Int?      @map("tier_id")
-  priceListId   Int?      @map("price_list_id")
-  currency      String
-  terms         Json
-  publicListing Boolean   @default(false) @map("public_listing")
-  status        String    @default("active")
+  applicationId Int       @map("application_id")
+  requestedBy   Int?      @map("requested_by")
+  status        String    @default("open")
+  message       String
+  dueAt         DateTime? @map("due_at")
+  respondedAt   DateTime? @map("responded_at")
+  response      Json?
   createdAt     DateTime  @default(now()) @map("created_at")
-  archivedAt    DateTime? @map("archived_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([applicationId, status])
+  @@index([status, dueAt])
+  @@map("dealer_supplement_requests")
+}
+
+model DealerCompany {
+  id                   Int       @id @default(autoincrement())
+  applicationId        Int?      @map("application_id")
+  legalName            String    @map("legal_name")
+  displayName          String    @map("display_name")
+  country              String
+  website              String?
+  businessType         String?   @map("business_type")
+  taxId                String?   @map("tax_id")
+  tierId               Int?      @map("tier_id")
+  priceListId          Int?      @map("price_list_id")
+  salesRepId           Int?      @map("sales_rep_id")
+  currency             String
+  paymentTerms         Json?     @map("payment_terms")
+  salesTerritories     Json?     @map("sales_territories")
+  authorizedCategories Json?     @map("authorized_categories")
+  terms                Json
+  logoMediaAssetId     Int?      @map("logo_media_asset_id")
+  primaryUserId        Int?      @map("primary_user_id")
+  publicListing        Boolean   @default(false) @map("public_listing")
+  status               String    @default("active")
+  openedAt             DateTime? @map("opened_at")
+  suspendedAt          DateTime? @map("suspended_at")
+  closedAt             DateTime? @map("closed_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  archivedAt           DateTime? @map("archived_at")
 
   @@index([status, country])
   @@index([tierId])
   @@index([priceListId])
+  @@index([salesRepId, status])
+  @@index([primaryUserId])
+  @@index([publicListing, status])
   @@map("dealer_companies")
 }
 
+model DealerCompanyStatusHistory {
+  id         Int      @id @default(autoincrement())
+  companyId  Int      @map("company_id")
+  fromStatus String?  @map("from_status")
+  toStatus   String   @map("to_status")
+  reason     String?
+  changedBy  Int?     @map("changed_by")
+  requestId  String?  @map("request_id")
+  changedAt  DateTime @default(now()) @map("changed_at")
+
+  @@index([companyId, changedAt])
+  @@index([toStatus, changedAt])
+  @@map("dealer_company_status_history")
+}
+
 model DealerMember {
-  id          Int    @id @default(autoincrement())
-  companyId   Int    @map("company_id")
-  userId      Int    @map("user_id")
+  id          Int       @id @default(autoincrement())
+  companyId   Int       @map("company_id")
+  userId      Int       @map("user_id")
   role        String
   permissions Json
-  status      String @default("active")
+  status      String    @default("active")
+  invitedBy   Int?      @map("invited_by")
+  invitedAt   DateTime? @map("invited_at")
+  joinedAt    DateTime? @map("joined_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@unique([companyId, userId])
   @@index([companyId])
+  @@index([companyId, status])
   @@index([userId])
+  @@index([userId, status])
   @@map("dealer_members")
 }
 
-model DealerApplication {
+model DealerInvitation {
+  id         Int       @id @default(autoincrement())
+  companyId  Int       @map("company_id")
+  email      String
+  role       String
+  tokenHash  String    @unique @map("token_hash")
+  invitedBy  Int?      @map("invited_by")
+  expiresAt  DateTime  @map("expires_at")
+  acceptedAt DateTime? @map("accepted_at")
+  acceptedBy Int?      @map("accepted_by")
+  status     String    @default("pending")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([companyId, status])
+  @@index([email, status])
+  @@map("dealer_invitations")
+}
+
+model DealerAuthorization {
+  id                Int       @id @default(autoincrement())
+  companyId         Int       @map("company_id")
+  categoryId        Int?      @map("category_id")
+  market            String?
+  territory         String?
+  authorizationType String    @map("authorization_type")
+  status            String    @default("active")
+  validFrom         DateTime? @map("valid_from")
+  validTo           DateTime? @map("valid_to")
+  rules             Json?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@index([companyId, status])
+  @@index([categoryId, market, status])
+  @@map("dealer_authorizations")
+}
+
+model DealerAgreement {
+  id            Int       @id @default(autoincrement())
+  companyId     Int       @map("company_id")
+  agreementType String    @map("agreement_type")
+  version       String
+  contentHash   String?   @map("content_hash")
+  acceptedBy    Int?      @map("accepted_by")
+  acceptedAt    DateTime? @map("accepted_at")
+  ip            String?
+  status        String    @default("pending")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@unique([companyId, agreementType, version])
+  @@index([companyId, status])
+  @@map("dealer_agreements")
+}
+
+model DealerAddress {
+  id            Int       @id @default(autoincrement())
+  companyId     Int       @map("company_id")
+  kind          String
+  label         String?
+  recipientName String?   @map("recipient_name")
+  phone         String?
+  country       String?
+  region        String?
+  city          String?
+  postalCode    String?   @map("postal_code")
+  line1         String?
+  line2         String?
+  payload       Json
+  publicListing Json?     @map("public_listing")
+  isDefault     Boolean   @default(false) @map("is_default")
+  status        String    @default("active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  archivedAt    DateTime? @map("archived_at")
+
+  @@index([companyId])
+  @@index([companyId, kind, status])
+  @@map("dealer_addresses")
+}
+
+model DealerStore {
+  id                   Int      @id @default(autoincrement())
+  companyId            Int      @map("company_id")
+  name                 String
+  storeType            String?  @map("store_type")
+  country              String?
+  region               String?
+  city                 String?
+  address              String?
+  phone                String?
+  website              String?
+  businessHours        Json?    @map("business_hours")
+  latitude             Float?
+  longitude            Float?
+  authorizedCategories Json?    @map("authorized_categories")
+  publicListing        Boolean  @default(true) @map("public_listing")
+  status               String   @default("active")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@index([companyId, status])
+  @@index([country, region, city, publicListing])
+  @@map("dealer_stores")
+}
+
+// -----------------------------------------------------------------------------
+// Catalog
+// -----------------------------------------------------------------------------
+
+model Category {
+  id               Int       @id @default(autoincrement())
+  parentId         Int?      @map("parent_id")
+  code             String?   @unique
+  slug             String    @unique
+  status           String    @default("active")
+  sortOrder        Int       @default(0) @map("sort_order")
+  localizedContent Json      @map("localized_content")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  archivedAt       DateTime? @map("archived_at")
+
+  @@index([parentId])
+  @@index([parentId, status, sortOrder])
+  @@map("categories")
+}
+
+model CategoryTranslation {
+  id          Int      @id @default(autoincrement())
+  categoryId  Int      @map("category_id")
+  locale      String
+  market      String
+  slug        String
+  name        String
+  description String?
+  status      String   @default("published")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([market, locale, slug])
+  @@unique([categoryId, market, locale])
+  @@index([categoryId])
+  @@map("category_translations")
+}
+
+model AttributeDefinition {
+  id         Int      @id @default(autoincrement())
+  code       String   @unique
+  name       String
+  dataType   String   @map("data_type")
+  unit       String?
+  options    Json?
+  filterable Boolean  @default(false)
+  sortable   Boolean  @default(false)
+  searchable Boolean  @default(false)
+  required   Boolean  @default(false)
+  status     String   @default("active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([filterable, status])
+  @@map("attribute_definitions")
+}
+
+model CategoryAttribute {
+  id                    Int     @id @default(autoincrement())
+  categoryId            Int     @map("category_id")
+  attributeDefinitionId Int     @map("attribute_definition_id")
+  sortOrder             Int     @default(0) @map("sort_order")
+  required              Boolean @default(false)
+  config                Json?
+
+  @@unique([categoryId, attributeDefinitionId])
+  @@index([categoryId, sortOrder])
+  @@index([attributeDefinitionId])
+  @@map("category_attributes")
+}
+
+model Tag {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  tagType   String?  @map("tag_type")
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("tags")
+}
+
+model TagTranslation {
+  id        Int      @id @default(autoincrement())
+  tagId     Int      @map("tag_id")
+  locale    String
+  market    String
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([tagId, locale, market])
+  @@index([locale, market, name])
+  @@map("tag_translations")
+}
+
+model Product {
+  id                Int       @id @default(autoincrement())
+  primaryCategoryId Int       @map("primary_category_id")
+  name              String    @default("")
+  slug              String    @default("")
+  status            String    @default("draft")
+  ageMin            Int?      @map("age_min")
+  ageMax            Int?      @map("age_max")
+  playEnvironment   Json?     @map("play_environment")
+  skills            Json?
+  shortDescription  String?   @map("short_description")
+  longDescription   Json?     @map("long_description")
+  features          Json?
+  materials         Json?
+  productDimensions Json?     @map("product_dimensions")
+  packageDimensions Json?     @map("package_dimensions")
+  netWeight         Int?      @map("net_weight")
+  grossWeight       Int?      @map("gross_weight")
+  weightUnit        String?   @map("weight_unit")
+  casePack          Int?      @map("case_pack")
+  moq               Int?      @map("moq")
+  includedItems     Json?     @map("included_items")
+  safetyNotes       Json?     @map("safety_notes")
+  attributes        Json
+  seo               Json?
+  marketVisibility  Json      @map("market_visibility")
+  publishedAt       DateTime? @map("published_at")
+  scheduledAt       DateTime? @map("scheduled_at")
+  createdBy         Int?      @map("created_by")
+  updatedBy         Int?      @map("updated_by")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  archivedAt        DateTime? @map("archived_at")
+
+  @@index([status, primaryCategoryId])
+  @@index([status, publishedAt])
+  @@index([ageMin, ageMax])
+  @@index([slug])
+  @@map("products")
+}
+
+model ProductTranslation {
+  id                Int       @id @default(autoincrement())
+  productId         Int       @map("product_id")
+  locale            String
+  market            String
+  slug              String
+  name              String
+  shortDescription  String    @map("short_description")
+  longDescription   Json?     @map("long_description")
+  content           Json
+  features          Json?
+  seo               Json?
+  translationStatus String    @default("not_started") @map("translation_status")
+  publishedAt       DateTime? @map("published_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@unique([market, locale, slug])
+  @@unique([productId, market, locale])
+  @@index([productId])
+  @@index([translationStatus])
+  @@map("product_translations")
+}
+
+model Variant {
+  id                Int       @id @default(autoincrement())
+  productId         Int       @map("product_id")
+  sku               String    @unique
+  barcode           String?   @unique
+  name              String?
+  options           Json
+  specifications    Json
+  weight            Int?
+  weightUnit        String?   @map("weight_unit")
+  dimensions        Json?
+  packageDimensions Json?     @map("package_dimensions")
+  casePack          Int?      @map("case_pack")
+  moq               Int?      @map("moq")
+  leadTimeDays      Int?      @map("lead_time_days")
+  status            String    @default("active")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  archivedAt        DateTime? @map("archived_at")
+
+  @@index([productId])
+  @@index([productId, status])
+  @@index([barcode])
+  @@map("variants")
+}
+
+model ProductCategory {
+  id         Int      @id @default(autoincrement())
+  productId  Int      @map("product_id")
+  categoryId Int      @map("category_id")
+  isPrimary  Boolean  @default(false) @map("is_primary")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([productId, categoryId])
+  @@index([categoryId, sortOrder])
+  @@index([productId, isPrimary])
+  @@map("product_categories")
+}
+
+model ProductTag {
+  id        Int      @id @default(autoincrement())
+  productId Int      @map("product_id")
+  tagId     Int      @map("tag_id")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([productId, tagId])
+  @@index([tagId])
+  @@map("product_tags")
+}
+
+model ProductAttributeValue {
+  id                    Int      @id @default(autoincrement())
+  productId             Int      @map("product_id")
+  attributeDefinitionId Int      @map("attribute_definition_id")
+  value                 Json
+  normalizedValue       String?  @map("normalized_value")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@unique([productId, attributeDefinitionId])
+  @@index([attributeDefinitionId, normalizedValue])
+  @@map("product_attribute_values")
+}
+
+model VariantAttributeValue {
+  id                    Int      @id @default(autoincrement())
+  variantId             Int      @map("variant_id")
+  attributeDefinitionId Int      @map("attribute_definition_id")
+  value                 Json
+  normalizedValue       String?  @map("normalized_value")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@unique([variantId, attributeDefinitionId])
+  @@index([attributeDefinitionId, normalizedValue])
+  @@map("variant_attribute_values")
+}
+
+model ProductMedia {
+  id           Int       @id @default(autoincrement())
+  productId    Int       @map("product_id")
+  variantId    Int?      @map("variant_id")
+  mediaAssetId Int       @map("media_asset_id")
+  role         String
+  sortOrder    Int       @default(0) @map("sort_order")
+  altOverride  String?   @map("alt_override")
+  isPrimary    Boolean   @default(false) @map("is_primary")
+  status       String    @default("active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  archivedAt   DateTime? @map("archived_at")
+
+  @@unique([productId, mediaAssetId, role])
+  @@index([productId, role, sortOrder])
+  @@index([variantId, role])
+  @@index([mediaAssetId])
+  @@map("product_media")
+}
+
+model ProductDownload {
+  id           Int       @id @default(autoincrement())
+  productId    Int       @map("product_id")
+  variantId    Int?      @map("variant_id")
+  mediaAssetId Int       @map("media_asset_id")
+  title        String
+  locale       String?
+  market       String?
+  visibility   String    @default("public")
+  sortOrder    Int       @default(0) @map("sort_order")
+  status       String    @default("active")
+  publishedAt  DateTime? @map("published_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([productId, status, sortOrder])
+  @@index([mediaAssetId, visibility])
+  @@map("product_downloads")
+}
+
+model ProductRelation {
+  id               Int      @id @default(autoincrement())
+  productId        Int      @map("product_id")
+  relatedProductId Int      @map("related_product_id")
+  relationType     String   @map("relation_type")
+  sortOrder        Int      @default(0) @map("sort_order")
+  status           String   @default("active")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@unique([productId, relatedProductId, relationType])
+  @@index([productId, relationType, sortOrder])
+  @@index([relatedProductId, relationType])
+  @@map("product_relations")
+}
+
+model ProductFaq {
+  id             Int      @id @default(autoincrement())
+  productId      Int      @map("product_id")
+  contentEntryId Int?     @map("content_entry_id")
+  question       String?
+  answer         Json?
+  sortOrder      Int      @default(0) @map("sort_order")
+  status         String   @default("active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([productId, status, sortOrder])
+  @@index([contentEntryId])
+  @@map("product_faqs")
+}
+
+model ProductChange {
+  id        Int      @id @default(autoincrement())
+  productId Int      @map("product_id")
+  version   Int
+  action    String
+  changedBy Int?     @map("changed_by")
+  before    Json?
+  after     Json?
+  requestId String?  @map("request_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([productId, version])
+  @@index([productId, createdAt])
+  @@index([changedBy, createdAt])
+  @@map("product_changes")
+}
+
+model ProductStatusHistory {
+  id         Int      @id @default(autoincrement())
+  productId  Int      @map("product_id")
+  fromStatus String?  @map("from_status")
+  toStatus   String   @map("to_status")
+  reason     String?
+  changedBy  Int?     @map("changed_by")
+  requestId  String?  @map("request_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([productId, createdAt])
+  @@index([toStatus, createdAt])
+  @@map("product_status_history")
+}
+
+// -----------------------------------------------------------------------------
+// Pricing
+// -----------------------------------------------------------------------------
+
+model PriceList {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique
+  name        String
+  description String?
+  market      String
+  currency    String
+  channel     String    @default("b2b")
+  priority    Int       @default(0)
+  status      String    @default("active")
+  validFrom   DateTime? @map("valid_from")
+  validTo     DateTime? @map("valid_to")
+  createdBy   Int?      @map("created_by")
+  updatedBy   Int?      @map("updated_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  archivedAt  DateTime? @map("archived_at")
+
+  @@index([market, currency, channel, status])
+  @@index([status, validFrom, validTo])
+  @@map("price_lists")
+}
+
+model Promotion {
+  id          Int       @id @default(autoincrement())
+  code        String?   @unique
+  name        String
+  kind        String
+  market      String
+  currency    String?
+  priceType   String    @map("price_type")
+  amountMinor Int?      @map("amount_minor")
+  percentBps  Int?      @map("percent_bps")
+  conditions  Json
+  channels    Json?
+  stackable   Boolean   @default(false)
+  status      String    @default("draft")
+  startsAt    DateTime? @map("starts_at")
+  endsAt      DateTime? @map("ends_at")
+  createdBy   Int?      @map("created_by")
+  updatedBy   Int?      @map("updated_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  archivedAt  DateTime? @map("archived_at")
+
+  @@index([market, status, startsAt, endsAt])
+  @@index([kind, status])
+  @@map("promotions")
+}
+
+model Price {
   id              Int       @id @default(autoincrement())
-  applicationNo   String    @unique @map("application_no")
-  applicantUserId Int?      @map("applicant_user_id")
-  legalName       String    @map("legal_name")
-  country         String
-  contactEmail    String    @map("contact_email")
-  payload         Json
-  status          String    @default("draft")
-  submittedAt     DateTime? @map("submitted_at")
-  reviewedAt      DateTime? @map("reviewed_at")
-  reviewNote      String?   @map("review_note")
+  variantId       Int       @map("variant_id")
+  priceListId     Int?      @map("price_list_id")
+  dealerTierId    Int?      @map("dealer_tier_id")
+  dealerCompanyId Int?      @map("dealer_company_id")
+  promotionId     Int?      @map("promotion_id")
+  market          String
+  currency        String
+  priceType       String    @map("price_type")
+  priceSource     String    @default("base") @map("price_source")
+  amountMinor     Int       @map("amount_minor")
+  minQuantity     Int       @default(1) @map("min_quantity")
+  maxQuantity     Int?      @map("max_quantity")
+  taxIncluded     Boolean   @default(false) @map("tax_included")
+  rules           Json
+  sourceSnapshot  Json?     @map("source_snapshot")
+  validFrom       DateTime? @map("valid_from")
+  validTo         DateTime? @map("valid_to")
+  isActive        Boolean   @default(true) @map("is_active")
+  createdBy       Int?      @map("created_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  archivedAt      DateTime? @map("archived_at")
+
+  @@index([variantId, market, currency])
+  @@index([priceListId])
+  @@index([dealerCompanyId])
+  @@index([dealerTierId])
+  @@index([variantId, market, currency, priceType])
+  @@index([variantId, minQuantity, validFrom, validTo])
+  @@index([priceListId, isActive])
+  @@index([dealerCompanyId, isActive])
+  @@index([dealerTierId, isActive])
+  @@index([promotionId])
+  @@map("prices")
+}
+
+model PriceHistory {
+  id              Int      @id @default(autoincrement())
+  priceId         Int?     @map("price_id")
+  variantId       Int      @map("variant_id")
+  priceListId     Int?     @map("price_list_id")
+  dealerTierId    Int?     @map("dealer_tier_id")
+  dealerCompanyId Int?     @map("dealer_company_id")
+  market          String
+  currency        String
+  priceType       String   @map("price_type")
+  amountMinor     Int      @map("amount_minor")
+  minQuantity     Int      @default(1) @map("min_quantity")
+  sourceSnapshot  Json     @map("source_snapshot")
+  changeType      String   @map("change_type")
+  changedBy       Int?     @map("changed_by")
+  recordedAt      DateTime @default(now()) @map("recorded_at")
+
+  @@index([variantId, recordedAt])
+  @@index([priceId, recordedAt])
+  @@index([dealerCompanyId, market, recordedAt])
+  @@map("price_history")
+}
+
+model DiscountCode {
+  id            Int       @id @default(autoincrement())
+  code          String    @unique
+  promotionId   Int?      @map("promotion_id")
+  usageLimit    Int?      @map("usage_limit")
+  perUserLimit  Int?      @map("per_user_limit")
+  redeemedCount Int       @default(0) @map("redeemed_count")
+  validFrom     DateTime? @map("valid_from")
+  validTo       DateTime? @map("valid_to")
+  status        String    @default("active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([promotionId, status])
+  @@index([status, validFrom, validTo])
+  @@map("discount_codes")
+}
+
+model DiscountRedemption {
+  id             Int      @id @default(autoincrement())
+  discountCodeId Int      @map("discount_code_id")
+  promotionId    Int?     @map("promotion_id")
+  orderId        Int      @map("order_id")
+  userId         Int?     @map("user_id")
+  companyId      Int?     @map("company_id")
+  amountMinor    Int      @map("amount_minor")
+  snapshot       Json
+  redeemedAt     DateTime @default(now()) @map("redeemed_at")
+
+  @@unique([discountCodeId, orderId])
+  @@index([userId, discountCodeId])
+  @@index([companyId, discountCodeId])
+  @@index([orderId])
+  @@map("discount_redemptions")
+}
+
+model PriceChangeBatch {
+  id             Int       @id @default(autoincrement())
+  batchNo        String    @unique @map("batch_no")
+  requestedBy    Int?      @map("requested_by")
+  reason         String?
+  status         String    @default("pending")
+  effectiveAt    DateTime? @map("effective_at")
+  completedAt    DateTime? @map("completed_at")
+  totalItems     Int       @default(0) @map("total_items")
+  succeededItems Int       @default(0) @map("succeeded_items")
+  failedItems    Int       @default(0) @map("failed_items")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, effectiveAt])
+  @@index([requestedBy, createdAt])
+  @@map("price_change_batches")
+}
+
+model PriceChangeItem {
+  id            Int       @id @default(autoincrement())
+  batchId       Int       @map("batch_id")
+  priceId       Int?      @map("price_id")
+  variantId     Int       @map("variant_id")
+  previousValue Json?     @map("previous_value")
+  nextValue     Json      @map("next_value")
+  status        String    @default("pending")
+  errorMessage  String?   @map("error_message")
+  appliedAt     DateTime? @map("applied_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([batchId, status])
+  @@index([variantId, createdAt])
+  @@map("price_change_items")
+}
+
+// -----------------------------------------------------------------------------
+// Inventory
+// -----------------------------------------------------------------------------
+
+model Warehouse {
+  id         Int       @id @default(autoincrement())
+  code       String    @unique
+  name       String
+  provider   String?
+  country    String?
+  timezone   String?
+  address    Json?
+  status     String    @default("active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  archivedAt DateTime? @map("archived_at")
+
+  @@index([status, country])
+  @@map("warehouses")
+}
+
+model InventoryBalance {
+  id                   Int       @id @default(autoincrement())
+  variantId            Int       @map("variant_id")
+  warehouseId          Int?      @map("warehouse_id")
+  warehouseCode        String    @map("warehouse_code")
+  market               String
+  physical             Int       @default(0)
+  onHand               Int       @default(0) @map("on_hand")
+  available            Int       @default(0)
+  reserved             Int       @default(0)
+  source               String    @default("manual")
+  status               String    @default("active")
+  displayStatus        String    @default("available") @map("display_status")
+  isStale              Boolean   @default(false) @map("is_stale")
+  staleAfterSeconds    Int?      @map("stale_after_seconds")
+  syncedAt             DateTime? @map("synced_at")
+  lastSuccessfulSyncAt DateTime? @map("last_successful_sync_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@unique([variantId, warehouseCode, market])
+  @@index([variantId])
+  @@index([variantId, market])
+  @@index([warehouseId, status])
+  @@index([market, displayStatus])
+  @@map("inventory_balances")
+}
+
+model InventoryReservation {
+  id                 Int       @id @default(autoincrement())
+  inventoryBalanceId Int       @map("inventory_balance_id")
+  ownerType          String    @map("owner_type")
+  ownerId            Int       @map("owner_id")
+  orderId            Int?      @map("order_id")
+  checkoutSessionId  Int?      @map("checkout_session_id")
+  quantity           Int
+  status             String    @default("active")
+  idempotencyKey     String    @unique @map("idempotency_key")
+  expiresAt          DateTime? @map("expires_at")
+  reservedAt         DateTime  @default(now()) @map("reserved_at")
+  confirmedAt        DateTime? @map("confirmed_at")
+  releasedAt         DateTime? @map("released_at")
+  releaseReason      String?   @map("release_reason")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@index([inventoryBalanceId, status])
+  @@index([ownerType, ownerId])
+  @@index([ownerType, ownerId, status])
+  @@index([orderId, status])
+  @@index([checkoutSessionId, status])
+  @@index([status, expiresAt])
+  @@map("inventory_reservations")
+}
+
+model InventoryAdjustment {
+  id                 Int      @id @default(autoincrement())
+  inventoryBalanceId Int      @map("inventory_balance_id")
+  variantId          Int      @map("variant_id")
+  warehouseId        Int?     @map("warehouse_id")
+  quantityDelta      Int      @map("quantity_delta")
+  reason             String
+  referenceType      String?  @map("reference_type")
+  referenceId        Int?     @map("reference_id")
+  beforeQuantity     Int      @map("before_quantity")
+  afterQuantity      Int      @map("after_quantity")
+  note               String?
+  adjustedBy         Int?     @map("adjusted_by")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@index([inventoryBalanceId, createdAt])
+  @@index([variantId, warehouseId, createdAt])
+  @@index([referenceType, referenceId])
+  @@map("inventory_adjustments")
+}
+
+model InventorySyncRun {
+  id             Int       @id @default(autoincrement())
+  runNo          String    @unique @map("run_no")
+  warehouseId    Int?      @map("warehouse_id")
+  source         String
+  status         String    @default("running")
+  requestId      String?   @map("request_id")
+  startedAt      DateTime  @default(now()) @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  recordsRead    Int       @default(0) @map("records_read")
+  recordsApplied Int       @default(0) @map("records_applied")
+  errorMessage   String?   @map("error_message")
+  cursor         String?
+
+  @@index([warehouseId, status, startedAt])
+  @@index([source, status, startedAt])
+  @@map("inventory_sync_runs")
+}
+
+model InventoryDisplayRule {
+  id                Int      @id @default(autoincrement())
+  market            String
+  channel           String   @default("public")
+  staleAfterSeconds Int      @default(3600) @map("stale_after_seconds")
+  threshold         Int?
+  lowStockLabel     String?  @map("low_stock_label")
+  fallbackStatus    String   @default("contact_for_availability") @map("fallback_status")
+  showExactQuantity Boolean  @default(false) @map("show_exact_quantity")
+  status            String   @default("active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@unique([market, channel])
+  @@index([status, market])
+  @@map("inventory_display_rules")
+}
+
+// -----------------------------------------------------------------------------
+// Commerce
+// -----------------------------------------------------------------------------
+
+model Cart {
+  id               Int       @id @default(autoincrement())
+  userId           Int?      @map("user_id")
+  companyId        Int?      @map("company_id")
+  guestTokenHash   String?   @unique @map("guest_token_hash")
+  sessionKey       String?   @unique @map("session_key")
+  mergedIntoCartId Int?      @map("merged_into_cart_id")
+  channel          String
+  market           String
+  currency         String
+  status           String    @default("active")
+  expiresAt        DateTime? @map("expires_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  mergedAt         DateTime? @map("merged_at")
+
+  @@index([userId, status])
+  @@index([companyId, status])
+  @@index([status, expiresAt])
+  @@index([mergedIntoCartId])
+  @@map("carts")
+}
+
+model CartItem {
+  id            Int      @id @default(autoincrement())
+  cartId        Int      @map("cart_id")
+  productId     Int?     @map("product_id")
+  variantId     Int      @map("variant_id")
+  quantity      Int
+  skuSnapshot   String?  @map("sku_snapshot")
+  nameSnapshot  String?  @map("name_snapshot")
+  priceSnapshot Json?    @map("price_snapshot")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([cartId, variantId])
+  @@index([cartId])
+  @@index([variantId])
+  @@map("cart_items")
+}
+
+model CartDiscount {
+  id             Int      @id @default(autoincrement())
+  cartId         Int      @map("cart_id")
+  discountCodeId Int?     @map("discount_code_id")
+  promotionId    Int?     @map("promotion_id")
+  codeSnapshot   String?  @map("code_snapshot")
+  amountMinor    Int      @map("amount_minor")
+  snapshot       Json
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([cartId, codeSnapshot])
+  @@index([cartId])
+  @@index([discountCodeId])
+  @@map("cart_discounts")
+}
+
+model CheckoutSession {
+  id                      Int       @id @default(autoincrement())
+  sessionNo               String    @unique @map("session_no")
+  cartId                  Int       @map("cart_id")
+  userId                  Int?      @map("user_id")
+  companyId               Int?      @map("company_id")
+  channel                 String
+  market                  String
+  currency                String
+  status                  String    @default("open")
+  idempotencyKey          String    @unique @map("idempotency_key")
+  shippingAddressSnapshot Json?     @map("shipping_address_snapshot")
+  billingAddressSnapshot  Json?     @map("billing_address_snapshot")
+  pricingSnapshot         Json?     @map("pricing_snapshot")
+  expiresAt               DateTime? @map("expires_at")
+  completedOrderId        Int?      @map("completed_order_id")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+  completedAt             DateTime? @map("completed_at")
+
+  @@index([cartId, status])
+  @@index([userId, status])
+  @@index([companyId, status])
+  @@index([status, expiresAt])
+  @@index([completedOrderId])
+  @@map("checkout_sessions")
+}
+
+model Order {
+  id                Int       @id @default(autoincrement())
+  orderNo           String    @unique @map("order_no")
+  orderType         String    @default("b2c") @map("order_type")
+  channel           String
+  userId            Int?      @map("user_id")
+  companyId         Int?      @map("company_id")
+  cartId            Int?      @map("cart_id")
+  checkoutSessionId Int?      @map("checkout_session_id")
+  quoteId           Int?      @map("quote_id")
+  currency          String
+  subtotalMinor     Int       @map("subtotal_minor")
+  discountMinor     Int       @default(0) @map("discount_minor")
+  taxMinor          Int       @map("tax_minor")
+  shippingMinor     Int       @map("shipping_minor")
+  totalMinor        Int       @map("total_minor")
+  status            String
+  paymentTerms      String?   @map("payment_terms")
+  poNumber          String?   @map("po_number")
+  customerSnapshot  Json?     @map("customer_snapshot")
+  addressSnapshot   Json      @map("address_snapshot")
+  pricingSnapshot   Json      @map("pricing_snapshot")
+  taxSnapshot       Json?     @map("tax_snapshot")
+  shippingSnapshot  Json?     @map("shipping_snapshot")
+  termsSnapshot     Json?     @map("terms_snapshot")
+  idempotencyKey    String?   @unique @map("idempotency_key")
+  requestId         String?   @map("request_id")
+  submittedAt       DateTime? @map("submitted_at")
+  confirmedAt       DateTime? @map("confirmed_at")
+  cancelledAt       DateTime? @map("cancelled_at")
+  completedAt       DateTime? @map("completed_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  archivedAt        DateTime? @map("archived_at")
+
+  @@index([userId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([status, createdAt])
+  @@index([orderType, status, createdAt])
+  @@index([cartId])
+  @@index([checkoutSessionId])
+  @@index([quoteId])
+  @@index([requestId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id              Int      @id @default(autoincrement())
+  orderId         Int      @map("order_id")
+  productId       Int?     @map("product_id")
+  variantId       Int?     @map("variant_id")
+  lineNo          Int      @default(1) @map("line_no")
+  skuSnapshot     String   @map("sku_snapshot")
+  nameSnapshot    String   @map("name_snapshot")
+  productSnapshot Json?    @map("product_snapshot")
+  quantity        Int
+  unitPriceMinor  Int      @map("unit_price_minor")
+  discountMinor   Int      @default(0) @map("discount_minor")
+  taxMinor        Int      @map("tax_minor")
+  totalMinor      Int      @map("total_minor")
+  priceSource     String?  @map("price_source")
+  priceSnapshot   Json?    @map("price_snapshot")
+  taxSnapshot     Json?    @map("tax_snapshot")
+  detailSnapshot  Json     @map("detail_snapshot")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([orderId])
+  @@index([orderId, lineNo])
+  @@index([variantId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id         Int      @id @default(autoincrement())
+  orderId    Int      @map("order_id")
+  fromStatus String?  @map("from_status")
+  toStatus   String   @map("to_status")
+  reason     String?
+  changedBy  Int?     @map("changed_by")
+  requestId  String?  @map("request_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([orderId, createdAt])
+  @@index([toStatus, createdAt])
+  @@map("order_status_history")
+}
+
+model OrderNote {
+  id         Int       @id @default(autoincrement())
+  orderId    Int       @map("order_id")
+  authorId   Int?      @map("author_id")
+  visibility String    @default("internal")
+  body       String
+  createdAt  DateTime  @default(now()) @map("created_at")
+  archivedAt DateTime? @map("archived_at")
+
+  @@index([orderId, visibility, createdAt])
+  @@index([authorId, createdAt])
+  @@map("order_notes")
+}
+
+model OrderAdjustment {
+  id             Int      @id @default(autoincrement())
+  orderId        Int      @map("order_id")
+  orderItemId    Int?     @map("order_item_id")
+  adjustmentType String   @map("adjustment_type")
+  reason         String
+  amountMinor    Int      @map("amount_minor")
+  beforeSnapshot Json?    @map("before_snapshot")
+  afterSnapshot  Json     @map("after_snapshot")
+  createdBy      Int?     @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([orderId, createdAt])
+  @@index([orderItemId])
+  @@map("order_adjustments")
+}
+
+model OrderDocument {
+  id           Int       @id @default(autoincrement())
+  orderId      Int       @map("order_id")
+  documentType String    @map("document_type")
+  mediaAssetId Int?      @map("media_asset_id")
+  documentNo   String?   @map("document_no")
+  visibility   String    @default("private")
+  status       String    @default("active")
+  snapshot     Json?
+  issuedAt     DateTime? @map("issued_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  archivedAt   DateTime? @map("archived_at")
+
+  @@index([orderId, documentType, status])
+  @@index([mediaAssetId])
+  @@map("order_documents")
+}
+
+model Quote {
+  id               Int       @id @default(autoincrement())
+  quoteNo          String    @unique @map("quote_no")
+  companyId        Int       @map("company_id")
+  requesterId      Int?      @map("requester_id")
+  currentVersion   Int       @default(1) @map("current_version")
+  version          Int       @default(1)
+  status           String
+  currency         String    @default("USD")
+  subtotalMinor    Int       @default(0) @map("subtotal_minor")
+  discountMinor    Int       @default(0) @map("discount_minor")
+  taxMinor         Int       @default(0) @map("tax_minor")
+  shippingMinor    Int       @default(0) @map("shipping_minor")
+  totalMinor       Int       @default(0) @map("total_minor")
+  pricingSnapshot  Json?
+  termsSnapshot    Json?     @map("terms_snapshot")
+  shippingSnapshot Json?     @map("shipping_snapshot")
+  taxSnapshot      Json?     @map("tax_snapshot")
+  validUntil       DateTime? @map("valid_until")
+  convertedOrderId Int?      @map("converted_order_id")
+  idempotencyKey   String?   @unique @map("idempotency_key")
+  requestedAt      DateTime? @map("requested_at")
+  acceptedAt       DateTime? @map("accepted_at")
+  rejectedAt       DateTime? @map("rejected_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  archivedAt       DateTime? @map("archived_at")
+
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@index([requesterId])
+  @@index([convertedOrderId])
+  @@index([status, validUntil])
+  @@map("quotes")
+}
+
+model QuoteVersion {
+  id            Int       @id @default(autoincrement())
+  quoteId       Int       @map("quote_id")
+  version       Int
+  status        String
+  currency      String
+  subtotalMinor Int       @default(0) @map("subtotal_minor")
+  discountMinor Int       @default(0) @map("discount_minor")
+  taxMinor      Int       @default(0) @map("tax_minor")
+  shippingMinor Int       @default(0) @map("shipping_minor")
+  totalMinor    Int       @default(0) @map("total_minor")
+  validUntil    DateTime? @map("valid_until")
+  termsSnapshot Json?     @map("terms_snapshot")
+  snapshot      Json
+  createdBy     Int       @map("created_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@unique([quoteId, version])
+  @@index([createdBy])
+  @@index([createdBy, createdAt])
+  @@index([quoteId, status])
+  @@map("quote_versions")
+}
+
+model QuoteItem {
+  id             Int      @id @default(autoincrement())
+  quoteId        Int      @map("quote_id")
+  quoteVersionId Int      @map("quote_version_id")
+  variantId      Int?     @map("variant_id")
+  productId      Int?     @map("product_id")
+  skuSnapshot    String   @map("sku_snapshot")
+  nameSnapshot   String   @map("name_snapshot")
+  quantity       Int
+  unitPriceMinor Int      @map("unit_price_minor")
+  discountMinor  Int      @default(0) @map("discount_minor")
+  taxMinor       Int      @default(0) @map("tax_minor")
+  totalMinor     Int      @map("total_minor")
+  detailSnapshot Json     @map("detail_snapshot")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([quoteId, quoteVersionId])
+  @@index([quoteVersionId])
+  @@index([variantId])
+  @@map("quote_items")
+}
+
+model QuoteStatusHistory {
+  id         Int      @id @default(autoincrement())
+  quoteId    Int      @map("quote_id")
+  fromStatus String?  @map("from_status")
+  toStatus   String   @map("to_status")
+  reason     String?
+  changedBy  Int?     @map("changed_by")
+  requestId  String?  @map("request_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([quoteId, createdAt])
+  @@index([toStatus, createdAt])
+  @@map("quote_status_history")
+}
+
+model Payment {
+  id              Int       @id @default(autoincrement())
+  orderId         Int       @map("order_id")
+  quoteId         Int?      @map("quote_id")
+  provider        String
+  paymentMethod   String?   @map("payment_method")
+  providerTxnId   String?   @map("provider_txn_id")
+  providerEventId String?   @map("provider_event_id")
+  status          String
+  amountMinor     Int       @map("amount_minor")
+  capturedMinor   Int       @default(0) @map("captured_minor")
+  refundedMinor   Int       @default(0) @map("refunded_minor")
+  currency        String
+  failureReason   String?   @map("failure_reason")
+  idempotencyKey  String    @unique @map("idempotency_key")
+  metadata        Json?
+  requestId       String?   @map("request_id")
+  authorizedAt    DateTime? @map("authorized_at")
+  paidAt          DateTime? @map("paid_at")
+  failedAt        DateTime? @map("failed_at")
+  cancelledAt     DateTime? @map("cancelled_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  @@index([status, country])
-  @@index([applicantUserId])
-  @@map("dealer_applications")
+  @@index([orderId])
+  @@index([orderId, status])
+  @@index([quoteId])
+  @@index([providerTxnId])
+  @@index([provider, providerTxnId])
+  @@index([provider, providerEventId])
+  @@map("payments")
 }
 
-// === 本地化 ===
+model PaymentStatusHistory {
+  id              Int      @id @default(autoincrement())
+  paymentId       Int      @map("payment_id")
+  fromStatus      String?  @map("from_status")
+  toStatus        String   @map("to_status")
+  reason          String?
+  providerEventId String?  @map("provider_event_id")
+  changedBy       Int?     @map("changed_by")
+  requestId       String?  @map("request_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([paymentId, createdAt])
+  @@index([toStatus, createdAt])
+  @@map("payment_status_history")
+}
+
+model PaymentSession {
+  id                Int       @id @default(autoincrement())
+  checkoutSessionId Int       @map("checkout_session_id")
+  orderId           Int?      @map("order_id")
+  paymentId         Int?      @map("payment_id")
+  provider          String
+  providerSessionId String    @unique @map("provider_session_id")
+  status            String    @default("created")
+  amountMinor       Int       @map("amount_minor")
+  currency          String
+  idempotencyKey    String    @unique @map("idempotency_key")
+  expiresAt         DateTime? @map("expires_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  completedAt       DateTime? @map("completed_at")
+
+  @@index([checkoutSessionId, status])
+  @@index([orderId])
+  @@index([paymentId])
+  @@map("payment_sessions")
+}
+
+model Refund {
+  id               Int       @id @default(autoincrement())
+  paymentId        Int       @map("payment_id")
+  orderId          Int       @map("order_id")
+  amountMinor      Int       @map("amount_minor")
+  currency         String
+  providerRefundId String?   @map("provider_refund_id")
+  reason           String
+  status           String    @default("pending")
+  idempotencyKey   String    @unique @map("idempotency_key")
+  requestedBy      Int?      @map("requested_by")
+  failureReason    String?   @map("failure_reason")
+  snapshot         Json?
+  requestedAt      DateTime  @default(now()) @map("requested_at")
+  processedAt      DateTime? @map("processed_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@index([paymentId, status])
+  @@index([orderId, createdAt])
+  @@index([providerRefundId])
+  @@map("refunds")
+}
+
+model RefundStatusHistory {
+  id         Int      @id @default(autoincrement())
+  refundId   Int      @map("refund_id")
+  fromStatus String?  @map("from_status")
+  toStatus   String   @map("to_status")
+  reason     String?
+  changedBy  Int?     @map("changed_by")
+  requestId  String?  @map("request_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([refundId, createdAt])
+  @@index([toStatus, createdAt])
+  @@map("refund_status_history")
+}
+
+model Shipment {
+  id                      Int       @id @default(autoincrement())
+  orderId                 Int       @map("order_id")
+  warehouseId             Int?      @map("warehouse_id")
+  carrier                 String?
+  trackingNo              String?   @map("tracking_no")
+  providerShipmentId      String?   @map("provider_shipment_id")
+  status                  String
+  shippingAddressSnapshot Json?     @map("shipping_address_snapshot")
+  items                   Json
+  labelMediaAssetId       Int?      @map("label_media_asset_id")
+  shippedAt               DateTime? @map("shipped_at")
+  deliveredAt             DateTime? @map("delivered_at")
+  idempotencyKey          String?   @unique @map("idempotency_key")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  @@index([orderId])
+  @@index([orderId, status])
+  @@index([trackingNo])
+  @@index([providerShipmentId])
+  @@index([warehouseId])
+  @@map("shipments")
+}
+
+model ShipmentItem {
+  id          Int      @id @default(autoincrement())
+  shipmentId  Int      @map("shipment_id")
+  orderId     Int      @map("order_id")
+  orderItemId Int      @map("order_item_id")
+  variantId   Int?     @map("variant_id")
+  skuSnapshot String   @map("sku_snapshot")
+  quantity    Int
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([shipmentId, orderItemId])
+  @@index([orderId, orderItemId])
+  @@index([variantId])
+  @@map("shipment_items")
+}
+
+model ReturnRequest {
+  id          Int       @id @default(autoincrement())
+  returnNo    String    @unique @map("return_no")
+  orderId     Int       @map("order_id")
+  userId      Int?      @map("user_id")
+  companyId   Int?      @map("company_id")
+  requestedBy Int?      @map("requested_by")
+  status      String
+  reason      String
+  items       Json
+  attachments Json
+  refundId    Int?      @map("refund_id")
+  reviewNote  String?   @map("review_note")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  approvedAt  DateTime? @map("approved_at")
+  completedAt DateTime? @map("completed_at")
+
+  @@index([orderId])
+  @@index([orderId, status])
+  @@index([userId, status])
+  @@index([companyId, status])
+  @@index([refundId])
+  @@map("return_requests")
+}
+
+model ReturnItem {
+  id              Int      @id @default(autoincrement())
+  returnRequestId Int      @map("return_request_id")
+  orderItemId     Int      @map("order_item_id")
+  variantId       Int?     @map("variant_id")
+  quantity        Int
+  receivedQty     Int      @default(0) @map("received_qty")
+  refundedQty     Int      @default(0) @map("refunded_qty")
+  reason          String?
+  condition       String?
+  snapshot        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([returnRequestId])
+  @@index([orderItemId])
+  @@map("return_items")
+}
+
+model ReturnStatusHistory {
+  id              Int      @id @default(autoincrement())
+  returnRequestId Int      @map("return_request_id")
+  fromStatus      String?  @map("from_status")
+  toStatus        String   @map("to_status")
+  reason          String?
+  changedBy       Int?     @map("changed_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([returnRequestId, createdAt])
+  @@index([toStatus, createdAt])
+  @@map("return_status_history")
+}
+
+model Invoice {
+  id                   Int       @id @default(autoincrement())
+  invoiceNo            String    @unique @map("invoice_no")
+  orderId              Int       @map("order_id")
+  companyId            Int?      @map("company_id")
+  userId               Int?      @map("user_id")
+  status               String    @default("issued")
+  currency             String
+  subtotalMinor        Int       @map("subtotal_minor")
+  taxMinor             Int       @map("tax_minor")
+  totalMinor           Int       @map("total_minor")
+  paidMinor            Int       @default(0) @map("paid_minor")
+  issuedAt             DateTime  @default(now()) @map("issued_at")
+  dueAt                DateTime? @map("due_at")
+  paidAt               DateTime? @map("paid_at")
+  documentMediaAssetId Int?      @map("document_media_asset_id")
+  snapshot             Json
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@index([orderId])
+  @@index([companyId, status, dueAt])
+  @@index([userId, status])
+  @@index([documentMediaAssetId])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id             Int      @id @default(autoincrement())
+  invoiceId      Int      @map("invoice_id")
+  orderItemId    Int?     @map("order_item_id")
+  description    String
+  quantity       Int
+  unitPriceMinor Int      @map("unit_price_minor")
+  taxMinor       Int      @map("tax_minor")
+  totalMinor     Int      @map("total_minor")
+  snapshot       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([invoiceId])
+  @@index([orderItemId])
+  @@map("invoice_lines")
+}
+
+// -----------------------------------------------------------------------------
+// Content, media, forms and SEO
+// -----------------------------------------------------------------------------
+
+model ContentEntry {
+  id          Int       @id @default(autoincrement())
+  type        String
+  locale      String
+  market      String
+  slug        String
+  title       String
+  excerpt     String?
+  body        Json
+  modules     Json?
+  seo         Json
+  status      String    @default("draft")
+  versionNo   Int       @default(1) @map("version_no")
+  authorId    Int?      @map("author_id")
+  createdBy   Int?      @map("created_by")
+  publishedBy Int?      @map("published_by")
+  scheduledAt DateTime? @map("scheduled_at")
+  publishedAt DateTime? @map("published_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  archivedAt  DateTime? @map("archived_at")
+
+  @@unique([market, locale, slug])
+  @@index([type, status])
+  @@index([status, scheduledAt])
+  @@index([authorId, createdAt])
+  @@map("content_entries")
+}
+
+model ContentVersion {
+  id             Int      @id @default(autoincrement())
+  contentEntryId Int      @map("content_entry_id")
+  version        Int
+  status         String
+  snapshot       Json
+  createdBy      Int?     @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([contentEntryId, version])
+  @@index([contentEntryId, status])
+  @@index([createdBy, createdAt])
+  @@map("content_versions")
+}
+
+model ContentProduct {
+  id             Int      @id @default(autoincrement())
+  contentEntryId Int      @map("content_entry_id")
+  productId      Int      @map("product_id")
+  relationType   String   @default("related") @map("relation_type")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([contentEntryId, productId, relationType])
+  @@index([productId, relationType])
+  @@index([contentEntryId, sortOrder])
+  @@map("content_products")
+}
+
+model ContentRelation {
+  id                    Int      @id @default(autoincrement())
+  contentEntryId        Int      @map("content_entry_id")
+  relatedContentEntryId Int      @map("related_content_entry_id")
+  relationType          String   @map("relation_type")
+  sortOrder             Int      @default(0) @map("sort_order")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  @@unique([contentEntryId, relatedContentEntryId, relationType])
+  @@index([contentEntryId, relationType, sortOrder])
+  @@index([relatedContentEntryId, relationType])
+  @@map("content_relations")
+}
+
+model ContentPlacement {
+  id             Int       @id @default(autoincrement())
+  contentEntryId Int       @map("content_entry_id")
+  placementKey   String    @map("placement_key")
+  market         String
+  locale         String
+  priority       Int       @default(0)
+  config         Json?
+  status         String    @default("active")
+  startsAt       DateTime? @map("starts_at")
+  endsAt         DateTime? @map("ends_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@unique([placementKey, market, locale, contentEntryId])
+  @@index([placementKey, market, locale, status])
+  @@index([contentEntryId])
+  @@map("content_placements")
+}
+
+model ContentPreviewToken {
+  id             Int       @id @default(autoincrement())
+  contentEntryId Int       @map("content_entry_id")
+  tokenHash      String    @unique @map("token_hash")
+  issuedBy       Int?      @map("issued_by")
+  expiresAt      DateTime  @map("expires_at")
+  usedAt         DateTime? @map("used_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@index([contentEntryId, expiresAt])
+  @@index([issuedBy, createdAt])
+  @@map("content_preview_tokens")
+}
+
+model ContentMedia {
+  id             Int      @id @default(autoincrement())
+  contentEntryId Int      @map("content_entry_id")
+  mediaAssetId   Int      @map("media_asset_id")
+  role           String
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([contentEntryId, mediaAssetId, role])
+  @@index([contentEntryId, role, sortOrder])
+  @@index([mediaAssetId])
+  @@map("content_media")
+}
+
+model MediaAsset {
+  id               Int       @id @default(autoincrement())
+  type             String
+  fileKey          String    @unique @map("file_key")
+  originalFileName String?   @map("original_file_name")
+  mime             String
+  size             Int
+  checksum         String
+  alt              String?
+  visibility       String
+  version          String    @default("1")
+  storageProvider  String?   @map("storage_provider")
+  width            Int?
+  height           Int?
+  durationSeconds  Int?      @map("duration_seconds")
+  metadata         Json
+  status           String    @default("active")
+  uploadedBy       Int?      @map("uploaded_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  archivedAt       DateTime? @map("archived_at")
+
+  @@index([checksum])
+  @@index([type, visibility, status])
+  @@index([uploadedBy, createdAt])
+  @@map("media_assets")
+}
+
+model MediaAssetVersion {
+  id           Int       @id @default(autoincrement())
+  mediaAssetId Int       @map("media_asset_id")
+  versionNo    Int       @map("version_no")
+  fileKey      String    @unique @map("file_key")
+  mime         String
+  size         Int
+  checksum     String
+  metadata     Json?
+  createdBy    Int?      @map("created_by")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  supersededAt DateTime? @map("superseded_at")
+
+  @@unique([mediaAssetId, versionNo])
+  @@index([mediaAssetId, createdAt])
+  @@map("media_asset_versions")
+}
+
+model MediaVariant {
+  id           Int      @id @default(autoincrement())
+  mediaAssetId Int      @map("media_asset_id")
+  format       String
+  width        Int?
+  height       Int?
+  quality      Int?
+  fileKey      String   @unique @map("file_key")
+  byteSize     Int?     @map("byte_size")
+  checksum     String?
+  status       String   @default("ready")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([mediaAssetId, format, width, height, quality])
+  @@index([mediaAssetId, format, status])
+  @@map("media_variants")
+}
+
+model MediaTag {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("media_tags")
+}
+
+model MediaAssetTag {
+  id           Int      @id @default(autoincrement())
+  mediaAssetId Int      @map("media_asset_id")
+  mediaTagId   Int      @map("media_tag_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([mediaAssetId, mediaTagId])
+  @@index([mediaTagId])
+  @@map("media_asset_tags")
+}
+
+model MediaUsage {
+  id           Int      @id @default(autoincrement())
+  mediaAssetId Int      @map("media_asset_id")
+  ownerType    String   @map("owner_type")
+  ownerId      Int      @map("owner_id")
+  usageType    String   @map("usage_type")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([mediaAssetId, ownerType, ownerId, usageType])
+  @@index([ownerType, ownerId])
+  @@map("media_usages")
+}
+
+model Download {
+  id             Int       @id @default(autoincrement())
+  downloadNo     String    @unique @map("download_no")
+  mediaAssetId   Int       @map("media_asset_id")
+  productId      Int?      @map("product_id")
+  contentEntryId Int?      @map("content_entry_id")
+  title          String
+  description    String?
+  version        String
+  locale         String?
+  market         String?
+  visibility     String    @default("public")
+  requiredRole   String?   @map("required_role")
+  status         String    @default("draft")
+  publishedAt    DateTime? @map("published_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  archivedAt     DateTime? @map("archived_at")
+
+  @@index([productId, status, visibility])
+  @@index([contentEntryId, status])
+  @@index([mediaAssetId])
+  @@map("downloads")
+}
+
+model FormSubmission {
+  id              Int       @id @default(autoincrement())
+  submissionNo    String    @unique @map("submission_no")
+  type            String
+  source          String
+  name            String?
+  email           String?
+  country         String?
+  subject         String?
+  message         String?
+  orderId         Int?      @map("order_id")
+  productId       Int?      @map("product_id")
+  companyId       Int?      @map("company_id")
+  payload         Json
+  assigneeId      Int?      @map("assignee_id")
+  priority        String    @default("normal")
+  status          String    @default("new")
+  consentSnapshot Json?     @map("consent_snapshot")
+  spamScore       Int?      @map("spam_score")
+  riskDecision    String?   @map("risk_decision")
+  idempotencyKey  String?   @unique @map("idempotency_key")
+  resolvedAt      DateTime? @map("resolved_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  archivedAt      DateTime? @map("archived_at")
+
+  @@index([type, status])
+  @@index([assigneeId])
+  @@index([assigneeId, status])
+  @@index([companyId, status])
+  @@index([orderId])
+  @@index([productId])
+  @@index([createdAt])
+  @@map("form_submissions")
+}
+
+model FormAttachment {
+  id               Int       @id @default(autoincrement())
+  formSubmissionId Int       @map("form_submission_id")
+  mediaAssetId     Int       @map("media_asset_id")
+  uploadedBy       Int?      @map("uploaded_by")
+  visibility       String    @default("internal")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  archivedAt       DateTime? @map("archived_at")
+
+  @@index([formSubmissionId])
+  @@index([mediaAssetId, visibility])
+  @@map("form_attachments")
+}
+
+model FormNote {
+  id               Int       @id @default(autoincrement())
+  formSubmissionId Int       @map("form_submission_id")
+  authorId         Int?      @map("author_id")
+  body             String
+  visibility       String    @default("internal")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  archivedAt       DateTime? @map("archived_at")
+
+  @@index([formSubmissionId, createdAt])
+  @@index([authorId, createdAt])
+  @@map("form_notes")
+}
+
+model FormStatusHistory {
+  id               Int      @id @default(autoincrement())
+  formSubmissionId Int      @map("form_submission_id")
+  fromStatus       String?  @map("from_status")
+  toStatus         String   @map("to_status")
+  reason           String?
+  changedBy        Int?     @map("changed_by")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([formSubmissionId, createdAt])
+  @@index([toStatus, createdAt])
+  @@map("form_status_history")
+}
+
+model FormTag {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("form_tags")
+}
+
+model FormSubmissionTag {
+  id               Int      @id @default(autoincrement())
+  formSubmissionId Int      @map("form_submission_id")
+  formTagId        Int      @map("form_tag_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@unique([formSubmissionId, formTagId])
+  @@index([formTagId])
+  @@map("form_submission_tags")
+}
+
+model SeoAuditFinding {
+  id         Int       @id @default(autoincrement())
+  entityType String    @map("entity_type")
+  entityId   Int       @map("entity_id")
+  locale     String?
+  market     String?
+  ruleCode   String    @map("rule_code")
+  severity   String
+  message    String
+  status     String    @default("open")
+  metadata   Json?
+  resolvedBy Int?      @map("resolved_by")
+  resolvedAt DateTime? @map("resolved_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@unique([entityType, entityId, locale, market, ruleCode])
+  @@index([status, severity, createdAt])
+  @@index([entityType, entityId])
+  @@map("seo_audit_findings")
+}
+
+model NotFoundEvent {
+  id          Int      @id @default(autoincrement())
+  path        String
+  referrer    String?
+  market      String?
+  locale      String?
+  userId      Int?     @map("user_id")
+  requestId   String?  @map("request_id")
+  hits        Int      @default(1)
+  firstSeenAt DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt  DateTime @updatedAt @map("last_seen_at")
+
+  @@index([path, market, locale])
+  @@index([lastSeenAt])
+  @@map("not_found_events")
+}
+
+model Redirect {
+  id         Int      @id @default(autoincrement())
+  sourcePath String   @unique @map("source_path")
+  targetPath String   @map("target_path")
+  statusCode Int      @default(301) @map("status_code")
+  market     String?
+  locale     String?
+  isActive   Boolean  @default(true) @map("is_active")
+  hitCount   Int      @default(0) @map("hit_count")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([targetPath])
+  @@index([market, locale, isActive])
+  @@map("redirects")
+}
+
+// -----------------------------------------------------------------------------
+// Platform, localization, search, jobs and observability
+// -----------------------------------------------------------------------------
+
+model Locale {
+  id         Int      @id @default(autoincrement())
+  code       String   @unique
+  name       String
+  nativeName String?  @map("native_name")
+  direction  String   @default("ltr")
+  status     String   @default("active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("locales")
+}
+
+// Kept for compatibility with the existing localization API while Locale is
+// used by the expanded platform model.
 model Language {
   id          Int      @id @default(autoincrement())
   code        String   @unique
@@ -134,366 +2218,369 @@ model Language {
 }
 
 model Market {
-  id            Int    @id @default(autoincrement())
-  code          String @unique
-  defaultLocale String @map("default_locale")
-  currency      String
-  timezone      String
-  settings      Json
-  status        String @default("active")
+  id               Int      @id @default(autoincrement())
+  code             String   @unique
+  name             String?
+  defaultLocale    String   @map("default_locale")
+  defaultLocaleId  Int?     @map("default_locale_id")
+  countryCodes     Json?    @map("country_codes")
+  supportedLocales Json?    @map("supported_locales")
+  currency         String
+  timezone         String
+  settings         Json
+  b2cEnabled       Boolean  @default(false) @map("b2c_enabled")
+  b2bEnabled       Boolean  @default(true) @map("b2b_enabled")
+  status           String   @default("active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
+  @@index([status, code])
+  @@index([defaultLocaleId])
   @@map("markets")
 }
 
 model MarketLocale {
-  id         Int     @id @default(autoincrement())
-  marketId   Int     @map("market_id")
-  languageId Int     @map("language_id")
+  id         Int      @id @default(autoincrement())
+  marketId   Int      @map("market_id")
+  languageId Int      @map("language_id")
   locale     String
-  pathPrefix String  @map("path_prefix")
-  isDefault  Boolean @default(false) @map("is_default")
-  sortOrder  Int     @default(0) @map("sort_order")
-  status     String  @default("active")
+  pathPrefix String   @map("path_prefix")
+  localeId   Int?     @map("locale_id")
+  isDefault  Boolean  @default(false) @map("is_default")
+  sortOrder  Int      @default(0) @map("sort_order")
+  status     String   @default("active")
+  createdAt  DateTime @default(now()) @map("created_at")
 
   @@unique([marketId, locale])
   @@unique([marketId, pathPrefix])
+  @@unique([marketId, localeId])
   @@index([marketId, status, sortOrder])
+  @@index([marketId, isDefault, status])
   @@index([languageId])
+  @@index([localeId])
   @@map("market_locales")
 }
 
-// === 商品 ===
-model Category {
-  id               Int    @id @default(autoincrement())
-  parentId         Int?   @map("parent_id")
-  slug             String @unique
-  status           String @default("active")
-  sortOrder        Int    @default(0) @map("sort_order")
-  localizedContent Json   @map("localized_content")
-
-  @@index([parentId])
-  @@map("categories")
-}
-
-model Product {
-  id                Int       @id @default(autoincrement())
-  primaryCategoryId Int       @map("primary_category_id")
-  status            String    @default("draft")
-  ageMin            Int?      @map("age_min")
-  ageMax            Int?      @map("age_max")
-  attributes        Json
-  marketVisibility  Json      @map("market_visibility")
-  publishedAt       DateTime? @map("published_at")
-  archivedAt        DateTime? @map("archived_at")
-  createdAt         DateTime  @default(now()) @map("created_at")
-
-  @@index([status, primaryCategoryId])
-  @@map("products")
-}
-
-model ProductTranslation {
-  id                Int    @id @default(autoincrement())
-  productId         Int    @map("product_id")
-  locale            String
-  market            String
-  slug              String
-  name              String
-  shortDescription  String @map("short_description")
-  content           Json
-  translationStatus String @default("not_started") @map("translation_status")
-
-  @@unique([market, locale, slug])
-  @@index([productId])
-  @@map("product_translations")
-}
-
-model Variant {
-  id             Int     @id @default(autoincrement())
-  productId      Int     @map("product_id")
-  sku            String  @unique
-  barcode        String? @unique
-  options        Json
-  specifications Json
-  status         String  @default("active")
-
-  @@index([productId])
-  @@map("variants")
-}
-
-model Price {
-  id              Int       @id @default(autoincrement())
-  variantId       Int       @map("variant_id")
-  priceListId     Int?      @map("price_list_id")
-  dealerTierId    Int?      @map("dealer_tier_id")
-  dealerCompanyId Int?      @map("dealer_company_id")
-  market          String
-  currency        String
-  priceType       String    @map("price_type")
-  amountMinor     Int       @map("amount_minor")
-  minQuantity     Int       @default(1) @map("min_quantity")
-  rules           Json
-  validFrom       DateTime? @map("valid_from")
-  validTo         DateTime? @map("valid_to")
-  createdAt       DateTime  @default(now()) @map("created_at")
-
-  @@index([variantId, market, currency])
-  @@index([priceListId])
-  @@index([dealerCompanyId])
-  @@index([dealerTierId])
-  @@map("prices")
-}
-
-model PriceList {
-  id       Int    @id @default(autoincrement())
-  code     String @unique
-  name     String
-  market   String
-  currency String
-  status   String @default("active")
-
-  @@map("price_lists")
-}
-
-model DealerTier {
+model Favorite {
   id        Int      @id @default(autoincrement())
-  code      String   @unique
-  name      String
-  sortOrder Int      @default(0) @map("sort_order")
-  status    String   @default("active")
+  userId    Int      @map("user_id")
+  productId Int      @map("product_id")
   createdAt DateTime @default(now()) @map("created_at")
 
-  @@map("dealer_tiers")
-}
-
-model InventoryBalance {
-  id            Int       @id @default(autoincrement())
-  variantId     Int       @map("variant_id")
-  warehouseCode String    @map("warehouse_code")
-  market        String
-  onHand        Int       @default(0) @map("on_hand")
-  available     Int       @default(0)
-  reserved      Int       @default(0)
-  source        String    @default("manual")
-  syncedAt      DateTime? @map("synced_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-
-  @@unique([variantId, warehouseCode, market])
-  @@index([variantId])
-  @@map("inventory_balances")
-}
-
-// === 订单 ===
-model Order {
-  id              Int      @id @default(autoincrement())
-  orderNo         String   @unique @map("order_no")
-  requestId       String?  @map("request_id")
-  channel         String
-  userId          Int?     @map("user_id")
-  companyId       Int?     @map("company_id")
-  currency        String
-  subtotalMinor   Int      @map("subtotal_minor")
-  taxMinor        Int      @map("tax_minor")
-  shippingMinor   Int      @map("shipping_minor")
-  totalMinor      Int      @map("total_minor")
-  status          String
-  addressSnapshot Json     @map("address_snapshot")
-  pricingSnapshot Json     @map("pricing_snapshot")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
+  @@unique([userId, productId])
+  @@index([userId])
   @@index([userId, createdAt])
-  @@index([companyId, createdAt])
-  @@index([status, createdAt])
-  @@map("orders")
+  @@index([productId])
+  @@map("favorites")
 }
 
-model OrderItem {
-  id             Int    @id @default(autoincrement())
-  orderId        Int    @map("order_id")
-  variantId      Int?   @map("variant_id")
-  skuSnapshot    String @map("sku_snapshot")
-  nameSnapshot   String @map("name_snapshot")
-  quantity       Int
-  unitPriceMinor Int    @map("unit_price_minor")
-  taxMinor       Int    @map("tax_minor")
-  totalMinor     Int    @map("total_minor")
-  detailSnapshot Json   @map("detail_snapshot")
+model Subscription {
+  id             Int       @id @default(autoincrement())
+  userId         Int       @map("user_id")
+  channel        String
+  email          String?
+  source         String?
+  status         String    @default("active")
+  consentAt      DateTime? @map("consent_at")
+  unsubscribedAt DateTime? @map("unsubscribed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  @@index([orderId])
-  @@index([variantId])
-  @@map("order_items")
+  @@unique([userId, channel])
+  @@index([userId])
+  @@index([channel, status])
+  @@index([userId, status])
+  @@map("subscriptions")
 }
 
-model Quote {
-  id               Int       @id @default(autoincrement())
-  quoteNo          String    @unique @map("quote_no")
-  companyId        Int       @map("company_id")
-  currentVersion   Int       @default(1) @map("current_version")
-  status           String
-  validUntil       DateTime? @map("valid_until")
-  convertedOrderId Int?      @map("converted_order_id")
-  createdAt        DateTime  @default(now()) @map("created_at")
-
-  @@index([companyId, status])
-  @@index([convertedOrderId])
-  @@map("quotes")
-}
-
-model QuoteVersion {
-  id        Int      @id @default(autoincrement())
-  quoteId   Int      @map("quote_id")
-  version   Int
-  snapshot  Json
-  createdBy Int      @map("created_by")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@unique([quoteId, version])
-  @@index([createdBy])
-  @@map("quote_versions")
-}
-
-model Payment {
+model FeatureFlag {
   id             Int      @id @default(autoincrement())
-  orderId        Int      @map("order_id")
-  provider       String
-  providerTxnId  String?  @map("provider_txn_id")
-  status         String
-  amountMinor    Int      @map("amount_minor")
-  currency       String
-  failureReason  String?  @map("failure_reason")
-  idempotencyKey String   @unique @map("idempotency_key")
+  key            String   @unique
+  description    String?
+  defaultEnabled Boolean  @default(false) @map("default_enabled")
+  targeting      Json?
+  status         String   @default("active")
+  createdBy      Int?     @map("created_by")
+  updatedBy      Int?     @map("updated_by")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  @@index([orderId])
-  @@index([providerTxnId])
-  @@map("payments")
+  @@index([status])
+  @@map("feature_flags")
 }
 
-model Shipment {
-  id         Int       @id @default(autoincrement())
-  orderId    Int       @map("order_id")
-  carrier    String?
-  trackingNo String?   @map("tracking_no")
-  status     String
-  items      Json
-  shippedAt  DateTime? @map("shipped_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
-
-  @@index([orderId])
-  @@index([trackingNo])
-  @@map("shipments")
-}
-
-model ReturnRequest {
+model NotificationTemplate {
   id          Int      @id @default(autoincrement())
-  orderId     Int      @map("order_id")
-  userId      Int?     @map("user_id")
-  companyId   Int?     @map("company_id")
-  status      String
-  reason      String
-  items       Json
-  attachments Json
+  templateKey String   @map("template_key")
+  locale      String
+  channel     String
+  version     Int      @default(1)
+  subject     String?
+  body        String
+  variables   Json
+  status      String   @default("draft")
+  createdBy   Int?     @map("created_by")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  @@index([orderId])
+  @@unique([templateKey, locale, channel, version])
+  @@index([templateKey, locale, channel, status])
+  @@map("notification_templates")
+}
+
+model NotificationDelivery {
+  id              Int       @id @default(autoincrement())
+  userId          Int?      @map("user_id")
+  companyId       Int?      @map("company_id")
+  templateKey     String    @map("template_key")
+  templateVersion Int?      @map("template_version")
+  locale          String?
+  channel         String
+  status          String
+  payload         Json
+  entityType      String?   @map("entity_type")
+  entityId        Int?      @map("entity_id")
+  providerId      String?   @map("provider_id")
+  idempotencyKey  String?   @unique @map("idempotency_key")
+  attempts        Int       @default(0)
+  failureReason   String?   @map("failure_reason")
+  nextRetryAt     DateTime? @map("next_retry_at")
+  sentAt          DateTime? @map("sent_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
   @@index([userId, status])
   @@index([companyId, status])
-  @@map("return_requests")
+  @@index([templateKey, createdAt])
+  @@index([status, nextRetryAt])
+  @@index([entityType, entityId])
+  @@map("notification_deliveries")
 }
 
-// === 内容 ===
-model ContentEntry {
-  id                Int       @id @default(autoincrement())
-  type              String
-  locale            String
-  market            String
-  slug              String
-  title             String
-  body              Json
-  seo               Json
-  status            String    @default("draft")
-  translationStatus String    @default("published") @map("translation_status")
-  publishedAt       DateTime? @map("published_at")
-  archivedAt        DateTime? @map("archived_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-
-  @@unique([market, locale, slug])
-  @@index([type, status])
-  @@map("content_entries")
-}
-
-model MediaAsset {
+model AnalyticsEvent {
   id         Int      @id @default(autoincrement())
-  type       String
-  fileKey    String   @unique @map("file_key")
-  mime       String
-  size       Int
-  checksum   String
-  alt        String?
-  visibility String
-  version    String   @default("1")
-  metadata   Json
-  createdAt  DateTime @default(now()) @map("created_at")
+  eventKey   String   @unique @map("event_key")
+  name       String
+  requestId  String   @map("request_id")
+  sessionId  String?  @map("session_id")
+  userId     Int?     @map("user_id")
+  companyId  Int?     @map("company_id")
+  productId  Int?     @map("product_id")
+  variantId  Int?     @map("variant_id")
+  orderId    Int?     @map("order_id")
+  market     String?
+  locale     String?
+  device     String?
+  source     String?
+  payload    Json
+  occurredAt DateTime @default(now()) @map("occurred_at")
 
-  @@index([checksum])
-  @@map("media_assets")
+  @@index([name, occurredAt])
+  @@index([userId, occurredAt])
+  @@index([companyId, occurredAt])
+  @@index([productId, occurredAt])
+  @@index([orderId])
+  @@map("analytics_events")
 }
 
-model FormSubmission {
-  id           Int      @id @default(autoincrement())
-  submissionNo String   @unique @map("submission_no")
-  type         String
-  source       String
-  payload      Json
-  assigneeId   Int?     @map("assignee_id")
-  status       String   @default("new")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  @@index([type, status])
-  @@index([assigneeId])
-  @@map("form_submissions")
-}
-
-// === 系统 ===
-model SystemSetting {
+model SearchSynonym {
   id        Int      @id @default(autoincrement())
-  groupName String   @map("group_name")
-  key       String
-  value     Json
-  version   String
-  updatedBy Int?      @map("updated_by")
+  term      String
+  synonyms  Json
+  locale    String?
+  market    String?
+  status    String   @default("active")
+  createdBy Int?     @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@unique([term, locale, market])
+  @@index([market, locale, status])
+  @@map("search_synonyms")
+}
+
+model SearchQueryLog {
+  id              Int      @id @default(autoincrement())
+  query           String
+  normalizedQuery String   @map("normalized_query")
+  resultsCount    Int      @map("results_count")
+  userId          Int?     @map("user_id")
+  companyId       Int?     @map("company_id")
+  market          String?
+  locale          String?
+  requestId       String?  @map("request_id")
+  clicked         Boolean  @default(false)
+  converted       Boolean  @default(false)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([normalizedQuery, createdAt])
+  @@index([resultsCount, createdAt])
+  @@index([userId, createdAt])
+  @@index([companyId, createdAt])
+  @@map("search_query_logs")
+}
+
+model JobRun {
+  id             Int       @id @default(autoincrement())
+  jobKey         String    @map("job_key")
+  runNo          String    @unique @map("run_no")
+  idempotencyKey String?   @unique @map("idempotency_key")
+  status         String    @default("queued")
+  requestedBy    Int?      @map("requested_by")
+  requestId      String?   @map("request_id")
+  totalItems     Int       @default(0) @map("total_items")
+  succeededItems Int       @default(0) @map("succeeded_items")
+  failedItems    Int       @default(0) @map("failed_items")
+  attempts       Int       @default(0)
+  errorMessage   String?   @map("error_message")
+  queuedAt       DateTime  @default(now()) @map("queued_at")
+  startedAt      DateTime? @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([jobKey, status, queuedAt])
+  @@index([status, queuedAt])
+  @@index([requestedBy, queuedAt])
+  @@map("job_runs")
+}
+
+model JobItem {
+  id           Int       @id @default(autoincrement())
+  jobRunId     Int       @map("job_run_id")
+  itemKey      String    @map("item_key")
+  status       String    @default("pending")
+  attempts     Int       @default(0)
+  payload      Json?
+  errorCode    String?   @map("error_code")
+  errorMessage String?   @map("error_message")
+  startedAt    DateTime? @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@unique([jobRunId, itemKey])
+  @@index([jobRunId, status])
+  @@index([status, updatedAt])
+  @@map("job_items")
+}
+
+model IntegrationConfig {
+  id             Int      @id @default(autoincrement())
+  integrationKey String   @unique @map("integration_key")
+  provider       String
+  environment    String
+  secretRef      String?  @map("secret_ref")
+  config         Json
+  status         String   @default("inactive")
+  updatedBy      Int?     @map("updated_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([provider, environment, status])
+  @@map("integration_configs")
+}
+
+model WebhookReceipt {
+  id              Int       @id @default(autoincrement())
+  provider        String
+  externalEventId String    @map("external_event_id")
+  eventType       String    @map("event_type")
+  signatureHash   String?   @map("signature_hash")
+  payload         Json
+  status          String    @default("received")
+  aggregateType   String?   @map("aggregate_type")
+  aggregateId     Int?      @map("aggregate_id")
+  requestId       String?   @map("request_id")
+  retryCount      Int       @default(0) @map("retry_count")
+  failureReason   String?   @map("failure_reason")
+  receivedAt      DateTime  @default(now()) @map("received_at")
+  processedAt     DateTime? @map("processed_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@unique([provider, externalEventId])
+  @@index([status, receivedAt])
+  @@index([aggregateType, aggregateId])
+  @@map("webhook_receipts")
+}
+
+model ReportSnapshot {
+  id          Int      @id @default(autoincrement())
+  reportKey   String   @map("report_key")
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+  market      String?
+  dimensions  Json
+  metrics     Json
+  status      String   @default("ready")
+  generatedBy Int?     @map("generated_by")
+  generatedAt DateTime @default(now()) @map("generated_at")
+
+  @@unique([reportKey, periodStart, periodEnd, market])
+  @@index([reportKey, periodEnd])
+  @@index([market, periodEnd])
+  @@map("report_snapshots")
+}
+
+model SystemSetting {
+  id          Int      @id @default(autoincrement())
+  groupName   String   @map("group_name")
+  key         String
+  value       Json
+  version     String
+  environment String   @default("default")
+  description String?
+  isSecretRef Boolean  @default(false) @map("is_secret_ref")
+  updatedBy   Int?     @map("updated_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
   @@unique([groupName, key])
+  @@unique([groupName, key, environment])
+  @@index([updatedBy])
   @@map("system_settings")
 }
 
 model AuditLog {
   id        Int      @id @default(autoincrement())
   actorId   Int?     @map("actor_id")
+  actorType String?  @map("actor_type")
   action    String
   entity    String
   entityId  Int      @map("entity_id")
   before    Json?
   after     Json?
+  metadata  Json?
+  outcome   String   @default("success")
   ip        String?
   requestId String   @map("request_id")
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([entity, entityId, createdAt])
   @@index([actorId, createdAt])
+  @@index([action, outcome, createdAt])
+  @@index([requestId])
   @@map("audit_logs")
 }
 
-model Redirect {
-  id         Int      @id @default(autoincrement())
-  sourcePath String   @unique @map("source_path")
-  targetPath String   @map("target_path")
-  statusCode Int      @default(301) @map("status_code")
-  createdAt  DateTime @default(now()) @map("created_at")
+model OutboxEvent {
+  id             Int       @id @default(autoincrement())
+  eventId        String    @unique @map("event_id")
+  topic          String
+  aggregateType  String    @map("aggregate_type")
+  aggregateId    Int       @map("aggregate_id")
+  payload        Json
+  idempotencyKey String?   @unique @map("idempotency_key")
+  status         String    @default("pending")
+  attempts       Int       @default(0)
+  lastError      String?   @map("last_error")
+  requestId      String?   @map("request_id")
+  availableAt    DateTime  @default(now()) @map("available_at")
+  processedAt    DateTime? @map("processed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
-  @@map("redirects")
+  @@index([status, availableAt])
+  @@index([aggregateId])
+  @@index([aggregateType, aggregateId])
+  @@index([topic, createdAt])
+  @@map("outbox_events")
 }

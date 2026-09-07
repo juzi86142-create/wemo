@@ -6,13 +6,13 @@ import {
 
 import { AuthorizationService } from "../../runtime/authorization.service";
 import { parseInput } from "../../runtime/validation";
-import { AUDIT_REPOSITORY, type AuditRepository } from "./audit.repository";
+import { PlatformRepository } from "../../runtime/platform-state.store";
 
 @Injectable()
 export class AuditService {
   constructor(
-    @Inject(AUDIT_REPOSITORY)
-    private readonly repository: AuditRepository,
+    @Inject(PlatformRepository)
+    private readonly stateStore: PlatformRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
   ) {}
@@ -20,7 +20,9 @@ export class AuditService {
   async listAuditLogs(query: unknown) {
     this.authorization.requireStaffPermission("audit:read");
     const parsed = parseInput(AuditLogQuerySchema, query);
-    const result = await this.repository.queryEntries(parsed);
-    return AuditLogListResponseSchema.parse(result);
+    return AuditLogListResponseSchema.parse(
+      await this.stateStore.listAuditLogs(parsed),
+    );
   }
 }
+

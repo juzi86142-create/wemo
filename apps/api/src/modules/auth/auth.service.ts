@@ -1,45 +1,34 @@
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  UnauthorizedException,
-} from "@nestjs/common";
+import { ForbiddenException, Inject, Injectable } from "@nestjs/common";
 import {
   AuthForgotPasswordSchema,
   AuthLoginSchema,
-  AuthMfaChallengeResponseSchema,
-  AuthMfaVerifySchema,
-  AuthPasswordChangeSchema,
-  AuthPasswordResetSchema,
   AuthRegisterSchema,
-  AuthRevokeOthersResponseSchema,
   AuthSessionListQuerySchema,
   AuthSessionListResponseSchema,
   AuthSessionMutationResponseSchema,
   AuthSessionRevokeSchema,
   AuthVerifyEmailSchema,
+  IdentityNotificationMutationResponseSchema,
   IdentityUserMutationResponseSchema,
 } from "@wemo/contracts/identity";
-import { NotificationDeliveryMutationResponseSchema } from "@wemo/contracts/content";
-import { randomBytes } from "node:crypto";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { NotificationsService } from "../notifications/notifications.service";
-import { AuthPrismaRepository } from "./auth.prisma-repository";
-import { AUTH_REPOSITORY } from "./auth.repository";
-import { verifyPassword } from "./password";
+import { PlatformRepository } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
+import { IdentityRepository } from "../identity/identity.state";
 
-import { nowIso } from "../../runtime/time";
+function nowIso(): string {
+  return new Date().toISOString();
+}
 
 @Injectable()
 export class AuthService {
   constructor(
-    @Inject(AUTH_REPOSITORY)
-    private readonly repository: AuthPrismaRepository,
-    @Inject(NotificationsService)
-    private readonly notifications: NotificationsService,
+    @Inject(IdentityRepository)
+    private readonly stateStore: IdentityRepository,
+    @Inject(PlatformRepository)
+    private readonly platformState: PlatformRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -53,36 +42,43 @@ export class AuthService {
       throw new ForbiddenException("当前注册接口仅支持普通用户");
     }
 
-    const item = await this.repository.createUser({
+    const item = await this.stateStore.createUser({
       email: input.email,
       password: input.password,
       name: input.name,
       audience: "user",
+      verified: false,
     });
 
-    const verificationToken = randomBytes(24).toString("hex");
-    await this.repository.storeEmailVerificationToken(
-      input.email,
-      verificationToken,
-      item.id,
-    );
-
     if (input.agree_marketing) {
-      await this.repository.upsertSubscription(item.id, {
+      await this.stateStore.upsertSubscription(item.id, {
         channel: "newsletter",
         status: "active",
         consent_at: nowIso(),
       });
     }
 
-    await this.notifications.emitBusinessNotification({
-      template_code: "account_email_verification",
+    await this.stateStore.recordNotification({
       recipient_user_id: item.id,
       company_id: null,
       audience: item.audience,
+      kind: "account.email_verification.requested",
       channel: "email",
+      template_key: "account_email_verification",
       request_id: context.request_id,
-      payload: { email: item.email, token: verificationToken },
+      payload: { email: item.email },
+      status: "queued",
+    });
+
+    await this.platformState.recordAudit({
+      actor_id: item.id,
+      action: "auth.register",
+      entity: "user",
+      entity_id: item.id,
+      before: null,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
     });
 
     return IdentityUserMutationResponseSchema.parse({
@@ -94,7 +90,19 @@ export class AuthService {
   async verifyEmail(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(AuthVerifyEmailSchema, body);
-    const item = await this.repository.verifyEmail(input);
+    const before = await this.stateStore.getUserByEmail(input.email);
+    const item = await this.stateStore.verifyEmail(input);
+
+    await this.platformState.recordAudit({
+      actor_id: item.id,
+      action: "auth.email.verify",
+      entity: "user",
+      entity_id: item.id,
+      before,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
 
     return IdentityUserMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -105,61 +113,19 @@ export class AuthService {
   async login(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(AuthLoginSchema, body);
-    const user = await this.repository.authenticate(input);
-    if (user.audience === "dealer") {
-      const member = await this.repository.getActiveDealerMembership(user.id);
-      if (!member) {
-        throw new ForbiddenException("经销商企业停用或成员关系已失效");
-      }
-    }
-    // 后台员工强制 MFA 两步登录 需求 SEC-002/2.3
-    if (user.audience === "staff") {
-      const challengeToken = randomBytes(24).toString("hex");
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-      await this.repository.storeMfaChallenge(challengeToken, {
-        user_id: user.id,
-        code,
-        expires_at: expiresAt,
-      });
-      await this.notifications.emitBusinessNotification({
-        template_code: "account_mfa_challenge",
-        recipient_user_id: user.id,
-        company_id: null,
-        audience: "staff",
-        channel: "email",
-        request_id: context.request_id,
-        payload: { email: user.email, code, expires_at: expiresAt },
-      });
+    const user = await this.stateStore.authenticate(input);
+    const item = await this.stateStore.issueSession(user.id, context.request_id);
 
-      return AuthMfaChallengeResponseSchema.parse({
-        request_id: context.request_id,
-        item: {
-          mfa_required: true,
-          challenge_token: challengeToken,
-          expires_at: expiresAt,
-        },
-      });
-    }
-    const item = await this.repository.issueSession(user.id, user.audience);
-
-    return AuthSessionMutationResponseSchema.parse({
+    await this.platformState.recordAudit({
+      actor_id: user.id,
+      action: "auth.session.create",
+      entity: "session",
+      entity_id: item.id,
+      before: null,
+      after: item,
+      ip: context.ip ?? null,
       request_id: context.request_id,
-      item,
     });
-  }
-
-  async verifyMfa(body: unknown) {
-    const context = this.requestContext.requireContext();
-    const input = parseInput(AuthMfaVerifySchema, body);
-    const userId = await this.repository.consumeMfaChallenge(
-      input.challenge_token,
-      input.code,
-    );
-    if (userId === null) {
-      throw new UnauthorizedException("验证码无效或已过期");
-    }
-    const item = await this.repository.issueSession(userId, "staff");
 
     return AuthSessionMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -170,63 +136,31 @@ export class AuthService {
   async forgotPassword(body: unknown) {
     const context = this.requestContext.requireContext();
     const input = parseInput(AuthForgotPasswordSchema, body);
-    const user = await this.repository.getUserByEmail(input.email);
-    const resetToken = user ? randomBytes(24).toString("hex") : null;
-    if (user && resetToken) {
-      await this.repository.storePasswordResetToken(
-        input.email,
-        resetToken,
-        user.id,
-      );
-    }
-    const item = await this.notifications.emitBusinessNotification({
-      template_code: "account_password_reset",
+    const user = await this.stateStore.getUserByEmail(input.email);
+    const item = await this.stateStore.recordNotification({
       recipient_user_id: user?.id ?? null,
       company_id: null,
       audience: user?.audience ?? "user",
+      kind: "account.password_reset.requested",
       channel: "email",
+      template_key: "account_password_reset",
       request_id: context.request_id,
-      payload: { email: input.email, token: resetToken, accepted: true },
+      payload: { email: input.email, accepted: true },
+      status: "queued",
     });
 
-    return NotificationDeliveryMutationResponseSchema.parse({
+    await this.platformState.recordAudit({
+      actor_id: user?.id ?? 1,
+      action: "auth.password_reset.request",
+      entity: "notification_delivery",
+      entity_id: item.id,
+      before: null,
+      after: item,
+      ip: context.ip ?? null,
       request_id: context.request_id,
-      item,
     });
-  }
 
-  async resetPassword(body: unknown) {
-    const context = this.requestContext.requireContext();
-    const input = parseInput(AuthPasswordResetSchema, body);
-    const userId = await this.repository.consumePasswordResetToken(
-      input.email,
-      input.token,
-    );
-    if (userId === null) {
-      throw new UnauthorizedException("密码重置令牌无效或已过期");
-    }
-    const item = await this.repository.resetPassword(userId, input.new_password);
-
-    return IdentityUserMutationResponseSchema.parse({
-      request_id: context.request_id,
-      item,
-    });
-  }
-
-  async changePassword(body: unknown) {
-    const actor = this.authorization.requireActor();
-    const context = this.requestContext.requireContext();
-    const input = parseInput(AuthPasswordChangeSchema, body);
-    const passwordHash = await this.repository.getPasswordHash(actor.user_id);
-    if (!passwordHash || !verifyPassword(input.current_password, passwordHash)) {
-      throw new UnauthorizedException("当前密码不正确");
-    }
-    const item = await this.repository.changePassword(
-      actor.user_id,
-      input.new_password,
-    );
-
-    return IdentityUserMutationResponseSchema.parse({
+    return IdentityNotificationMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
     });
@@ -240,7 +174,7 @@ export class AuthService {
     }
 
     return AuthSessionListResponseSchema.parse(
-      await this.repository.listSessions({
+      await this.stateStore.listSessions({
         user_id: actor.user_id,
         audience: input.audience ?? actor.audience,
         status: input.status,
@@ -250,28 +184,26 @@ export class AuthService {
     );
   }
 
-  async revokeOtherSessions() {
+  async logout(body: unknown) {
     const actor = this.authorization.requireActor();
     const context = this.requestContext.requireContext();
-    const currentToken = this.requestContext.getSessionToken();
-    if (!currentToken) {
-      throw new UnauthorizedException("当前请求缺少会话令牌");
-    }
-    const result = await this.repository.revokeOtherSessions(
-      actor.user_id,
-      currentToken,
-    );
-
-    return AuthRevokeOthersResponseSchema.parse({
-      request_id: context.request_id,
-      item: result,
-    });
-  }
-
-  async logout(body: unknown) {
-    const context = this.requestContext.requireContext();
     const input = parseInput(AuthSessionRevokeSchema, body);
-    const item = await this.repository.revokeSession(input.token);
+    const before = await this.stateStore.getSessionByToken(input.token);
+    if (before && before.user_id !== actor.user_id) {
+      throw new ForbiddenException("不能撤销其他账号的会话");
+    }
+
+    const item = await this.stateStore.revokeSession(input.token);
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "auth.session.revoke",
+      entity: "session",
+      entity_id: item.id,
+      before,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
 
     return AuthSessionMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -279,3 +211,4 @@ export class AuthService {
     });
   }
 }
+

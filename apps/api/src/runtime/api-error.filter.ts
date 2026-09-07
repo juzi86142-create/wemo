@@ -9,7 +9,6 @@ import {
 } from "@nestjs/common";
 import { type ApiError, type FieldError } from "@wemo/contracts/common";
 import type { FastifyReply } from "fastify";
-import { ZodError } from "zod";
 
 import { RequestContextStore } from "./request-context.store";
 import { WemoHttpException } from "./validation";
@@ -81,7 +80,7 @@ function normalizeApiError(
 ): { status: number; body: ApiError } {
   if (exception instanceof WemoHttpException) {
     return {
-      status: exception.getStatus(),
+      status: exception.status,
       body: {
         code: exception.code,
         message: exception.message,
@@ -91,33 +90,11 @@ function normalizeApiError(
     };
   }
 
-  if (exception instanceof ZodError) {
-    return {
-      status: HttpStatus.BAD_REQUEST,
-      body: {
-        code: "VALIDATION_ERROR",
-        message: "请求参数无效",
-        field_errors: exception.issues.map((issue) => ({
-          field: issue.path.map(String).join("."),
-          message: issue.message,
-        })),
-        request_id: requestId,
-      },
-    };
-  }
-
   if (exception instanceof HttpException) {
     const status = exception.getStatus();
     const response = exception.getResponse();
-    const responseCode =
-      response && typeof response === "object" && "code" in response
-        ? String((response as { code: unknown }).code)
-        : "";
     const body: ApiError = {
-      code:
-        responseCode === "" || responseCode === "HTTP_ERROR"
-          ? statusToCode(status)
-          : responseCode,
+      code: statusToCode(status),
       message: extractMessage(response, exception.message),
       field_errors: extractFieldErrors(response),
       request_id: requestId,
@@ -147,11 +124,7 @@ export class ApiErrorFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
     const reply = http.getResponse<FastifyReply>();
-    const request = http.getRequest<{ id?: string }>();
-    // 异常链可能脱离拦截器的 ALS 绑定 无上下文时以 Fastify 请求 ID 为准
-    const requestId =
-      this.requestContext.getRequestId() ??
-      (typeof request?.id === "string" ? request.id : "unknown-request");
+    const requestId = this.requestContext.getRequestId();
     const { status, body } = normalizeApiError(exception, requestId);
 
     reply.header("x-request-id", requestId).status(status).send(body);

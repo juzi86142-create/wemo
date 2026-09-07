@@ -1,15 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  Inject,
-  Param,
-  Patch,
-  Post,
-  Query,
-  Req,
-} from "@nestjs/common";
+import { Controller, Get, Inject, Query, Req } from "@nestjs/common";
 import type { FastifyRequest } from "fastify";
 
 import { LocalizationService } from "./localization.service";
@@ -39,30 +28,5 @@ export class LocalizationController {
   @Get("snapshot")
   snapshot(@Req() request: FastifyRequest) {
     return this.localizationService.snapshot(request.id);
-  }
-
-  /** 语言与市场管理 需求 12.1 仅本地化配置权限员工 */
-  @Post("admin/languages")
-  @HttpCode(200)
-  upsertLanguage(@Body() body: unknown) {
-    return this.localizationService.adminUpsertLanguage(body);
-  }
-
-  @Patch("admin/languages/:code")
-  @HttpCode(200)
-  updateLanguage(@Param("code") code: string, @Body() body: unknown) {
-    return this.localizationService.adminUpsertLanguage({ ...(body as object), code });
-  }
-
-  @Post("admin/markets")
-  @HttpCode(200)
-  saveMarket(@Body() body: unknown) {
-    return this.localizationService.adminSaveMarket(body);
-  }
-
-  @Patch("admin/markets/:code")
-  @HttpCode(200)
-  updateMarket(@Param("code") code: string, @Body() body: unknown) {
-    return this.localizationService.adminSaveMarket({ ...(body as object), code });
   }
 }

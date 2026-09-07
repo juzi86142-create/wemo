@@ -1,8 +1,5 @@
 import { Module } from "@nestjs/common";
-import { APP_GUARD } from "@nestjs/core";
-import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 
-import { RedisModule } from "./database/redis.module";
 import { HealthModule } from "./health/health.module";
 import { ApiHttpModule } from "./http/api-http.module";
 import { AnalyticsModule } from "./modules/analytics/analytics.module";
@@ -30,20 +27,15 @@ import { SearchModule } from "./modules/search/search.module";
 import { SeoModule } from "./modules/seo/seo.module";
 import { SettingsModule } from "./modules/settings/settings.module";
 import { RuntimeModule } from "./runtime/runtime.module";
-
-/** 全局默认限流 每 IP 每分钟 100 次 登录/表单/搜索等敏感路由按需收紧 */
-const GLOBAL_THROTTLE_LIMIT = 100;
-const GLOBAL_THROTTLE_TTL_MS = 60_000;
+import { CommerceStateModule } from "./runtime/commerce-state.module";
+import { ExperienceStateModule } from "./runtime/experience-state.module";
+import { IdentityStateModule } from "./modules/identity/identity-state.module";
+import { DatabaseModule } from "./database/database.module";
 
 @Module({
   imports: [
-    ThrottlerModule.forRoot({
-      throttlers: [
-        { ttl: GLOBAL_THROTTLE_TTL_MS, limit: GLOBAL_THROTTLE_LIMIT },
-      ],
-    }),
-    RedisModule,
     ApiHttpModule,
+    DatabaseModule,
     HealthModule,
     AuthModule,
     IdentityModule,
@@ -68,9 +60,11 @@ const GLOBAL_THROTTLE_TTL_MS = 60_000;
     IntegrationsModule,
     JobsModule,
     RuntimeModule,
+    ExperienceStateModule,
+    CommerceStateModule,
+    IdentityStateModule,
     AuditModule,
     SettingsModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

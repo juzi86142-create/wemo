@@ -2,7 +2,6 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
-  NotFoundException,
 } from "@nestjs/common";
 import {
   DealerAddressCreateSchema,
@@ -25,24 +24,15 @@ import {
   DealerMemberMutationResponseSchema,
   DealerPublicListingListQuerySchema,
   DealerPublicListingListResponseSchema,
-  DealerMemberAcceptSchema,
-  DealerMemberInviteSchema,
-  DealerMemberInviteResponseSchema,
-  DealerTierListResponseSchema,
-  DealerTierMutationResponseSchema,
-  DealerTierUpsertSchema,
 } from "@wemo/contracts/dealers";
-import { randomBytes } from "node:crypto";
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
-import { ANALYTICS_REPOSITORY, type AnalyticsRepository } from "../analytics/analytics.repository";
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { NotificationsService } from "../notifications/notifications.service";
-import { listResponse } from "../../runtime/list-response";
+import { PlatformRepository } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
-import { DEALERS_REPOSITORY, type DealersRepository } from "./dealers.repository";
+import { IdentityRepository } from "../identity/identity.state";
 
 const ApplicationIdParamSchema = z.object({
   id: EntityIdSchema,
@@ -52,30 +42,49 @@ const CompanyIdParamSchema = z.object({
   id: EntityIdSchema,
 });
 
+function listResponse<T>(items: T[]): {
+  items: T[];
+  page: number;
+  page_size: number;
+  total: number;
+} {
+  return {
+    items,
+    page: 1,
+    page_size: Math.max(items.length, 1),
+    total: items.length,
+  };
+}
+
 @Injectable()
 export class DealersService {
   constructor(
-    @Inject(DEALERS_REPOSITORY)
-    private readonly repository: DealersRepository,
-    @Inject(NotificationsService)
-    private readonly notifications: NotificationsService,
-    @Inject(ANALYTICS_REPOSITORY)
-    private readonly analyticsRepository: AnalyticsRepository,
+    @Inject(IdentityRepository)
+    private readonly stateStore: IdentityRepository,
+    @Inject(PlatformRepository)
+    private readonly platformState: PlatformRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
     private readonly requestContext: RequestContextStore,
   ) {}
 
-  private requireDealerCompanyId(): number {
+  private async requireDealerCompanyId(): Promise<number> {
     const actor = this.authorization.requireActor();
-    return actor.company_id ?? 0;
+    const dealerContext = await this.stateStore.getDealerContextForUser(actor.user_id);
+    if (!dealerContext) {
+      throw new ForbiddenException("当前账号没有可用的经销商企业");
+    }
+    if (actor.company_id && actor.company_id !== dealerContext.company_id) {
+      throw new ForbiddenException("会话企业范围已失效");
+    }
+    return dealerContext.company_id;
   }
 
   async listPublicListings(query: unknown) {
     const parsed = parseInput(DealerPublicListingListQuerySchema, query);
     return DealerPublicListingListResponseSchema.parse(
-      await this.repository.listPublicListings(parsed),
+      await this.stateStore.listPublicDealerListings(parsed),
     );
   }
 
@@ -83,10 +92,21 @@ export class DealersService {
     const context = this.requestContext.requireContext();
     const actor = this.requestContext.getActor();
     const input = parseInput(DealerApplicationCreateSchema, body);
-    const item = await this.repository.createApplication({
+    const item = await this.stateStore.createDealerApplication({
       ...input,
-      applicant_user_id:
-        actor?.audience === "staff" ? null : actor?.user_id ?? null,
+      applicant_user_id: actor?.audience === "staff" ? null : actor?.user_id ?? null,
+      request_id: context.request_id,
+      payload: input.payload ?? {},
+    });
+
+    await this.platformState.recordAudit({
+      actor_id: actor?.user_id ?? 1,
+      action: "dealer.application.create",
+      entity: "dealer_application",
+      entity_id: item.id,
+      before: null,
+      after: item,
+      ip: context.ip ?? null,
       request_id: context.request_id,
     });
 
@@ -101,30 +121,27 @@ export class DealersService {
     const parsed = parseInput(DealerApplicationListQuerySchema, query);
     const result =
       actor.audience === "staff"
-        ? this.repository.listDealerApplications(parsed)
-        : this.repository.listDealerApplications({
+        ? await this.stateStore.listDealerApplications(parsed)
+        : await this.stateStore.listDealerApplications({
             ...parsed,
             applicant_user_id: actor.user_id,
           });
 
-    return DealerApplicationListResponseSchema.parse(await result);
+    return DealerApplicationListResponseSchema.parse(result);
   }
 
   async listAdminApplications(query: unknown) {
     this.authorization.requireStaffPermission("dealers:read");
     const parsed = parseInput(DealerApplicationListQuerySchema, query);
     return DealerApplicationListResponseSchema.parse(
-      await this.repository.listDealerApplications(parsed),
+      await this.stateStore.listDealerApplications(parsed),
     );
   }
 
   async getApplication(id: unknown) {
     const actor = this.authorization.requireActor();
     const parsedId = parseInput(ApplicationIdParamSchema, { id });
-    const item = await this.repository.getDealerApplication(parsedId.id);
-    if (!item) {
-      throw new NotFoundException("经销商申请不存在");
-    }
+    const item = await this.stateStore.getDealerApplication(parsedId.id);
     if (actor.audience !== "staff" && item.applicant_user_id !== actor.user_id) {
       throw new ForbiddenException("不能查看其他申请");
     }
@@ -140,51 +157,27 @@ export class DealersService {
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ApplicationIdParamSchema, { id });
     const input = parseInput(DealerApplicationSubmitSchema, body);
-    const existing = await this.repository.getDealerApplication(parsedId.id);
-    if (!existing) {
-      throw new NotFoundException("经销商申请不存在");
-    }
-    if (
-      actor &&
-      actor.audience !== "staff" &&
-      existing.applicant_user_id !== null &&
-      existing.applicant_user_id !== actor.user_id
-    ) {
+    const existing = await this.stateStore.getDealerApplication(parsedId.id);
+    if (actor && actor.audience !== "staff" && existing.applicant_user_id !== null && existing.applicant_user_id !== actor.user_id) {
       throw new ForbiddenException("不能提交其他申请");
     }
 
-    const item = await this.repository.submitDealerApplication(
+    const item = await this.stateStore.submitDealerApplication(
       parsedId.id,
       context.request_id,
       actor?.user_id ?? null,
       input.note,
     );
 
-    await this.analyticsRepository.recordEvents(
-      [
-        {
-          name: "dealer_apply_submit",
-          payload: {
-            application_id: item.id,
-            application_no: item.application_no,
-          },
-          market: context.market,
-          locale: context.locale,
-          role: actor?.audience ?? "dealer",
-          dedupe_key: `dealer_apply_submit:${context.request_id}`,
-        },
-      ],
-      context,
-    );
-
-    await this.notifications.emitBusinessNotification({
-      template_code: "dealer_application_submitted",
-      recipient_user_id: actor?.user_id ?? null,
-      company_id: null,
-      audience: actor?.audience === "staff" ? "staff" : "dealer",
-      channel: "email",
+    await this.platformState.recordAudit({
+      actor_id: actor?.user_id ?? 1,
+      action: "dealer.application.submit",
+      entity: "dealer_application",
+      entity_id: item.id,
+      before: existing,
+      after: item,
+      ip: context.ip ?? null,
       request_id: context.request_id,
-      payload: { application_id: item.id, application_no: item.application_no },
     });
 
     return DealerApplicationMutationResponseSchema.parse({
@@ -198,26 +191,50 @@ export class DealersService {
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(ApplicationIdParamSchema, { id });
     const input = parseInput(DealerApplicationReviewSchema, body);
-    const result = await this.repository.reviewDealerApplication(
+    const before = await this.stateStore.getDealerApplication(parsedId.id);
+    const result = await this.stateStore.reviewDealerApplication(
       parsedId.id,
       input,
       actor.user_id,
       context.request_id,
     );
 
-    await this.notifications.emitBusinessNotification({
-      template_code: "dealer_application_reviewed",
-      recipient_user_id: result.application.applicant_user_id,
-      company_id: result.company?.id ?? null,
-      audience: "dealer",
-      channel: "email",
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "dealer.application.review",
+      entity: "dealer_application",
+      entity_id: result.application.id,
+      before,
+      after: result.application,
+      ip: context.ip ?? null,
       request_id: context.request_id,
-      payload: {
-        application_id: result.application.id,
-        application_no: result.application.application_no,
-        status: result.application.status,
-      },
     });
+
+    if (result.company) {
+      await this.platformState.recordAudit({
+        actor_id: actor.user_id,
+        action: "dealer.company.create",
+        entity: "dealer_company",
+        entity_id: result.company.id,
+        before: null,
+        after: result.company,
+        ip: context.ip ?? null,
+        request_id: context.request_id,
+      });
+    }
+
+    if (result.member) {
+      await this.platformState.recordAudit({
+        actor_id: actor.user_id,
+        action: "dealer.member.create",
+        entity: "dealer_member",
+        entity_id: result.member.id,
+        before: null,
+        after: result.member,
+        ip: context.ip ?? null,
+        request_id: context.request_id,
+      });
+    }
 
     return DealerApplicationReviewResultSchema.parse({
       request_id: context.request_id,
@@ -226,11 +243,8 @@ export class DealersService {
   }
 
   async getCompany() {
-    const companyId = this.requireDealerCompanyId();
-    const item = await this.repository.getDealerCompany(companyId);
-    if (!item) {
-      throw new NotFoundException("经销商企业不存在");
-    }
+    const companyId = await this.requireDealerCompanyId();
+    const item = await this.stateStore.getDealerCompany(companyId);
     return DealerCompanyMutationResponseSchema.parse({
       request_id: this.requestContext.requireContext().request_id,
       item,
@@ -240,13 +254,25 @@ export class DealersService {
   async updateCompany(body: unknown) {
     const actor = this.authorization.requireActor();
     const context = this.requestContext.requireContext();
-    const companyId = this.requireDealerCompanyId();
+    const companyId = await this.requireDealerCompanyId();
     const input = parseInput(DealerCompanyUpdateSchema, body);
     if (actor.audience !== "staff" && input.status !== undefined) {
       throw new ForbiddenException("企业成员不能修改企业状态");
     }
 
-    const item = await this.repository.updateDealerCompany(companyId, input);
+    const before = await this.stateStore.getDealerCompany(companyId);
+    const item = await this.stateStore.updateDealerCompany(companyId, input);
+
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "dealer.company.update",
+      entity: "dealer_company",
+      entity_id: companyId,
+      before,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
 
     return DealerCompanyMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -259,7 +285,19 @@ export class DealersService {
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(CompanyIdParamSchema, { id });
     const input = parseInput(DealerCompanyUpdateSchema, body);
-    const item = await this.repository.updateDealerCompany(parsedId.id, input);
+    const before = await this.stateStore.getDealerCompany(parsedId.id);
+    const item = await this.stateStore.updateDealerCompany(parsedId.id, input);
+
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "dealer.company.update",
+      entity: "dealer_company",
+      entity_id: parsedId.id,
+      before,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
 
     return DealerCompanyMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -268,17 +306,29 @@ export class DealersService {
   }
 
   async listAddresses() {
-    const companyId = this.requireDealerCompanyId();
-    const addresses = await this.repository.listDealerAddresses(companyId);
-    return DealerAddressListResponseSchema.parse(listResponse(addresses));
+    const companyId = await this.requireDealerCompanyId();
+    return DealerAddressListResponseSchema.parse(
+      listResponse(await this.stateStore.listDealerAddresses(companyId)),
+    );
   }
 
   async createAddress(body: unknown) {
     const actor = this.authorization.requireActor();
     const context = this.requestContext.requireContext();
-    const companyId = this.requireDealerCompanyId();
+    const companyId = await this.requireDealerCompanyId();
     const input = parseInput(DealerAddressCreateSchema, body);
-    const item = await this.repository.createDealerAddress(companyId, input);
+    const item = await this.stateStore.addDealerAddress(companyId, input);
+
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "dealer.address.create",
+      entity: "dealer_address",
+      entity_id: item.id,
+      before: null,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
 
     return DealerAddressMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -292,7 +342,7 @@ export class DealersService {
     const companyId =
       actor.audience === "staff"
         ? parsed.company_id
-        : this.requireDealerCompanyId();
+        : await this.requireDealerCompanyId();
     if (
       actor.audience !== "staff" &&
       parsed.company_id !== undefined &&
@@ -302,7 +352,7 @@ export class DealersService {
     }
 
     return DealerMemberListResponseSchema.parse(
-      await this.repository.listDealerMembers({
+      await this.stateStore.listDealerMembers({
         company_id: companyId,
         status: parsed.status,
         page: parsed.page,
@@ -311,89 +361,27 @@ export class DealersService {
     );
   }
 
-  async listCompanies(query: unknown) {
-    this.authorization.requireStaffPermission("dealers:read");
-    const parsed = parseInput(DealerCompanyListQuerySchema, query);
-    return DealerCompanyListResponseSchema.parse(
-      await this.repository.listDealerCompanies(parsed),
-    );
-  }
-
-  async listAdminMembers(query: unknown) {
-    this.authorization.requireStaffPermission("dealers:read");
-    const parsed = parseInput(DealerMemberListQuerySchema, query);
-    return DealerMemberListResponseSchema.parse(
-      await this.repository.listDealerMembers(parsed),
-    );
-  }
-
-  /** 成员邀请 需求 6.7 一次性令牌带有效期 接受后建立成员关系 */
   async inviteMember(body: unknown) {
-    const actor = this.authorization.requireAudience("dealer", "staff");
-    const context = this.requestContext.requireContext();
-    const input = parseInput(DealerMemberInviteSchema, body);
-    const companyId =
-      actor.audience === "staff"
-        ? this.requireDealerCompanyId()
-        : actor.company_id;
-    if (!companyId) {
-      throw new ForbiddenException("邀请需要企业上下文");
-    }
-    const token = randomBytes(24).toString("hex");
-    const expiresAt = new Date(
-      Date.now() + 7 * 24 * 60 * 60 * 1000,
-    ).toISOString();
-    await this.repository.createMemberInvite(
-      companyId,
-      input.email,
-      input.role ?? "member",
-      token,
-      expiresAt,
-    );
-
-    await this.notifications.emitBusinessNotification({
-      template_code: "dealer_member_invite",
-      recipient_user_id: actor.user_id,
-      company_id: companyId,
-      audience: "dealer",
-      channel: "email",
-      request_id: context.request_id,
-      payload: { email: input.email, token, expires_at: expiresAt },
-    });
-
-    return DealerMemberInviteResponseSchema.parse({
-      request_id: context.request_id,
-      item: { token, email: input.email, expires_at: expiresAt },
-    });
-  }
-
-  async acceptMemberInvite(body: unknown) {
     const actor = this.authorization.requireActor();
     const context = this.requestContext.requireContext();
-    const input = parseInput(DealerMemberAcceptSchema, body);
-    const invite = await this.repository.acceptMemberInvite(input.token);
-    if (!invite) {
-      throw new NotFoundException("邀请链接无效或已过期");
-    }
-    const existing = await this.repository.listDealerMembers({
-      company_id: invite.company_id,
-      page: 1,
-      page_size: 100,
+    const companyId = await this.requireDealerCompanyId();
+    const input = parseInput(DealerMemberCreateSchema, body);
+    const item = await this.stateStore.inviteDealerMember({
+      company_id: companyId,
+      user_id: input.user_id,
+      role: input.role,
+      permissions: input.permissions,
     });
-    const already = existing.items.find(
-      (member) => member.user_id === actor.user_id,
-    );
-    if (already) {
-      return DealerMemberMutationResponseSchema.parse({
-        request_id: context.request_id,
-        item: already,
-      });
-    }
-    const item = await this.repository.createDealerMember({
-      company_id: invite.company_id,
-      user_id: actor.user_id,
-      role: invite.role,
-      permissions: ["dealer:read", "dealer:write"],
+
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "dealer.member.invite",
+      entity: "dealer_member",
+      entity_id: item.id,
+      before: null,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
     });
 
     return DealerMemberMutationResponseSchema.parse({
@@ -402,27 +390,20 @@ export class DealersService {
     });
   }
 
-  /** 经销商等级主数据 需求 6.4 名称后台可配置 */
-  async listTiers() {
+  async listCompanies(query: unknown) {
     this.authorization.requireStaffPermission("dealers:read");
-    return DealerTierListResponseSchema.parse(
-      listResponse(await this.repository.listTiers()),
+    const parsed = parseInput(DealerCompanyListQuerySchema, query);
+    return DealerCompanyListResponseSchema.parse(
+      await this.stateStore.listDealerCompanies(parsed),
     );
   }
 
-  async upsertTier(id: unknown, body: unknown) {
-    this.authorization.requireStaffPermission("dealers:write");
-    const context = this.requestContext.requireContext();
-    const input = parseInput(DealerTierUpsertSchema, body);
-    const payload =
-      id === undefined
-        ? input
-        : { ...input, id: parseInput(CompanyIdParamSchema, { id }).id };
-    const item = await this.repository.upsertTier(payload);
-
-    return DealerTierMutationResponseSchema.parse({
-      request_id: context.request_id,
-      item,
-    });
+  async listAdminMembers(query: unknown) {
+    this.authorization.requireStaffPermission("dealers:read");
+    const parsed = parseInput(DealerMemberListQuerySchema, query);
+    return DealerMemberListResponseSchema.parse(
+      await this.stateStore.listDealerMembers(parsed),
+    );
   }
 }
+

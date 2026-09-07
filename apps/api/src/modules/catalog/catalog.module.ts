@@ -1,23 +1,12 @@
 import { Module } from "@nestjs/common";
 
-import { DatabaseModule } from "../../database/database.module";
-import { AuditModule } from "../audit/audit.module";
-import { PricingModule } from "../pricing/pricing.module";
+import { ExperienceStateModule } from "../../runtime/experience-state.module";
 import { CatalogController } from "./catalog.controller";
-import { CatalogPrismaRepository } from "./catalog.prisma-repository";
-import { CATALOG_REPOSITORY } from "./catalog.repository";
 import { CatalogService } from "./catalog.service";
 
 @Module({
-  imports: [DatabaseModule, PricingModule, AuditModule],
+  imports: [ExperienceStateModule],
   controllers: [CatalogController],
-  providers: [
-    CatalogService,
-    {
-      provide: CATALOG_REPOSITORY,
-      useClass: CatalogPrismaRepository,
-    },
-  ],
-  exports: [CatalogService],
+  providers: [CatalogService],
 })
 export class CatalogModule {}

@@ -4,8 +4,11 @@ import {
   type RequestContext,
   type RequestActor,
 } from "@wemo/contracts/platform";
+import { SessionActorSchema } from "@wemo/contracts/identity";
+import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { FastifyRequest } from "fastify";
+import type { ZodIssue } from "zod";
 
 import { WemoHttpException } from "./validation";
 
@@ -20,46 +23,55 @@ function headerValue(
   return typeof value === "string" ? value : undefined;
 }
 
-/** 解析 Authorization Bearer 令牌 服务端会话解析不信任任何身份头 */
-export function parseBearerToken(request: FastifyRequest): string | null {
-  const authorization = headerValue(request.headers, "authorization");
-  if (!authorization) {
+function parseActorHeader(rawActor: string | undefined): RequestActor | null {
+  if (!rawActor) {
     return null;
   }
-  const [scheme, token, ...rest] = authorization.split(" ");
-  if (scheme !== "Bearer" || !token || token.length < 16 || rest.length > 0) {
-    throw new WemoHttpException(
-      "AUTH_HEADER_INVALID",
-      "Authorization 头必须是 Bearer <token> 格式",
-    );
+
+  try {
+    const parsed = JSON.parse(rawActor) as unknown;
+    const result = SessionActorSchema.safeParse(parsed);
+    if (!result.success) {
+      throw new WemoHttpException(
+        "AUTH_CONTEXT_INVALID",
+        "认证上下文格式无效",
+        result.error.issues.map((issue: ZodIssue) => ({
+          field: issue.path.length ? issue.path.join(".") : "actor",
+          message: issue.message,
+        })),
+      );
+    }
+    return result.data;
+  } catch (error) {
+    if (error instanceof WemoHttpException) {
+      throw error;
+    }
+
+    throw new BadRequestException("x-wemo-actor 必须是合法 JSON");
   }
-  return token;
 }
 
-export function createRequestContext(
-  request: FastifyRequest,
-  actor: RequestActor | null = null,
-  sessionToken: string | null = null,
-): RequestContext {
+export function createRequestContext(request: FastifyRequest): RequestContext {
+  const requestId = request.id || randomUUID();
   const rawContext = {
-    // 市场语言币种来源唯一：环境配置 请求头仅作显式覆盖
-    request_id: request.id,
+    request_id: requestId,
     method: request.method,
     path: request.url,
     market:
       headerValue(request.headers, "x-wemo-market") ??
-      process.env.WEMO_DEFAULT_MARKET,
+      process.env.WEMO_DEFAULT_MARKET ??
+      "global",
     locale:
       headerValue(request.headers, "x-wemo-locale") ??
-      process.env.WEMO_DEFAULT_LOCALE,
+      process.env.WEMO_DEFAULT_LOCALE ??
+      "en-US",
     currency:
       headerValue(request.headers, "x-wemo-currency") ??
-      process.env.WEMO_DEFAULT_CURRENCY,
+      process.env.WEMO_DEFAULT_CURRENCY ??
+      "USD",
     ip: request.ip ?? null,
     user_agent: headerValue(request.headers, "user-agent") ?? null,
-    session_token: sessionToken,
-    cart_id: headerValue(request.headers, "x-wemo-cart-id") ?? null,
-    actor,
+    actor: parseActorHeader(headerValue(request.headers, "x-wemo-actor")),
   };
 
   return RequestContextSchema.parse(rawContext);
@@ -71,15 +83,6 @@ export class RequestContextStore {
 
   run<T>(context: RequestContext, callback: () => T): T {
     return this.storage.run(context, callback);
-  }
-
-  /**
-   * 将 context 绑定到当前异步执行链（含 done() 之后的后续 handler）。
-   * HTTP 请求入口必须用 enterWith 而非 run：run 的 callback 返回后
-   * 后续 Fastify handler 会脱离 context。
-   */
-  enterWith(context: RequestContext): void {
-    this.storage.enterWith(context);
   }
 
   getContext(): RequestContext | null {
@@ -94,8 +97,8 @@ export class RequestContextStore {
     return context;
   }
 
-  getRequestId(): string | null {
-    return this.getContext()?.request_id ?? null;
+  getRequestId(): string {
+    return this.getContext()?.request_id ?? "unknown-request";
   }
 
   getActor(): RequestActor | null {
@@ -107,26 +110,18 @@ export class RequestContextStore {
   }
 
   getMarket(): string {
-    return this.requireContext().market;
+    return this.getContext()?.market ?? "global";
   }
 
   getLocale(): string {
-    return this.requireContext().locale;
+    return this.getContext()?.locale ?? "en-US";
   }
 
   getCurrency(): string {
-    return this.requireContext().currency;
+    return this.getContext()?.currency ?? "USD";
   }
 
   getIp(): string | null {
     return this.getContext()?.ip ?? null;
-  }
-
-  getSessionToken(): string | null {
-    return this.getContext()?.session_token ?? null;
-  }
-
-  getCartId(): string | null {
-    return this.getContext()?.cart_id ?? null;
   }
 }

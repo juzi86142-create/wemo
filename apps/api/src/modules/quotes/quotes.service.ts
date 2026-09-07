@@ -7,16 +7,14 @@ import {
   QuoteMutationResponseSchema,
   QuoteVersionListResponseSchema,
   QuoteReviewSchema,
-  QuoteAcceptSchema,
 } from "@wemo/contracts/commerce";
+import type { JsonValue } from "@wemo/contracts/common";
 import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
-import { ANALYTICS_REPOSITORY, type AnalyticsRepository } from "../analytics/analytics.repository";
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { NotificationsService } from "../notifications/notifications.service";
-import { QuotesPrismaRepository } from "./quotes.prisma-repository";
-import { QUOTES_REPOSITORY } from "./quotes.repository";
+import { CommerceRepository } from "../../runtime/commerce.state";
+import { PlatformRepository } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
@@ -27,12 +25,10 @@ const QuoteIdParamSchema = z.object({
 @Injectable()
 export class QuotesService {
   constructor(
-    @Inject(QUOTES_REPOSITORY)
-    private readonly repository: QuotesPrismaRepository,
-    @Inject(NotificationsService)
-    private readonly notifications: NotificationsService,
-    @Inject(ANALYTICS_REPOSITORY)
-    private readonly analyticsRepository: AnalyticsRepository,
+    @Inject(CommerceRepository)
+    private readonly stateStore: CommerceRepository,
+    @Inject(PlatformRepository)
+    private readonly platformState: PlatformRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -48,31 +44,32 @@ export class QuotesService {
         : actor?.audience === "dealer" && actor.company_id
           ? { ...parsed, company_id: actor.company_id }
           : parsed;
-    return QuoteListResponseSchema.parse(
-      await this.repository.listQuotes(scope),
-    );
+    return QuoteListResponseSchema.parse(await this.stateStore.listQuotes(scope));
   }
 
   async listVersions(id: unknown) {
-    const actor = this.authorization.requireActor();
     const parsedId = parseInput(QuoteIdParamSchema, { id });
-    const quote = await this.repository.getQuoteById(parsedId.id);
-    if (!quote) {
-      throw new ConflictException("报价不存在");
-    }
-    if (actor.audience !== "staff" && quote.company_id !== actor.company_id) {
-      throw new ForbiddenException("不能查看其他企业报价");
-    }
-    return QuoteVersionListResponseSchema.parse(quote.versions);
+    const item = await this.stateStore.getQuoteById(parsedId.id);
+    return QuoteVersionListResponseSchema.parse(
+      await this.stateStore.listQuoteVersions(item.id),
+    );
   }
 
   async createQuote(body: unknown) {
     const context = this.requestContext.requireContext();
+    const existing = await this.stateStore.findQuoteByRequestId(context.request_id);
+    if (existing) {
+      return QuoteMutationResponseSchema.parse({
+        request_id: context.request_id,
+        item: existing,
+      });
+    }
     const input = parseInput(QuoteCreateSchema, body);
     const actor = context.actor;
-    // 企业归属以服务端会话为准 仅员工可代某企业发起
     const companyId =
-      actor?.audience === "staff" ? input.company_id : actor?.company_id;
+      input.company_id ??
+      actor?.company_id ??
+      (actor?.audience === "staff" ? null : undefined);
     if (!companyId) {
       throw new ForbiddenException("报价需要企业上下文");
     }
@@ -85,37 +82,19 @@ export class QuotesService {
       company_id: companyId,
       requested_by_user_id:
         actor?.audience === "staff" ? null : actor?.user_id ?? null,
-      created_by: actor?.user_id ?? 1,
       request_id: context.request_id,
     };
-    const item = await this.repository.createQuote(payload);
+    const item = await this.stateStore.createQuote(payload);
 
-    await this.analyticsRepository.recordEvents(
-      [
-        {
-          name: "request_quote",
-          payload: {
-            quote_id: item.id,
-            company_id: companyId,
-            items_count: input.items.length,
-          },
-          market: context.market,
-          locale: context.locale,
-          role: "dealer",
-          dedupe_key: `request_quote:${context.request_id}`,
-        },
-      ],
-      context,
-    );
-
-    await this.notifications.emitBusinessNotification({
-      template_code: "quote_requested",
-      recipient_user_id: payload.requested_by_user_id,
-      company_id: companyId,
-      audience: "dealer",
-      channel: "email",
+    await this.platformState.recordAudit({
+      actor_id: actor?.user_id ?? 1,
+      action: "quotes.create",
+      entity: "quote",
+      entity_id: item.id,
+      before: null,
+      after: item,
+      ip: context.ip ?? null,
       request_id: context.request_id,
-      payload: { quote_id: item.id, status: item.status },
     });
 
     return QuoteMutationResponseSchema.parse({
@@ -129,6 +108,7 @@ export class QuotesService {
     const context = this.requestContext.requireContext();
     const parsedId = parseInput(QuoteIdParamSchema, { id });
     const input = parseInput(QuoteReviewSchema, body);
+    const before = await this.stateStore.getQuoteById(parsedId.id);
     const payload: {
       decision: "under_review" | "quoted" | "rejected" | "expired";
       note?: string;
@@ -138,61 +118,21 @@ export class QuotesService {
     };
     if (input.note !== undefined) payload.note = input.note;
     if (input.terms_snapshot !== undefined) payload.terms_snapshot = input.terms_snapshot;
-    const item = await this.repository.reviewQuote(
+    const item = await this.stateStore.reviewQuote(
       parsedId.id,
-      payload,
-      actor.user_id,
       context.request_id,
+      payload as never,
     );
 
-    await this.notifications.emitBusinessNotification({
-      template_code: "quote_reviewed",
-      recipient_user_id: item.requested_by_user_id,
-      company_id: item.company_id,
-      audience: "dealer",
-      channel: "email",
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "quotes.review",
+      entity: "quote",
+      entity_id: item.id,
+      before,
+      after: item,
+      ip: context.ip ?? null,
       request_id: context.request_id,
-      payload: {
-        quote_id: item.id,
-        status: item.status,
-        decision: payload.decision,
-      },
-    });
-
-    return QuoteMutationResponseSchema.parse({
-      request_id: context.request_id,
-      item,
-    });
-  }
-
-  /** 经销商接受报价 需求 QTE-004 接受后可转订单 */
-  async acceptQuote(id: unknown, body: unknown) {
-    const context = this.requestContext.requireContext();
-    const actor = this.authorization.requireActor();
-    const parsedId = parseInput(QuoteIdParamSchema, { id });
-    const input = parseInput(QuoteAcceptSchema, body);
-    const before = await this.repository.getQuoteById(parsedId.id);
-    if (!before) {
-      throw new ConflictException("报价不存在");
-    }
-    if (actor.audience !== "staff" && before.company_id !== actor.company_id) {
-      throw new ForbiddenException("不能接受其他企业报价");
-    }
-    const item = await this.repository.acceptQuote(
-      parsedId.id,
-      actor.user_id,
-      context.request_id,
-      input.note,
-    );
-
-    await this.notifications.emitBusinessNotification({
-      template_code: "quote_accepted",
-      recipient_user_id: before.requested_by_user_id,
-      company_id: before.company_id,
-      audience: "dealer",
-      channel: "email",
-      request_id: context.request_id,
-      payload: { quote_id: item.id, status: item.status },
     });
 
     return QuoteMutationResponseSchema.parse({
@@ -206,10 +146,7 @@ export class QuotesService {
     const actor = this.authorization.requireActor();
     const parsedId = parseInput(QuoteIdParamSchema, { id });
     const input = parseInput(QuoteConvertSchema, body);
-    const before = await this.repository.getQuoteById(parsedId.id);
-    if (!before) {
-      throw new ConflictException("报价不存在");
-    }
+    const before = await this.stateStore.getQuoteById(parsedId.id);
     if (
       actor.audience !== "staff" &&
       before.company_id !== actor.company_id
@@ -225,22 +162,69 @@ export class QuotesService {
     if (!["quoted", "accepted"].includes(before.status)) {
       throw new ConflictException("报价不能转单");
     }
-    // QTE-005 过期报价不可直接转订单
-    if (
-      before.valid_until !== null &&
-      new Date(before.valid_until) < new Date()
-    ) {
-      throw new ConflictException("报价已过期不能转订单");
+    if (input.accepted_version && input.accepted_version > before.current_version) {
+      throw new ConflictException("报价版本不存在");
     }
-    const item = await this.repository.convertToOrder(
+    const order = await this.stateStore.createOrder({
+      channel: input.order_channel,
+      user_id: actor.audience === "staff" ? null : actor.user_id,
+      company_id: before.company_id,
+      currency: "USD",
+      subtotal_minor: 0,
+      tax_minor: 0,
+      shipping_minor: 0,
+      total_minor: 0,
+      status: input.order_channel === "b2b" ? "pending_review" : "pending_payment",
+      address_snapshot: {},
+      pricing_snapshot: {
+        quote_id: before.id,
+        quote_no: before.quote_no,
+        pricing_snapshot: before.pricing_snapshot,
+        terms_snapshot: before.terms_snapshot,
+        note: input.note ?? null,
+      } as JsonValue,
+      items: before.items.map((item, index) => ({
+        id: index + 1,
+        variant_id: item.variant_id,
+        sku_snapshot: `QUOTE-${before.quote_no}-${index + 1}`,
+        name_snapshot: `Quote Item ${index + 1}`,
+        quantity: item.quantity,
+        unit_price_minor: 0,
+        tax_minor: 0,
+        shipping_minor: 0,
+        total_minor: 0,
+        detail_snapshot: item as JsonValue,
+      })),
+      request_id: context.request_id,
+      note: input.note ?? null,
+    });
+    const payload: {
+      order_channel: "b2b" | "b2c";
+      accepted_version?: number;
+      note?: string;
+      converted_order_id?: number | null;
+    } = {
+      order_channel: input.order_channel,
+      converted_order_id: order.id,
+    };
+    if (input.accepted_version !== undefined) payload.accepted_version = input.accepted_version;
+    if (input.note !== undefined) payload.note = input.note;
+    const item = await this.stateStore.convertQuote(
       parsedId.id,
-      {
-        channel: input.order_channel,
-        ...(input.note !== undefined ? { note: input.note } : {}),
-      },
-      actor.user_id,
       context.request_id,
+      payload,
     );
+
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "quotes.convert",
+      entity: "quote",
+      entity_id: item.id,
+      before,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
 
     return QuoteMutationResponseSchema.parse({
       request_id: context.request_id,
@@ -248,3 +232,4 @@ export class QuotesService {
     });
   }
 }
+

@@ -7,10 +7,7 @@ import {
   Param,
   Post,
   Query,
-  Req,
-  Res,
 } from "@nestjs/common";
-import type { FastifyRequest } from "fastify";
 
 import { MediaService } from "./media.service";
 
@@ -31,24 +28,9 @@ export class MediaController {
     return this.mediaService.getAsset(id);
   }
 
-  @Get("downloads")
-  listDownloads(@Query() query: unknown) {
-    return this.mediaService.listDownloads(query);
-  }
-
-  @Get("dealer/downloads")
-  listDealerDownloads(@Query() query: unknown) {
-    return this.mediaService.listDealerDownloads(query);
-  }
-
   @Get("media/assets/:id/signed-url")
   getSignedUrl(@Param("id") id: string) {
     return this.mediaService.getSignedUrl(id);
-  }
-
-  @Get("media/files/:fileKey")
-  serveFile(@Param("fileKey") fileKey: string, @Res() reply: unknown) {
-    return this.mediaService.serveFile(fileKey, reply);
   }
 
   @Get("admin/media/assets")
@@ -60,11 +42,5 @@ export class MediaController {
   @HttpCode(200)
   createAsset(@Body() body: unknown) {
     return this.mediaService.createAsset(body);
-  }
-
-  @Post("admin/media/upload")
-  @HttpCode(200)
-  uploadAsset(@Req() request: FastifyRequest) {
-    return this.mediaService.uploadAsset(request);
   }
 }

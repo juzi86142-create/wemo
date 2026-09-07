@@ -25,8 +25,8 @@ export class CmsController {
   }
 
   @Get("cms/entries/:slug")
-  getEntry(@Param("slug") slug: string) {
-    return this.cmsService.getEntry(slug);
+  getEntry(@Param("slug") slug: string, @Query("type") type?: string) {
+    return this.cmsService.getEntry(slug, type);
   }
 
   @Get("cms/navigation")
@@ -53,24 +53,8 @@ export class CmsController {
 
   @Post("admin/cms/entries/:id/publish")
   @HttpCode(200)
-  publishEntry(@Param("id") id: string, @Body() body: unknown) {
-    return this.cmsService.publishEntry(id, body);
-  }
-
-  @Post("admin/cms/entries/:id/preview-token")
-  @HttpCode(200)
-  createPreviewToken(@Param("id") id: string) {
-    return this.cmsService.createPreviewToken(id);
-  }
-
-  @Get("cms/preview/:token")
-  previewEntry(@Param("token") token: string) {
-    return this.cmsService.previewEntry(token);
-  }
-
-  @Get("admin/cms/entries/:id/versions")
-  listVersions(@Param("id") id: string) {
-    return this.cmsService.listVersions(id);
+  publishEntry(@Param("id") id: string) {
+    return this.cmsService.publishEntry(id);
   }
 
   @Post("admin/cms/entries/:id/archive")

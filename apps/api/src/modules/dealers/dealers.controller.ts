@@ -72,6 +72,12 @@ export class DealersController {
     return this.dealersService.listMembers(query);
   }
 
+  @Post("dealer/members")
+  @HttpCode(200)
+  inviteMember(@Body() body: unknown) {
+    return this.dealersService.inviteMember(body);
+  }
+
   @Get("admin/dealer-applications")
   listAdminApplications(@Query() query: unknown) {
     return this.dealersService.listAdminApplications(query);
@@ -96,34 +102,5 @@ export class DealersController {
   @Get("admin/dealers/members")
   listAdminMembers(@Query() query: unknown) {
     return this.dealersService.listAdminMembers(query);
-  }
-
-  @Post("dealer/members/invite")
-  @HttpCode(200)
-  inviteMember(@Body() body: unknown) {
-    return this.dealersService.inviteMember(body);
-  }
-
-  @Post("dealer/members/accept")
-  @HttpCode(200)
-  acceptMemberInvite(@Body() body: unknown) {
-    return this.dealersService.acceptMemberInvite(body);
-  }
-
-  @Get("admin/dealer-tiers")
-  listTiers() {
-    return this.dealersService.listTiers();
-  }
-
-  @Post("admin/dealer-tiers")
-  @HttpCode(200)
-  createTier(@Body() body: unknown) {
-    return this.dealersService.upsertTier(undefined, body);
-  }
-
-  @Patch("admin/dealer-tiers/:id")
-  @HttpCode(200)
-  updateTier(@Param("id") id: string, @Body() body: unknown) {
-    return this.dealersService.upsertTier(id, body);
   }
 }

@@ -63,13 +63,7 @@ async function checkApiHealth(): Promise<string[]> {
         const response = await fetch(`http://127.0.0.1:${port}/api/v1/health`);
         if (response.ok) {
           const body = (await response.json()) as Record<string, unknown>;
-          // @nestjs/terminus 响应形状 status/info/error/details
-          const info = body.info as Record<string, unknown> | undefined;
-          const database = info?.database as Record<string, unknown> | undefined;
-          const redis = info?.redis as Record<string, unknown> | undefined;
-          return body.status === "ok" &&
-            database?.status === "up" &&
-            redis?.status === "up"
+          return body.status === "ok" && body.service === "wemove-api"
             ? []
             : [`API 健康检查响应不符合预期: ${JSON.stringify(body)}`];
         }

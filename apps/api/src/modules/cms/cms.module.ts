@@ -1,21 +1,12 @@
 import { Module } from "@nestjs/common";
 
-import { DatabaseModule } from "../../database/database.module";
-import { AuditModule } from "../audit/audit.module";
+import { ExperienceStateModule } from "../../runtime/experience-state.module";
 import { CmsController } from "./cms.controller";
-import { CmsPrismaRepository } from "./cms.prisma-repository";
-import { CMS_REPOSITORY } from "./cms.repository";
 import { CmsService } from "./cms.service";
 
 @Module({
-  imports: [DatabaseModule, AuditModule],
+  imports: [ExperienceStateModule],
   controllers: [CmsController],
-  providers: [
-    CmsService,
-    {
-      provide: CMS_REPOSITORY,
-      useClass: CmsPrismaRepository,
-    },
-  ],
+  providers: [CmsService],
 })
 export class CmsModule {}

@@ -9,7 +9,6 @@ import {
   Post,
   Query,
 } from "@nestjs/common";
-import { Throttle } from "@nestjs/throttler";
 
 import { FormsService } from "./forms.service";
 
@@ -20,8 +19,6 @@ export class FormsController {
     private readonly formsService: FormsService,
   ) {}
 
-  /** 联系表单每 IP 每分钟 10 次 兼作反垃圾基本防护 */
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post("forms/submissions")
   @HttpCode(200)
   submit(@Body() body: unknown) {
@@ -37,22 +34,5 @@ export class FormsController {
   @HttpCode(200)
   updateSubmission(@Param("id") id: string, @Body() body: unknown) {
     return this.formsService.updateSubmission(id, body);
-  }
-
-  @Get("admin/forms/definitions")
-  listFormDefinitions(@Query() query: unknown) {
-    return this.formsService.listFormDefinitions(query);
-  }
-
-  @Post("admin/forms/definitions")
-  @HttpCode(200)
-  createFormDefinition(@Body() body: unknown) {
-    return this.formsService.createFormDefinition(body);
-  }
-
-  @Patch("admin/forms/definitions/:id")
-  @HttpCode(200)
-  updateFormDefinition(@Param("id") id: string, @Body() body: unknown) {
-    return this.formsService.updateFormDefinition(id, body);
   }
 }

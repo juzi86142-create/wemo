@@ -140,67 +140,6 @@ export const ContentEntryListQuerySchema = PaginationSchema.extend({
   q: z.string().min(1).optional(),
 });
 
-/** 首页模块类型 需求 ADM-C-002 模块化配置 */
-export const HomeModuleTypeSchema = z.enum([
-  "hero",
-  "category_cards",
-  "product_collection",
-  "content_collection",
-  "brand_values",
-  "dealer_cta",
-  "subscription",
-]);
-
-export const HomeModuleSchema = z
-  .object({
-    type: HomeModuleTypeSchema,
-    title: z.string().min(1).optional(),
-    config: JsonValueSchema,
-  })
-  .strict()
-  .passthrough();
-
-export const HomePageBodySchema = z
-  .object({
-    modules: z.array(HomeModuleSchema),
-  })
-  .strict()
-  .passthrough();
-
-/** CMS 发布与预览 需求 ADM-C-003/004 */
-export const ContentEntryPublishSchema = z
-  .object({
-    // 定时发布 不传即立即发布
-    publish_at: z.string().datetime().optional(),
-    archive_at: z.string().datetime().optional(),
-  })
-  .strict();
-
-export const ContentEntryPreviewTokenSchema = z
-  .object({
-    token: z.string().min(16).max(128),
-  })
-  .strict();
-
-/** CMS 内容版本历史 需求 ADM-C-005 */
-export const ContentEntryVersionSchema = z
-  .object({
-    id: EntityIdSchema,
-    entry_id: EntityIdSchema,
-    body: JsonValueSchema,
-    seo: SeoMetadataSchema,
-    status: ContentStatusSchema,
-    saved_at: z.string().datetime(),
-  })
-  .strict()
-  .passthrough();
-
-export const ContentEntryVersionListResponseSchema =
-  createListResponseSchema(ContentEntryVersionSchema);
-
-export const ContentEntryPreviewResponseSchema =
-  createItemResponseSchema(ContentEntrySchema);
-
 const ContentNavigationItemSchema: z.ZodTypeAny = z.lazy(() =>
   z
     .object({
@@ -240,16 +179,6 @@ export const MediaVisibilitySchema = z.enum([
   "registered",
   "dealer",
   "internal",
-]);
-
-/** 表单工单状态机 需求 7.12 与附录 D */
-export const FormSubmissionStatusSchema = z.enum([
-  "new",
-  "assigned",
-  "in_progress",
-  "waiting_customer",
-  "resolved",
-  "closed",
 ]);
 
 const MediaVersionSchema = z
@@ -341,7 +270,7 @@ export const FormSubmissionSchema = z
     priority: z.string().min(1),
     tags: z.array(z.string().min(1)),
     internal_note: z.string().min(1).nullable(),
-    status: FormSubmissionStatusSchema,
+    status: z.string().min(1),
     request_id: RequestIdSchema,
     created_at: z.string().datetime(),
     updated_at: z.string().datetime(),
@@ -373,7 +302,7 @@ export const FormSubmissionUpdateSchema = z
     priority: z.string().min(1).optional(),
     tags: z.array(z.string().min(1)).optional(),
     internal_note: z.string().min(1).nullable().optional(),
-    status: FormSubmissionStatusSchema.optional(),
+    status: z.string().min(1).optional(),
   })
   .strict();
 
@@ -508,6 +437,8 @@ export const SearchQuerySchema = z
   .object({
     q: z.string().min(1),
     type: z.string().min(1).optional(),
+    market: z.string().min(1).optional(),
+    locale: z.string().min(1).optional(),
     page: z.coerce.number().int().min(1).default(1),
     page_size: z.coerce.number().int().min(1).max(100).default(20),
   })
@@ -579,8 +510,6 @@ export type LocalizationSnapshot = z.infer<typeof LocalizationSnapshotSchema>;
 export type ContentEntry = z.infer<typeof ContentEntrySchema>;
 export type ContentEntryCreateInput = z.infer<typeof ContentEntryCreateSchema>;
 export type ContentEntryUpdateInput = z.infer<typeof ContentEntryUpdateSchema>;
-export type ContentEntryPublishInput = z.infer<typeof ContentEntryPublishSchema>;
-export type ContentEntryVersion = z.infer<typeof ContentEntryVersionSchema>;
 export type ContentEntryListQuery = z.infer<typeof ContentEntryListQuerySchema>;
 export type ContentNavigation = z.infer<typeof ContentNavigationSchema>;
 export type FormSubmission = z.infer<typeof FormSubmissionSchema>;

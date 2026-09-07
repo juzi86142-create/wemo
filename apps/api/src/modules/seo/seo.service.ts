@@ -5,23 +5,32 @@ import {
   SeoRedirectMutationResponseSchema,
   SeoSitemapResponseSchema,
 } from "@wemo/contracts/content";
+import { EntityIdSchema } from "@wemo/contracts/common";
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { SeoPrismaRepository } from "./seo.prisma-repository";
-import { SEO_REPOSITORY } from "./seo.repository";
+import { ExperienceRepository } from "../../runtime/experience.state";
+import { PlatformRepository } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
 import { parseInput } from "../../runtime/validation";
 
 const SeoMetadataQuerySchema = z.object({
   path: z.string().min(1),
+  market: z.string().min(1).optional(),
+  locale: z.string().min(2).optional(),
+});
+
+const SeoRedirectIdParamSchema = z.object({
+  id: EntityIdSchema,
 });
 
 @Injectable()
 export class SeoService {
   constructor(
-    @Inject(SEO_REPOSITORY)
-    private readonly repository: SeoPrismaRepository,
+    @Inject(ExperienceRepository)
+    private readonly stateStore: ExperienceRepository,
+    @Inject(PlatformRepository)
+    private readonly platformState: PlatformRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -30,44 +39,47 @@ export class SeoService {
 
   async getMetadata(query: unknown) {
     const parsed = parseInput(SeoMetadataQuerySchema, query);
-    const result = await this.repository.getPageSeo({
-      market: this.requestContext.getMarket(),
-      locale: this.requestContext.getLocale(),
-      slug: parsed.path,
-    });
-    return (
-      result || {
-        canonical_url: "",
-        meta_description: "",
-        meta_title: "",
-        no_index: false,
-      }
+    return this.stateStore.buildSeoMetadata(
+      parsed.path,
+      parsed.market ?? this.requestContext.getMarket(),
+      parsed.locale ?? this.requestContext.getLocale(),
     );
   }
 
   async getSitemap() {
     const context = this.requestContext.requireContext();
-    const entries = await this.repository.listSitemapEntries();
     return SeoSitemapResponseSchema.parse({
       request_id: context.request_id,
-      item: { generated_at: new Date().toISOString(), entries },
+      item: await this.stateStore.buildSitemap(),
     });
   }
 
   async listRedirects() {
     this.authorization.requireStaffPermission("seo:read");
-    const items = await this.repository.listRedirects();
-    return SeoRedirectListResponseSchema.parse(items);
+    return SeoRedirectListResponseSchema.parse(await this.stateStore.listRedirects());
   }
 
   async upsertRedirect(body: unknown) {
-    this.authorization.requireStaffPermission("seo:write");
+    const actor = this.authorization.requireStaffPermission("seo:write");
     const context = this.requestContext.requireContext();
     const input = parseInput(SeoRedirectCreateSchema, body);
-    const item = await this.repository.upsertRedirect(input);
+    const item = await this.stateStore.upsertRedirect(input);
+
+    await this.platformState.recordAudit({
+      actor_id: actor.user_id,
+      action: "seo.redirect.upsert",
+      entity: "seo_redirect",
+      entity_id: item.id,
+      before: null,
+      after: item,
+      ip: context.ip ?? null,
+      request_id: context.request_id,
+    });
+
     return SeoRedirectMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
     });
   }
 }
+

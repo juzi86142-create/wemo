@@ -1,8 +1,8 @@
 import { Global, Module } from "@nestjs/common";
-import { APP_FILTER } from "@nestjs/core";
 
 import { ApiErrorFilter } from "./api-error.filter";
 import { AuthorizationService } from "./authorization.service";
+import { PlatformRepository } from "./platform-state.store";
 import { RequestContextStore } from "./request-context.store";
 
 @Global()
@@ -10,8 +10,15 @@ import { RequestContextStore } from "./request-context.store";
   providers: [
     RequestContextStore,
     AuthorizationService,
-    { provide: APP_FILTER, useClass: ApiErrorFilter },
+    PlatformRepository,
+    ApiErrorFilter,
   ],
-  exports: [RequestContextStore, AuthorizationService],
+  exports: [
+    RequestContextStore,
+    AuthorizationService,
+    PlatformRepository,
+    ApiErrorFilter,
+  ],
 })
 export class RuntimeModule {}
+

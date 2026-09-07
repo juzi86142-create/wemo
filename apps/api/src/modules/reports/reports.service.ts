@@ -8,9 +8,8 @@ import {
 import { z } from "zod";
 
 import { AuthorizationService } from "../../runtime/authorization.service";
-import { ReportsRedisRepository } from "./reports.redis-repository";
-import { REPORTS_REPOSITORY } from "./reports.repository";
 import { parseInput } from "../../runtime/validation";
+import { PlatformRepository } from "../../runtime/platform-state.store";
 import { RequestContextStore } from "../../runtime/request-context.store";
 
 const ReportKindParamSchema = z.object({
@@ -20,8 +19,8 @@ const ReportKindParamSchema = z.object({
 @Injectable()
 export class ReportsService {
   constructor(
-    @Inject(REPORTS_REPOSITORY)
-    private readonly repository: ReportsRedisRepository,
+    @Inject(PlatformRepository)
+    private readonly stateStore: PlatformRepository,
     @Inject(AuthorizationService)
     private readonly authorization: AuthorizationService,
     @Inject(RequestContextStore)
@@ -39,10 +38,14 @@ export class ReportsService {
       kind: parsedKind.kind,
       ...queryObject,
     });
-    const snapshot = await this.repository.runReportByKind(parsedQuery.kind, {
-      from: parsedQuery.from,
-      to: parsedQuery.to,
-    });
+    const snapshot = await this.stateStore.buildReportSnapshot(
+      parsedKind.kind,
+      this.requestContext.requireContext().request_id,
+      {
+        from: parsedQuery.from,
+        to: parsedQuery.to,
+      },
+    );
 
     return ReportSnapshotSchema.parse(snapshot);
   }
@@ -84,3 +87,4 @@ export class ReportsService {
     return value;
   }
 }
+

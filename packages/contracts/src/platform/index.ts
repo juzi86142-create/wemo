@@ -23,12 +23,7 @@ export const TranslationFallbackPolicySchema = z.enum([
   "hide_untranslated",
 ]);
 export const MarketSettingsSchema = z
-  .object({
-    fallback_policy: TranslationFallbackPolicySchema,
-    // 市场交易开关 需求 5.2/ACC-005
-    b2c_enabled: z.boolean().optional(),
-    dealer_enabled: z.boolean().optional(),
-  })
+  .object({ fallback_policy: TranslationFallbackPolicySchema })
   .strict();
 
 type MarketLocaleIdentity = {

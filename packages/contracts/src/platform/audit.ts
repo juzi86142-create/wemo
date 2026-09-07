@@ -9,8 +9,7 @@ import {
 
 export const AuditLogSchema = z.object({
   id: EntityIdSchema,
-  // 系统事件无操作人时为空 不伪造管理员身份
-  actor_id: EntityIdSchema.nullable(),
+  actor_id: EntityIdSchema,
   action: z.string().min(1),
   entity: z.string().min(1),
   entity_id: EntityIdSchema,

@@ -1,21 +1,16 @@
-import { HttpException, HttpStatus } from "@nestjs/common";
+import { HttpStatus } from "@nestjs/common";
 import { type FieldError } from "@wemo/contracts/common";
 import { type ZodIssue, type ZodTypeAny, z } from "zod";
 
-/** 统一领域异常 携带领域 code 与字段错误 响应体符合 ApiError 结构 */
-export class WemoHttpException extends HttpException {
-  public readonly code: string;
-  public readonly field_errors: FieldError[];
-
+export class WemoHttpException extends Error {
   constructor(
-    code: string,
+    public readonly code: string,
     message: string,
-    field_errors: FieldError[] = [],
-    status = HttpStatus.BAD_REQUEST,
+    public readonly field_errors: FieldError[] = [],
+    public readonly status = HttpStatus.BAD_REQUEST,
   ) {
-    super({ code, message, field_errors }, status);
-    this.code = code;
-    this.field_errors = field_errors;
+    super(message);
+    this.name = "WemoHttpException";
   }
 }
 
@@ -42,7 +37,7 @@ export function parseInput<T extends ZodTypeAny>(
 
   throw new WemoHttpException(
     options?.code ?? "VALIDATION_ERROR",
-    options?.message ?? "请求参数无效",
+    options?.message ?? "请求参数有误",
     toFieldErrors(result.error.issues),
     options?.status ?? HttpStatus.BAD_REQUEST,
   );
