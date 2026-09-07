@@ -4,6 +4,9 @@ export const analyticsEvents = {
   productView: "product_view",
   addToCart: "add_to_cart",
   authResult: "auth_result",
+  beginCheckout: "begin_checkout",
+  checkoutSuccess: "checkout_success",
+  checkoutFailure: "checkout_failure",
 } as const;
 
 export type AnalyticsEvent = (typeof analyticsEvents)[keyof typeof analyticsEvents];
