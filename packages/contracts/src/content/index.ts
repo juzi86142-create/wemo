@@ -140,6 +140,40 @@ export const ContentEntryListQuerySchema = PaginationSchema.extend({
   q: z.string().min(1).optional(),
 });
 
+/** CMS 发布与预览 需求 ADM-C-003/004 */
+export const ContentEntryPublishSchema = z
+  .object({
+    // 定时发布 不传即立即发布
+    publish_at: z.string().datetime().optional(),
+    archive_at: z.string().datetime().optional(),
+  })
+  .strict();
+
+export const ContentEntryPreviewTokenSchema = z
+  .object({
+    token: z.string().min(16).max(128),
+  })
+  .strict();
+
+/** CMS 内容版本历史 需求 ADM-C-005 */
+export const ContentEntryVersionSchema = z
+  .object({
+    id: EntityIdSchema,
+    entry_id: EntityIdSchema,
+    body: JsonValueSchema,
+    seo: SeoMetadataSchema,
+    status: ContentStatusSchema,
+    saved_at: z.string().datetime(),
+  })
+  .strict()
+  .passthrough();
+
+export const ContentEntryVersionListResponseSchema =
+  createListResponseSchema(ContentEntryVersionSchema);
+
+export const ContentEntryPreviewResponseSchema =
+  createItemResponseSchema(ContentEntrySchema);
+
 const ContentNavigationItemSchema: z.ZodTypeAny = z.lazy(() =>
   z
     .object({
@@ -518,6 +552,8 @@ export type LocalizationSnapshot = z.infer<typeof LocalizationSnapshotSchema>;
 export type ContentEntry = z.infer<typeof ContentEntrySchema>;
 export type ContentEntryCreateInput = z.infer<typeof ContentEntryCreateSchema>;
 export type ContentEntryUpdateInput = z.infer<typeof ContentEntryUpdateSchema>;
+export type ContentEntryPublishInput = z.infer<typeof ContentEntryPublishSchema>;
+export type ContentEntryVersion = z.infer<typeof ContentEntryVersionSchema>;
 export type ContentEntryListQuery = z.infer<typeof ContentEntryListQuerySchema>;
 export type ContentNavigation = z.infer<typeof ContentNavigationSchema>;
 export type FormSubmission = z.infer<typeof FormSubmissionSchema>;

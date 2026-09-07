@@ -1,16 +1,32 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import type { Redis } from "ioredis";
 import type { DatabaseClient } from "@wemo/database";
 import type {
   ContentEntry,
   ContentEntryCreateInput,
   ContentEntryListQuery,
   ContentEntryUpdateInput,
+  ContentEntryVersion,
   ContentNavigation,
   JsonValue,
 } from "@wemo/contracts";
+import { randomBytes } from "node:crypto";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
-import { CMS_REPOSITORY, type CmsRepository } from "./cms.repository";
+import { REDIS_CLIENT, REDIS_KEY_PREFIX } from "../../database/redis.constants";
+import {
+  CMS_REPOSITORY,
+  type ContentEntryPublishCommand,
+  type CmsRepository,
+} from "./cms.repository";
+import { readHashOne, redisNextId, writeHashObject } from "../../runtime/redis-hash";
+
+const PREVIEWS_KEY = `${REDIS_KEY_PREFIX}:cms:previews`;
+const PREVIEW_TTL_DAYS = 7;
+
+function versionsKey(entryId: number): string {
+  return `${REDIS_KEY_PREFIX}:cms:versions:${entryId}`;
+}
 
 type ContentEntryRow = NonNullable<
   Awaited<ReturnType<DatabaseClient["contentEntry"]["findFirst"]>>
@@ -53,6 +69,7 @@ function readNavigationItems(body: unknown): ContentNavigation["items"] {
 export class CmsPrismaRepository implements CmsRepository {
   constructor(
     @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
   async listContentEntries(
@@ -63,11 +80,17 @@ export class CmsPrismaRepository implements CmsRepository {
     page: number;
     page_size: number;
   }> {
+    // 公开列表按生效状态过滤：定时发布到点的条目读取侧即视为已发布
+    const publicMode = query.status === "published";
     const where = {
       ...(query.market !== undefined ? { market: query.market } : {}),
       ...(query.locale !== undefined ? { locale: query.locale } : {}),
       ...(query.type !== undefined ? { type: query.type } : {}),
-      ...(query.status !== undefined ? { status: query.status } : {}),
+      ...(publicMode
+        ? { status: { in: ["published", "scheduled"] } }
+        : query.status !== undefined
+          ? { status: query.status }
+          : {}),
     };
 
     const [entries, total] = await Promise.all([
@@ -80,9 +103,13 @@ export class CmsPrismaRepository implements CmsRepository {
       this.database.contentEntry.count({ where }),
     ]);
 
+    const items = entries
+      .map((entry) => this.mapContentEntry(entry))
+      .filter((entry) => !publicMode || entry.status === "published");
+
     return {
-      items: entries.map((entry) => this.mapContentEntry(entry)),
-      total,
+      items,
+      total: publicMode ? items.length : total,
       page: query.page,
       page_size: query.page_size,
     };
@@ -123,6 +150,9 @@ export class CmsPrismaRepository implements CmsRepository {
     id: number,
     input: ContentEntryUpdateInput & { status?: string },
   ): Promise<ContentEntry> {
+    // 更新前快照为版本历史 需求 ADM-C-005
+    await this.pushVersion(id);
+
     const entry = await this.database.contentEntry.update({
       where: { id },
       data: {
@@ -134,6 +164,95 @@ export class CmsPrismaRepository implements CmsRepository {
     });
 
     return this.mapContentEntry(entry);
+  }
+
+  async publishContentEntry(
+    id: number,
+    input: ContentEntryPublishCommand,
+  ): Promise<ContentEntry> {
+    await this.pushVersion(id);
+    const now = new Date();
+    const publishAt = input.publish_at ? new Date(input.publish_at) : null;
+    const archiveAt = input.archive_at ? new Date(input.archive_at) : null;
+
+    const data: Record<string, unknown> = {};
+    if (archiveAt !== null && archiveAt <= now) {
+      data.status = "archived";
+      data.archivedAt = archiveAt;
+    } else {
+      if (archiveAt !== null) {
+        data.archivedAt = archiveAt;
+      }
+      if (publishAt !== null && publishAt > now) {
+        data.status = "scheduled";
+        data.publishedAt = publishAt;
+      } else {
+        data.status = "published";
+        data.publishedAt = now;
+      }
+    }
+
+    const entry = await this.database.contentEntry.update({
+      where: { id },
+      data: data as never,
+    });
+
+    return this.mapContentEntry(entry);
+  }
+
+  async getContentEntryById(id: number): Promise<ContentEntry | null> {
+    const entry = await this.database.contentEntry.findUnique({ where: { id } });
+    return entry ? this.mapContentEntry(entry) : null;
+  }
+
+  async createPreviewToken(entryId: number): Promise<{ token: string; expires_at: string }> {
+    const token = randomBytes(24).toString("hex");
+    const expiresAt = new Date(
+      Date.now() + PREVIEW_TTL_DAYS * 24 * 60 * 60 * 1000,
+    );
+    await writeHashObject(this.redis, PREVIEWS_KEY, token, {
+      entry_id: entryId,
+      expires_at: expiresAt.toISOString(),
+    });
+    return { token, expires_at: expiresAt.toISOString() };
+  }
+
+  async getEntryIdByPreviewToken(token: string): Promise<number | null> {
+    const preview = await readHashOne<{ entry_id: number; expires_at: string }>(
+      this.redis,
+      PREVIEWS_KEY,
+      token,
+      (raw) => JSON.parse(raw) as { entry_id: number; expires_at: string },
+    );
+    if (!preview) return null;
+    if (new Date(preview.expires_at) < new Date()) return null;
+    return preview.entry_id;
+  }
+
+  async listVersions(entryId: number): Promise<ContentEntryVersion[]> {
+    const raw = await this.redis.lrange(versionsKey(entryId), 0, -1);
+    return raw
+      .map((item) => JSON.parse(item) as ContentEntryVersion)
+      .sort((a, b) => b.saved_at.localeCompare(a.saved_at));
+  }
+
+  /** 更新前快照当前内容 追加到该条目的版本列表 */
+  private async pushVersion(entryId: number): Promise<void> {
+    const entry = await this.database.contentEntry.findUnique({
+      where: { id: entryId },
+    });
+    if (!entry) {
+      throw new NotFoundException("内容条目不存在");
+    }
+    const version: ContentEntryVersion = {
+      id: await redisNextId(this.redis, `${REDIS_KEY_PREFIX}:cms:versions:next`),
+      entry_id: entryId,
+      body: entry.body as JsonValue,
+      seo: entry.seo as ContentEntryVersion["seo"],
+      status: entry.status as ContentEntryVersion["status"],
+      saved_at: new Date().toISOString(),
+    };
+    await this.redis.rpush(versionsKey(entryId), JSON.stringify(version));
   }
 
   async getNavigation(
@@ -161,6 +280,18 @@ export class CmsPrismaRepository implements CmsRepository {
     }));
   }
 
+  /** 定时发布/下线在读取侧按时间点生效 无后台调度器（需求 ADM-C-003） */
+  private effectiveStatus(entry: ContentEntryRow): ContentEntry["status"] {
+    const now = new Date();
+    if (entry.status === "scheduled" && entry.publishedAt && entry.publishedAt <= now) {
+      return "published";
+    }
+    if (entry.archivedAt && entry.archivedAt <= now) {
+      return "archived";
+    }
+    return entry.status as ContentEntry["status"];
+  }
+
   private mapContentEntry(entry: ContentEntryRow): ContentEntry {
     return {
       id: entry.id,
@@ -169,7 +300,7 @@ export class CmsPrismaRepository implements CmsRepository {
       title: entry.title,
       body: entry.body as JsonValue,
       seo: entry.seo as ContentEntry["seo"],
-      status: entry.status as ContentEntry["status"],
+      status: this.effectiveStatus(entry),
       locale: entry.locale,
       market: entry.market,
       translation_status: "published",

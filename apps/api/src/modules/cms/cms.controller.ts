@@ -53,8 +53,24 @@ export class CmsController {
 
   @Post("admin/cms/entries/:id/publish")
   @HttpCode(200)
-  publishEntry(@Param("id") id: string) {
-    return this.cmsService.publishEntry(id);
+  publishEntry(@Param("id") id: string, @Body() body: unknown) {
+    return this.cmsService.publishEntry(id, body);
+  }
+
+  @Post("admin/cms/entries/:id/preview-token")
+  @HttpCode(200)
+  createPreviewToken(@Param("id") id: string) {
+    return this.cmsService.createPreviewToken(id);
+  }
+
+  @Get("cms/preview/:token")
+  previewEntry(@Param("token") token: string) {
+    return this.cmsService.previewEntry(token);
+  }
+
+  @Get("admin/cms/entries/:id/versions")
+  listVersions(@Param("id") id: string) {
+    return this.cmsService.listVersions(id);
   }
 
   @Post("admin/cms/entries/:id/archive")
