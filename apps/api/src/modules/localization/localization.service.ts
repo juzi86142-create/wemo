@@ -21,7 +21,7 @@ import {
   type UpsertLanguageInput,
 } from "@wemo/contracts";
 
-import { ApiHttpException } from "../../http/api-http.exception";
+import { WemoHttpException } from "../../runtime/validation";
 import {
   LOCALIZATION_REPOSITORY,
   type LocalizationRepository,
@@ -66,11 +66,9 @@ export class LocalizationService {
     const query = ResolveMarketContextQuerySchema.parse(input);
     const market = await this.repository.findPublicMarket(query.market);
     if (!market) {
-      throw new ApiHttpException(
+      throw new WemoHttpException(
         "MARKET_NOT_FOUND",
-        "市场不存在或尚未启用",
-        404,
-      );
+        "市场不存在或尚未启用", [], 404);
     }
 
     const requested = market.locales.find(
@@ -82,11 +80,9 @@ export class LocalizationService {
         ? market.locales.find((locale) => locale.is_default)
         : undefined);
     if (!resolved) {
-      throw new ApiHttpException(
+      throw new WemoHttpException(
         "LOCALE_NOT_AVAILABLE",
-        "该市场未提供请求的语言版本",
-        404,
-      );
+        "该市场未提供请求的语言版本", [], 404);
     }
 
     return MarketContextSchema.parse({

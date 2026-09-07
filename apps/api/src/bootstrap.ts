@@ -1,8 +1,8 @@
 import "reflect-metadata";
 
-import { randomUUID } from "node:crypto";
 import type { Http2ServerRequest } from "node:http2";
 import type { IncomingMessage } from "node:http";
+import { randomUUID } from "node:crypto";
 
 import { NestFactory } from "@nestjs/core";
 import {
@@ -11,16 +11,12 @@ import {
 } from "@nestjs/platform-fastify";
 
 import { AppModule } from "./app.module";
-import { ApiErrorFilter, normalizeApiError } from "./runtime/api-error.filter";
-import {
-  createRequestContext,
-  RequestContextStore,
-} from "./runtime/request-context.store";
 
 export interface CreateApiAppOptions {
   logger?: boolean;
 }
 
+/** 创建并配置 NestJS 应用 异常过滤与请求上下文由全局模块通过 APP_FILTER 与 APP_INTERCEPTOR 装配 */
 export async function createApiApp(
   options: CreateApiAppOptions = {},
 ): Promise<NestFastifyApplication> {
@@ -28,6 +24,7 @@ export async function createApiApp(
     AppModule,
     new FastifyAdapter({
       logger: options.logger ?? true,
+      requestIdHeader: "x-request-id",
       genReqId: (request: IncomingMessage | Http2ServerRequest) => {
         const header = request.headers["x-request-id"];
         if (typeof header === "string" && header.trim()) {
@@ -38,31 +35,11 @@ export async function createApiApp(
     }),
   );
 
-  const requestContextStore = app.get(RequestContextStore);
-  const fastify = app.getHttpAdapter().getInstance();
-
-  // 请求上下文在 RequestIdInterceptor（与 controller 同一条 async 链）中 enterWith；
-  // onRequest hook 仅兜底处理 context 创建失败等入口错误。
-  fastify.addHook("onRequest", (request, reply, done) => {
-    try {
-      reply.header("x-request-id", String(request.id));
-      done();
-    } catch (error) {
-      const requestId =
-        typeof request.id === "string" && request.id.trim()
-          ? request.id
-          : randomUUID();
-      const { status, body } = normalizeApiError(error, requestId);
-      reply.header("x-request-id", requestId).status(status).send(body);
-    }
-  });
-
   app.setGlobalPrefix("api/v1");
   app.enableCors({
     credentials: true,
     origin: [process.env.STOREFRONT_URL ?? "http://localhost:3000"],
   });
-  app.useGlobalFilters(new ApiErrorFilter(requestContextStore));
 
   return app;
 }

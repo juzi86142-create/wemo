@@ -1,16 +1,21 @@
-import { HttpStatus } from "@nestjs/common";
+import { HttpException, HttpStatus } from "@nestjs/common";
 import { type FieldError } from "@wemo/contracts/common";
 import { type ZodIssue, type ZodTypeAny, z } from "zod";
 
-export class WemoHttpException extends Error {
+/** 统一领域异常 携带领域 code 与字段错误 响应体符合 ApiError 结构 */
+export class WemoHttpException extends HttpException {
+  public readonly code: string;
+  public readonly field_errors: FieldError[];
+
   constructor(
-    public readonly code: string,
+    code: string,
     message: string,
-    public readonly field_errors: FieldError[] = [],
-    public readonly status = HttpStatus.BAD_REQUEST,
+    field_errors: FieldError[] = [],
+    status = HttpStatus.BAD_REQUEST,
   ) {
-    super(message);
-    this.name = "WemoHttpException";
+    super({ code, message, field_errors }, status);
+    this.code = code;
+    this.field_errors = field_errors;
   }
 }
 

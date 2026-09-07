@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { type ApiError, type FieldError } from "@wemo/contracts/common";
 import type { FastifyReply } from "fastify";
+import { ZodError } from "zod";
 
 import { RequestContextStore } from "./request-context.store";
 import { WemoHttpException } from "./validation";
@@ -80,7 +81,7 @@ function normalizeApiError(
 ): { status: number; body: ApiError } {
   if (exception instanceof WemoHttpException) {
     return {
-      status: exception.status,
+      status: exception.getStatus(),
       body: {
         code: exception.code,
         message: exception.message,
@@ -90,11 +91,33 @@ function normalizeApiError(
     };
   }
 
+  if (exception instanceof ZodError) {
+    return {
+      status: HttpStatus.BAD_REQUEST,
+      body: {
+        code: "VALIDATION_ERROR",
+        message: "请求参数无效",
+        field_errors: exception.issues.map((issue) => ({
+          field: issue.path.map(String).join("."),
+          message: issue.message,
+        })),
+        request_id: requestId,
+      },
+    };
+  }
+
   if (exception instanceof HttpException) {
     const status = exception.getStatus();
     const response = exception.getResponse();
+    const responseCode =
+      response && typeof response === "object" && "code" in response
+        ? String((response as { code: unknown }).code)
+        : "";
     const body: ApiError = {
-      code: statusToCode(status),
+      code:
+        responseCode === "" || responseCode === "HTTP_ERROR"
+          ? statusToCode(status)
+          : responseCode,
       message: extractMessage(response, exception.message),
       field_errors: extractFieldErrors(response),
       request_id: requestId,

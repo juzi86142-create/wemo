@@ -4,7 +4,7 @@
 - 跨表字段使用整数逻辑 ID（如 `user_id`、`company_id`、`order_id`），不声明 `@relation`，避免生成数据库物理外键。
 - `relationMode = "prisma"` 仅用于让 Prisma 在应用层处理逻辑关联；存在性、企业边界、状态和归档限制由 API 事务服务检查。
 - 生成客户端使用 `pnpm --filter @wemo/database db:generate`；正式迁移前必须运行 `pnpm check:database` 并审查 SQL。
-- 演示模式范围：非核心表（购物车/行、库存预占、通知模板与投递、分析事件、集成、作业、报表、outbox、订阅、地址本、收藏等）已从 schema 移除；对应 API 模块为 stub（读返回空、写抛「Demo模式：暂不支持…」），购物车等由客户端状态承担。表内数量以本文件与 `domains/*/README.md` 清单为准。
+- PostgreSQL 承载 30 张核心/支撑表。购物车/行、库存预占、通知模板与投递、分析事件、集成配置、作业执行、报表定义与结果、订阅、地址本、数据请求等不再建表落 PostgreSQL，而是持久化在 Redis（键前缀 `wemo:`，连接经全局 RedisModule 的 `REDIS_CLIENT` 令牌注入，见 `apps/api/src/database/redis.module.ts` 与各模块 redis repository）。Redis 作为持久层的数据一律不设 TTL 到期清理，只有真正的缓存才允许过期删除；购物车 `expires_at` 是业务字段由应用层判断。表内数量以本文件与 `domains/*/README.md` 清单为准。
 
 ## 域目录（共 8 个，见 `domains/*/README.md`）
 

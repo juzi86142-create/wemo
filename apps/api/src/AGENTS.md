@@ -11,9 +11,9 @@
 
 复杂模块按需建立 `controllers/`、`application/`、`domain/`、`infrastructure/`。简单模块可以从一个 controller/service/repository 开始，不为形式创建空层。对外公开的 service/port 从模块入口导出，内部文件不被跨模块深层导入。
 
-## 演示模式 stub 模块
+## Redis 持久化模块
 
-`modules/` 下共 24 个领域模块。其中 `analytics`、`cart`、`notifications`、`integrations`、`jobs`、`reports` 的对应表已从 `packages/database/prisma/schema.prisma` 移除，实现为 stub：读返回空值/空分页，写抛「Demo模式：暂不支持…」或以合成对象 + 日志占位（`cart.previewPricing` 按 `prices` 表真实计价）。`identity`/`dealers`/`inventory`/`orders` 中地址本、订阅、库存预占等被删表接口同样为 stub。改动 stub 语义前先核对 schema.prisma 表清单。
+`modules/` 下共 24 个领域模块。`analytics`、`cart`、`notifications`、`integrations`、`jobs`、`reports` 六个模块的数据持久化在 Redis：分析事件/购物车/通知模板与投递/集成配置/作业执行记录/报表定义与结果均真实读写（全局 RedisModule，ioredis，`REDIS_CLIENT` 令牌，键前缀 `wemo:`，见 `src/database/`）。`identity` 的地址本、订阅、数据请求与通知投递，`auth` 的订阅与通知投递，`dealers` 的企业地址，`inventory`/`orders` 的库存预占与幂等标记同样落在 Redis。规则：Redis 作为持久层的数据一律不设 TTL 到期清理，只有真正的缓存才允许过期删除；购物车 `expires_at` 是业务字段由应用层判断。PostgreSQL 保留 30 张核心表，承载表单提交与库存余额（预占在 PG 事务内扣减）。改动持久化语义前先核对 schema.prisma 表清单与 Redis 键（`REDIS_KEY_PREFIX`）。
 
 ## 横向能力
 

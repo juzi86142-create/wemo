@@ -2,7 +2,7 @@
 
 - 用户、会话、角色与用户角色（权限覆盖 `user_roles.overrides`）为核心身份表。
 - 邮箱唯一性、活跃会话检索和软归档（`users.archived_at`）由索引与服务层共同保证。
-- 演示模式已移除独立表：地址本、订阅、通知偏好、数据导出工单（收藏亦不落库）——API 相应接口为 stub（列表空、写抛「Demo模式：暂不支持…」或空实现），订单/经销商地址改由快照或配置 Json 承担。
+- 地址本、订阅、通知投递与数据请求持久化在 Redis（`wemo:user:{id}:addresses`、`wemo:user:{id}:subscriptions`、`wemo:user:{id}:data-requests`、`wemo:notifications:deliveries`），不落 PostgreSQL；收藏与通知偏好暂无落库（待定）。订单收货地址以订单快照承担，经销商地址见 dealers 域。
 
 ## 现有表
 

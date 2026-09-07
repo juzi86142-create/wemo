@@ -3,7 +3,7 @@ import type { JsonValue, PlatformSetting, PlatformSettingMutation } from "@wemo/
 import type { DatabaseClient } from "@wemo/database";
 
 import { DATABASE_CLIENT } from "../../database/database.constants";
-import { ApiHttpException } from "../../http/api-http.exception";
+import { WemoHttpException } from "../../runtime/validation";
 import type { SettingsQuery, SettingsRepository } from "./settings.repository";
 
 type SystemSettingRow = NonNullable<
@@ -43,11 +43,9 @@ export class SettingsPrismaRepository implements SettingsRepository {
       existing &&
       existing.version !== input.expected_version
     ) {
-      throw new ApiHttpException(
+      throw new WemoHttpException(
         "SETTING_VERSION_CONFLICT",
-        "设置已被其他请求修改，请刷新后重试",
-        409,
-      );
+        "设置已被其他请求修改，请刷新后重试", [], 409);
     }
 
     const nextVersion = existing

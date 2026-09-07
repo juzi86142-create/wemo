@@ -10,7 +10,7 @@ import type { FastifyRequest } from "fastify";
 import { RequestContextStore } from "../runtime/request-context.store";
 import { createRequestContext } from "../runtime/request-context.store";
 
-/** 建立请求上下文并透传 x-request-id 响应头 */
+/** 在控制器执行前建立请求上下文并透传 x-request-id 响应头 */
 @Injectable()
 export class RequestIdInterceptor implements NestInterceptor {
   constructor(
@@ -24,11 +24,9 @@ export class RequestIdInterceptor implements NestInterceptor {
     const reply = http.getResponse<{
       header(name: string, value: string): void;
     }>();
-
     const requestContext = createRequestContext(request);
     reply.header("x-request-id", requestContext.request_id);
     this.requestContext.enterWith(requestContext);
-
     return next.handle();
   }
 }

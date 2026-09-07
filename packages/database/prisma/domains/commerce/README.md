@@ -1,7 +1,7 @@
 # Commerce 数据
 
-- 订单/行、报价/版本、支付、发货、退货申请是当前交易核心；购物车与行已不落库——演示模式下 `carts`/`cart_items` 表已移除，购物车状态由客户端承担（API `cart` 模块为 stub，`previewPricing` 仍按 `prices` 表真实计价）。
-- 订单保存地址、价格来源与商品行快照（`address_snapshot`/`pricing_snapshot`/`detail_snapshot`），历史展示不依赖当前商品或规则；地址本等独立表已移除。
+- 订单/行、报价/版本、支付、发货、退货申请是当前交易核心，落 PostgreSQL；购物车与行持久化在 Redis（`wemo:cart:{id}` 头部与 `wemo:cart:{id}:items` 行、`wemo:cart:by-user:{userId}` 登录用户索引），`cart.previewPricing` 按 `prices` 表真实计价。
+- 订单保存地址、价格来源与商品行快照（`address_snapshot`/`pricing_snapshot`/`detail_snapshot`），历史展示不依赖当前商品或规则；地址本不落 PostgreSQL，持久化在 Redis（见 identity 域）。
 - user/company/variant/order/quote 等关联均为逻辑 ID 并建立访问索引，服务层负责边界和存在性。
 
 ## 现有表

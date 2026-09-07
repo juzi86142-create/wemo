@@ -10,4 +10,4 @@ pnpm --filter @wemo/contracts test
 
 生产入口位于 `dist/index.js`；根目录 `pnpm dev` 会先构建并持续监听本包。
 
-领域说明见 `src/*/README.md`（common、identity、catalog、dealers、commerce、content、platform）。契约保留完整领域形状（含 Cart/InventoryReservation/Notification/Address 等）；演示模式下部分契约对应的表已从 `schema.prisma` 移除、API 以 stub 语义占位（读空/写抛「Demo模式：暂不支持…」）——契约是否落库以 API 模块与 `packages/database/prisma/schema.prisma` 为准。
+领域说明见 `src/*/README.md`（common、identity、catalog、dealers、commerce、content、platform）。契约保留完整领域形状（含 Cart/InventoryReservation/Notification/Address 等）。落库现状：核心/支撑契约数据落 PostgreSQL（`schema.prisma`）；购物车、库存预占、地址本、订阅、通知模板与投递、分析事件、集成配置、作业执行与报表定义/结果等持久化在 Redis（键前缀 `wemo:`，实现见 `apps/api` 各模块 redis repository）——契约落点以 API 模块与 `packages/database/prisma/schema.prisma` 为准。

@@ -21,12 +21,12 @@
 | 需求第 11 章：搜索推荐        | search/analytics 与搜索前端                                                                        | 搜索质量、授权过滤、无结果分析                          | planned     |
 | 需求第 12 章：多语言 SEO 分享 | localization/seo 与 `apps/storefront/src/features/platform`                                        | 翻译状态、URL、hreflang、Schema、Sitemap                | in-progress |
 | 需求第 13 章：UI/UX           | `packages/ui` 与 `apps/storefront`                                                                 | 组件、响应式、表单、WCAG 2.2 AA                         | planned     |
-| 需求第 14 章：数据模型        | `packages/database`、`packages/contracts`                                                          | 核心实体/字段字典（演示模式仅保留 30 张核心/支撑表）；零物理外键；购物车/预占/订阅/地址/通知/分析事件/集成/作业/报表等表已移除，契约保留、对应 API 为 stub | in-progress |
-| 需求第 15 章：接口集成        | `apps/api/src/modules/integrations`、`packages/contracts`                                          | Adapter、版本 API、错误结构、幂等任务（演示模式范围：outbox/集成表已移除，integrations/jobs 为 stub——列表空、写抛 demo 错误；统一错误结构与 request_id 真实生效） | in-progress |
+| 需求第 14 章：数据模型        | `packages/database`、`packages/contracts`                                                          | 核心实体/字段字典（30 张核心/支撑表落 PostgreSQL）；零物理外键；购物车/预占/订阅/地址/通知/分析事件/集成/作业/报表等非核心数据持久化在 Redis（键前缀 `wemo:`，不设 TTL），契约与实现对齐 | in-progress |
+| 需求第 15 章：接口集成        | `apps/api/src/modules/integrations`、`packages/contracts`                                          | Adapter、版本 API、错误结构、幂等任务（集成配置与作业执行记录持久化在 Redis——`integrations`、`jobs:runs`；统一错误结构与 request_id 真实生效） | in-progress |
 | 需求第 16 章：安全隐私合规    | auth/identity/media/payments/forms                                                                 | OWASP、隐私同意、儿童数据禁收、PCI 范围确认             | planned     |
 | 需求第 17 章：性能可用性运维  | 全部应用、基础设施                                                                                 | CWV、P95、缓存、备份恢复、监控告警                      | in-progress |
 | 需求第 18 章：数据分析        | analytics/reports                                                                                  | 事件字典与六类运营报表                                  | done        |
-| 需求第 19 章：通知            | notifications                                                                                      | 多语言模板、变量校验、追踪重试与收件组（演示模式范围：模板/投递表已移除，notifications 为 stub——模板列表空、写入抛 demo 错误、recordDelivery 合成占位） | in-progress |
+| 需求第 19 章：通知            | notifications                                                                                      | 多语言模板、变量校验、追踪重试与收件组（通知模板与投递持久化在 Redis——`notifications:templates`、`notifications:deliveries`） | in-progress |
 | 需求第 20 章：迁移上线        | 迁移脚本与部署配置                                                                                 | `www.wemovetoy.com` 资产/URL 盘点、映射、环境和上线清单 | planned     |
 | 需求第 21 章：验收            | 全部工作区测试                                                                                     | 功能、兼容性、无障碍、性能、安全证据包                  | done        |
 | 需求第 22 章：技术架构        | 根工程、单前端、单体 API、共享包                                                                   | 前后端分离、SSR、PostgreSQL、Redis、存储、监控          | done        |
@@ -106,8 +106,9 @@
 
 | 模块切片 | 已实现范围 | 代码与测试入口 | 结果 |
 | --- | --- | --- | --- |
-| `packages/database` | 按需求第 14 章核心实体精简为 30 张表（移除购物车/收藏/订阅/通知/分析/集成/作业/报表等 18 张演示非必需表）；零物理外键 | `packages/database/prisma/schema.prisma`、`packages/database/prisma/migrations/20260906163534_init`、`packages/database/prisma/migrations/20260906163841_add_form_submissions`、`packages/database/prisma/migrations/20260906165557_add_return_requests` | `pnpm check:database` 通过；真实 PostgreSQL 17 已部署 |
-| `apps/api`（24 模块） | Mock StateStore 全部替换为 Prisma repository；6 个演示 stub 模块（analytics/cart/notifications/integrations/jobs/reports）；seed 演示数据 | `apps/api/src/modules/catalog/catalog.prisma-repository.ts`、`apps/api/src/seed.ts`、`apps/api/tests/integration/api.integration.test.ts` | typecheck 0 错误；Vitest 36 passed + 1 skipped；HTTP 冒烟（health/languages/markets/products/seo/navigation）全部 200 |
+| `packages/database` | 按需求第 14 章核心实体精简为 30 张表（购物车/收藏/订阅/通知/分析/集成/作业/报表等 18 张非核心表不落 PostgreSQL，对应数据持久化在 Redis，见下）；零物理外键 | `packages/database/prisma/schema.prisma`、`packages/database/prisma/migrations/20260906163534_init`、`packages/database/prisma/migrations/20260906163841_add_form_submissions`、`packages/database/prisma/migrations/20260906165557_add_return_requests` | `pnpm check:database` 通过；真实 PostgreSQL 17 已部署 |
+| `apps/api`（24 模块） | Mock StateStore 全部替换为 Prisma repository；6 个原 stub 模块（analytics/cart/notifications/integrations/jobs/reports）改为 Redis 真实持久化；seed 演示数据 | `apps/api/src/modules/catalog/catalog.prisma-repository.ts`、`apps/api/src/seed.ts`、`apps/api/tests/integration/api.integration.test.ts` | typecheck 0 错误；Vitest 36 passed + 1 skipped；HTTP 冒烟（health/languages/markets/products/seo/navigation）全部 200 |
+| `apps/api` Redis 持久化层 | 全局 RedisModule（ioredis 6）经 `REDIS_CLIENT` 令牌向全模块注入连接，键统一加 `wemo:` 前缀；cart/analytics/notifications/integrations/jobs/reports 六模块与 identity（地址/订阅/数据请求/通知投递）、auth（订阅/通知投递）、dealers（企业地址）、inventory/orders（库存预占与幂等标记）真实读写 Redis；持久层键一律不设 TTL（仅真缓存可过期删除），购物车 `expires_at` 由应用层判断；库存预占在 PG 事务内扣减余额、预占记录写入 Redis | `apps/api/src/database/redis.module.ts`、`apps/api/src/database/redis.constants.ts`、`apps/api/src/modules/*/*.redis-repository.ts` | 代码已落地（repository 经 typecheck）；Redis 读写测试待补，见 `apps/api/tests/README.md` 覆盖表 |
 
 ## 证据登记模板
 

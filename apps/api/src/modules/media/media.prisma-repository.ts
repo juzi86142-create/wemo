@@ -52,7 +52,6 @@ export class MediaPrismaRepository implements MediaRepository {
   }
 
   async createAsset(input: MediaAssetCreateInput): Promise<MediaAsset> {
-    // Demo：不上传二进制，仅保存元数据，file_key 直接入库
     const row = await this.database.mediaAsset.create({
       data: {
         type: input.type,
@@ -79,7 +78,6 @@ export class MediaPrismaRepository implements MediaRepository {
       alt: row.alt,
       visibility: row.visibility as MediaAsset["visibility"],
       tags: [],
-      // 表内无 versions/updated_at，demo 以当前行作为唯一版本
       versions: [
         {
           version: row.version,

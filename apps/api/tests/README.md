@@ -4,7 +4,7 @@
 
 - ✅ **只覆盖正常流程** - 测试Happy Path即可
 - ✅ **Demo级别** - 不需要复杂的错误场景
-- ✅ **本地运行** - 假设本地环境有PostgreSQL和MinIO
+- ✅ **本地运行** - 假设本地环境有PostgreSQL、MinIO和Redis（默认 `redis://localhost:6380`）
 
 ## 测试分类
 
@@ -96,7 +96,7 @@ RUN_DATABASE_INTEGRATION=1 pnpm test
 | Seo | ⏳ | ⏳ | ⏳ |
 | Settings | ⏳ | ⏳ | ⏳ |
 
-演示模式说明：⏳ 模块已通过 typecheck 并有可运行 API，但测试未补齐；其中 analytics/cart/notifications/integrations/jobs/reports 为 stub 模块（读空/写抛「Demo模式：暂不支持…」），补测试时按 stub 语义写断言。
+覆盖说明：⏳ 模块已通过 typecheck 并有可运行 API，但测试未补齐；analytics/cart/notifications/integrations/jobs/reports 六个 Redis 持久化模块（连同 identity/dealers/inventory/orders 的 Redis 部分，见 `src/modules/README.md`）待补 Redis 读写测试，断言按真实持久化语义写（需本地 Redis，默认连接 `redis://localhost:6380`，可用 `REDIS_URL` 覆盖）。
 
 ## 测试数据管理
 
