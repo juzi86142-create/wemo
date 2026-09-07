@@ -28,6 +28,12 @@ export class InventoryController {
     return this.inventoryService.listBalances(query);
   }
 
+  @Post("admin/inventory/balances")
+  @HttpCode(200)
+  adjustBalance(@Body() body: unknown) {
+    return this.inventoryService.adjustBalance(body);
+  }
+
   @Get("admin/inventory/reservations")
   listReservations(@Query() query: unknown) {
     return this.inventoryService.listReservations(query);

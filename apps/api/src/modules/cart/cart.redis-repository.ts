@@ -39,6 +39,10 @@ function userIndexKey(userId: number): string {
   return `${PREFIX}:by-user:${userId}`;
 }
 
+function guestIndexKey(guestCartId: string): string {
+  return `${PREFIX}:by-guest:${guestCartId}`;
+}
+
 function cartIndexKey(): string {
   return `${PREFIX}:index`;
 }
@@ -57,10 +61,22 @@ export class CartRedisRepository implements CartRepository {
     @Inject(DATABASE_CLIENT) private readonly database: DatabaseClient,
   ) {}
 
-  /** 获取或创建购物车 登录用户复用已有购物车 游客新建 */
+  async isMarketB2cEnabled(market: string): Promise<boolean> {
+    const row = await this.database.market.findUnique({ where: { code: market } });
+    const settings = (row?.settings ?? {}) as Record<string, unknown>;
+    return settings.b2c_enabled !== false;
+  }
+
+  /** 获取或创建购物车 登录用户按用户索引复用 游客按本地保存的购物车标识复用 需求 5.2 */
   async getOrCreateCart(ctx: CartContext): Promise<Cart> {
     if (ctx.user_id !== null) {
       const existingId = await this.redis.get(userIndexKey(ctx.user_id));
+      if (existingId !== null) {
+        const cart = await this.loadCart(Number(existingId));
+        if (cart) return cart;
+      }
+    } else if (ctx.guest_cart_id !== null) {
+      const existingId = await this.redis.get(guestIndexKey(ctx.guest_cart_id));
       if (existingId !== null) {
         const cart = await this.loadCart(Number(existingId));
         if (cart) return cart;
@@ -88,6 +104,8 @@ export class CartRedisRepository implements CartRepository {
     await this.redis.sadd(cartIndexKey(), String(id));
     if (ctx.user_id !== null) {
       await this.redis.set(userIndexKey(ctx.user_id), String(id));
+    } else if (ctx.guest_cart_id !== null) {
+      await this.redis.set(guestIndexKey(ctx.guest_cart_id), String(id));
     }
     return cart;
   }
@@ -273,6 +291,7 @@ export class CartRedisRepository implements CartRepository {
         market: source.market,
         currency: source.currency,
         dealer_company_id: undefined,
+        guest_cart_id: null,
       })
     ).id;
   }

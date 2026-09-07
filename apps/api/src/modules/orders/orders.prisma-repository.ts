@@ -216,6 +216,19 @@ export class OrdersPrismaRepository implements OrdersRepository {
     };
   }
 
+  async getMarketCommerceSettings(
+    market: string,
+  ): Promise<{ b2c_enabled: boolean; dealer_enabled: boolean }> {
+    const row = await this.database.market.findUnique({
+      where: { code: market },
+    });
+    const settings = (row?.settings ?? {}) as Record<string, unknown>;
+    return {
+      b2c_enabled: settings.b2c_enabled !== false,
+      dealer_enabled: settings.dealer_enabled !== false,
+    };
+  }
+
   async getVariantIdentity(
     variantIds: number[],
   ): Promise<Map<number, { sku: string; name: string; product_id: number }>> {

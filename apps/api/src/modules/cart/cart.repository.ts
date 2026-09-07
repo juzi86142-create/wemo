@@ -22,6 +22,8 @@ export type CartContext = {
   market: string;
   currency: string;
   dealer_company_id: number | undefined;
+  /** 游客购物车标识 客户端本地保存 需求 5.2 */
+  guest_cart_id: string | null;
 };
 
 export type CartPage = {
@@ -58,6 +60,8 @@ export type CartPreviewPricingResult = {
 
 export interface CartRepository {
   getOrCreateCart(ctx: CartContext): Promise<Cart>;
+  /** 市场零售开关 需求 5.2 关闭时禁止游客与用户加购 */
+  isMarketB2cEnabled(market: string): Promise<boolean>;
   listCarts(query: CartListQuery): Promise<CartPage>;
   upsertCartItem(cartId: number, input: CartItemPricingInput): Promise<Cart>;
   removeCartItem(cartId: number, itemId: number): Promise<void>;

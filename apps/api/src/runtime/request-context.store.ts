@@ -58,6 +58,7 @@ export function createRequestContext(
     ip: request.ip ?? null,
     user_agent: headerValue(request.headers, "user-agent") ?? null,
     session_token: sessionToken,
+    cart_id: headerValue(request.headers, "x-wemo-cart-id") ?? null,
     actor,
   };
 
@@ -123,5 +124,9 @@ export class RequestContextStore {
 
   getSessionToken(): string | null {
     return this.getContext()?.session_token ?? null;
+  }
+
+  getCartId(): string | null {
+    return this.getContext()?.cart_id ?? null;
   }
 }

@@ -1,7 +1,9 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import {
+  InventoryAdjustSchema,
   InventoryBalanceListQuerySchema,
   InventoryBalanceListResponseSchema,
+  InventoryBalanceMutationResponseSchema,
   InventoryReservationCreateSchema,
   InventoryReservationListQuerySchema,
   InventoryReservationListResponseSchema,
@@ -51,6 +53,19 @@ export class InventoryService {
     const input = parseInput(InventoryReservationCreateSchema, body);
     const item = await this.repository.createReservation(input);
     return InventoryReservationMutationResponseSchema.parse({
+      request_id: context.request_id,
+      item,
+    });
+  }
+
+  /** 库存盘点 需求 7.6 库存来源可为后台手工 */
+  async adjustBalance(body: unknown) {
+    this.authorization.requireStaffPermission("inventory:read");
+    const context = this.requestContext.requireContext();
+    const input = parseInput(InventoryAdjustSchema, body);
+    const item = await this.repository.adjustBalance(input);
+
+    return InventoryBalanceMutationResponseSchema.parse({
       request_id: context.request_id,
       item,
     });

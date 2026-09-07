@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import {
   CartItemUpsertSchema,
   CartListQuerySchema,
@@ -28,6 +33,7 @@ type CartRuntimeContext = {
   market: string;
   currency: string;
   dealer_company_id: number | undefined;
+  guest_cart_id: string | null;
 };
 
 @Injectable()
@@ -62,6 +68,7 @@ export class CartService {
         actor?.audience === "dealer" && actor.company_id
           ? actor.company_id
           : undefined,
+      guest_cart_id: channel === "guest" ? this.requestContext.getCartId() : null,
     };
   }
 
@@ -87,6 +94,13 @@ export class CartService {
     const context = this.requestContext.requireContext();
     const ctx = this.resolveContext();
     const input = parseInput(CartItemUpsertSchema, body);
+    // 市场零售开关 需求 5.2 关闭时游客与用户不可加购
+    if (ctx.channel !== "dealer") {
+      const b2cEnabled = await this.cartRepository.isMarketB2cEnabled(ctx.market);
+      if (!b2cEnabled) {
+        throw new ForbiddenException("当前市场未开启零售交易");
+      }
+    }
     const preview = await this.pricingRepository.previewPricing({
       items: [{ variant_id: input.variant_id, quantity: input.quantity }],
       market: ctx.market,

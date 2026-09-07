@@ -353,6 +353,17 @@ export const InventoryBalanceListQuerySchema = PageListSchema.extend({
   warehouse_code: z.string().min(1).optional(),
 });
 
+/** 库存盘点/手工调整 需求 7.6 库存来源可为后台手工 */
+export const InventoryAdjustSchema = z
+  .object({
+    variant_id: EntityIdSchema,
+    market: z.string().min(1),
+    warehouse_code: z.string().min(1),
+    on_hand: z.number().int().nonnegative(),
+    source: z.string().min(1),
+  })
+  .strict();
+
 /** 折扣码 需求 ADM-PR-004 与 5.2 结算优惠码 */
 export const CouponKindSchema = z.enum(["percent", "fixed", "free_shipping"]);
 
@@ -432,6 +443,9 @@ export const ShipmentMutationResponseSchema = createItemResponseSchema(ShipmentS
 
 export const InventoryBalanceListResponseSchema =
   createListResponseSchema(InventoryBalanceSchema);
+
+export const InventoryBalanceMutationResponseSchema =
+  createItemResponseSchema(InventoryBalanceSchema);
 
 export const InventoryReservationSchema = z
   .object({

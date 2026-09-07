@@ -82,14 +82,37 @@ async function seedMarkets() {
     const existing = await database.market.findUnique({
       where: { code: market.code },
     });
-    if (existing) continue;
+    if (existing) {
+      // 存量市场补全交易开关配置 其余数据不动
+      const settings = (existing.settings ?? {}) as Record<string, unknown>;
+      if (
+        typeof settings.b2c_enabled !== "boolean" ||
+        typeof settings.dealer_enabled !== "boolean"
+      ) {
+        await database.market.update({
+          where: { id: existing.id },
+          data: {
+            settings: {
+              ...settings,
+              b2c_enabled: true,
+              dealer_enabled: true,
+            } as never,
+          },
+        });
+      }
+      continue;
+    }
     const createdMarket = await database.market.create({
       data: {
         code: market.code,
         defaultLocale: market.locales.find((locale) => locale.isDefault)!.locale,
         currency: market.currency,
         timezone: market.timezone,
-        settings: { fallback_policy: market.fallbackPolicy },
+        settings: {
+          fallback_policy: market.fallbackPolicy,
+          b2c_enabled: true,
+          dealer_enabled: true,
+        },
         status: "active",
       },
     });

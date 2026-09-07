@@ -4,6 +4,7 @@ import type { DatabaseClient } from "@wemo/database";
 
 import {
   INVENTORY_REPOSITORY,
+  type InventoryAdjustInput,
   type InventoryRepository,
 } from "./inventory.repository";
 import type {
@@ -194,6 +195,14 @@ export class InventoryPrismaRepository implements InventoryRepository {
       (raw) => JSON.parse(raw) as InventoryReservation,
     );
     if (!reservation || reservation.status !== "active") return null;
+    // 预占超时读取侧释放 需求 9.3
+    if (
+      reservation.expires_at !== null &&
+      new Date(reservation.expires_at) < new Date()
+    ) {
+      await this.releaseReservation(reservationId);
+      return null;
+    }
 
     const confirmed: InventoryReservation = {
       ...reservation,
@@ -202,6 +211,42 @@ export class InventoryPrismaRepository implements InventoryRepository {
     };
     await writeHashObject(this.redis, RESERVATIONS_KEY, reservationId, confirmed);
     return confirmed;
+  }
+
+  /** 库存盘点 手工调整在库量 可售量按在库减已预占计算 */
+  async adjustBalance(input: InventoryAdjustInput): Promise<InventoryBalance> {
+    const existing = await this.database.inventoryBalance.findFirst({
+      where: {
+        variantId: input.variant_id,
+        market: input.market,
+        warehouseCode: input.warehouse_code,
+      },
+    });
+
+    if (existing) {
+      const updated = await this.database.inventoryBalance.update({
+        where: { id: existing.id },
+        data: {
+          onHand: input.on_hand,
+          available: input.on_hand - existing.reserved,
+          source: input.source,
+        },
+      });
+      return this.mapBalance(updated);
+    }
+
+    const created = await this.database.inventoryBalance.create({
+      data: {
+        variantId: input.variant_id,
+        market: input.market,
+        warehouseCode: input.warehouse_code,
+        onHand: input.on_hand,
+        available: input.on_hand,
+        reserved: 0,
+        source: input.source,
+      },
+    });
+    return this.mapBalance(created);
   }
 
   private mapBalance(balance: any): InventoryBalance {

@@ -194,6 +194,16 @@ export class OrdersService {
     if (channel === "b2b" && !actor?.company_id && actor?.audience !== "staff") {
       throw new ForbiddenException("B2B 订单需要企业上下文");
     }
+    // 市场交易开关 需求 5.2/ACC-005 关闭时拒绝对应渠道下单
+    const commerceSettings = await this.repository.getMarketCommerceSettings(
+      context.market,
+    );
+    if (channel === "b2c" && !commerceSettings.b2c_enabled) {
+      throw new ForbiddenException("当前市场未开启零售交易");
+    }
+    if (channel === "b2b" && !commerceSettings.dealer_enabled) {
+      throw new ForbiddenException("当前市场未开启经销商交易");
+    }
 
     const companyId =
       channel === "b2b"

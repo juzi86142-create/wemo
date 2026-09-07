@@ -40,6 +40,10 @@ export interface OrdersRepository {
     actorId: number | null,
     note?: string,
   ): Promise<Order>;
+  /** 市场交易开关 需求 5.2/ACC-005 按市场关闭零售或经销商交易 */
+  getMarketCommerceSettings(
+    market: string,
+  ): Promise<{ b2c_enabled: boolean; dealer_enabled: boolean }>;
   /** 变体标识快照 订单行固化 SKU 与商品名 并携带所属商品用于折扣码商品范围校验 */
   getVariantIdentity(
     variantIds: number[],
