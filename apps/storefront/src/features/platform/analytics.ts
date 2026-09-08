@@ -7,6 +7,8 @@ export const analyticsEvents = {
   beginCheckout: "begin_checkout",
   checkoutSuccess: "checkout_success",
   checkoutFailure: "checkout_failure",
+  dealerApplyStart: "dealer_apply_start",
+  dealerApplySubmit: "dealer_apply_submit",
 } as const;
 
 export type AnalyticsEvent = (typeof analyticsEvents)[keyof typeof analyticsEvents];

@@ -9,6 +9,11 @@ describe("checkout analytics", () => {
     expect(analyticsEvents.checkoutFailure).toBe("checkout_failure");
   });
 
+  it("exposes stable dealer application event names", () => {
+    expect(analyticsEvents.dealerApplyStart).toBe("dealer_apply_start");
+    expect(analyticsEvents.dealerApplySubmit).toBe("dealer_apply_submit");
+  });
+
   it("emits only scalar checkout properties in the browser", () => {
     const dispatchEvent = vi.fn();
     vi.stubGlobal("window", { dispatchEvent });
