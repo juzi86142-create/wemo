@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { clearSessionToken } from "./api-client";
+import { CartCount } from "../commerce/cart-count";
 
 const links = [
   ["Products", "/products"],
@@ -36,7 +37,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
           <Link href="/search" className="header-link">Search</Link>
           <Link href="/login" className="header-link">Account</Link>
           <button className="header-logout" type="button" onClick={logout}>Sign out</button>
-          <Link href="/cart" className="cart-link" aria-label="Shopping cart">Cart <span>0</span></Link>
+          <Link href="/cart" className="cart-link" aria-label="Shopping cart">Cart <CartCount /></Link>
           <button
             className="menu-button"
             type="button"

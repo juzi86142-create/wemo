@@ -277,6 +277,7 @@ p { line-height: 1.55; }
 .detail-facts div { display: grid; gap: 7px; }
 .detail-facts span { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .detail-facts strong { font-size: 14px; font-weight: 600; }
+.add-to-cart-action { display: grid; gap: 10px; }
 .add-button { width: 100%; }
 .detail-accordion { margin-top: 28px; border-top: 1px solid var(--line); }
 .detail-accordion details { padding: 16px 0; border-bottom: 1px solid var(--line); }
@@ -403,6 +404,23 @@ summary { cursor: pointer; font-size: 14px; font-weight: 600; }
 .checkout-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 .checkout-form textarea { width: 100%; resize: vertical; padding: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); outline: 0; }
 .checkout-form textarea:focus { border-color: var(--ink); }
+.payment-method-note { margin: -4px 0 0; color: var(--muted); font-size: 12px; }
+.payment-method-list { display: grid; gap: 8px; }
+.payment-method { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 11px; align-items: start; padding: 13px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); cursor: pointer; }
+.payment-method.is-selected { border-color: var(--ink); background: var(--surface-low); }
+.payment-method input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--ink); }
+.payment-method span { display: grid; gap: 4px; }
+.payment-method strong { font-size: 13px; }
+.payment-method small { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.payment-billing-fields { margin-top: 2px; }
+.checkout-review { display: grid; gap: 13px; padding: 20px; border: 1px solid var(--blue); background: var(--blue-soft); }
+.checkout-review .eyebrow { margin-bottom: 0; color: var(--blue); }
+.checkout-review h2 { font-size: 22px; }
+.checkout-review dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.checkout-review dl div { display: grid; gap: 4px; }
+.checkout-review dt { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.checkout-review dd { margin: 0; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.checkout-review > p:last-child { margin: 0; color: var(--muted); font-size: 12px; }
 .checkout-error { margin: 0; padding: 13px; background: var(--coral-soft); color: #93000a; font-size: 12px; }
 .checkout-error span { display: block; margin-top: 5px; font-size: 10px; }
 .checkout-actions { display: flex; align-items: center; gap: 22px; margin-top: 8px; }

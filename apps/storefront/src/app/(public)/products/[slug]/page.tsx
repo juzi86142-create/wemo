@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { formatAgeRange, getPreviewProducts, getPublicProduct, ProductCard, ProductGallery } from "../../../../features/public-site";
 import { StatusPanel } from "../../../../features/platform";
+import { AddToCartButton } from "../../../../features/commerce/add-to-cart-button";
 
 type Params = { slug: string };
 
@@ -40,8 +41,8 @@ export default async function ProductDetailPage({ params }: { params: Promise<Pa
             <div><span>Best for</span><strong>{formatAgeRange(product.age_min, product.age_max)}</strong></div>
             <div><span>Made for</span><strong>{product.tags.slice(0, 2).join(" + ") || "Shared play"}</strong></div>
           </div>
-          <button className="button button-dark add-button" type="button">Add to cart <span aria-hidden="true">+</span></button>
-          {result.preview ? <p className="preview-note">Preview product. Cart actions will connect to the API when enabled.</p> : null}
+          <AddToCartButton variantId={product.variants[0]?.id} preview={result.preview} />
+          {result.preview ? <p className="preview-note">Preview product. Added cart records remain local until the live service is connected.</p> : null}
           <div className="detail-accordion">
             <details open><summary>Why families like it</summary><p>{product.short_description}</p></details>
             <details><summary>Product information</summary><p>{product.description ?? "Product contents and specifications will be supplied by the live catalogue."}</p></details>

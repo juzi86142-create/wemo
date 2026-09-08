@@ -6,7 +6,7 @@ const previewAllowed =
   process.env.NODE_ENV !== "production" ||
   process.env.NEXT_PUBLIC_STOREFRONT_PREVIEW === "true";
 
-const previewCart: Cart = {
+let previewCart: Cart = {
   id: 501,
   user_id: null,
   company_id: null,
@@ -119,6 +119,19 @@ export function removePreviewItem(cart: Cart, itemId: number): Cart {
   const items = cart.items.filter((item) => item.id !== itemId);
   const subtotal = items.reduce((total, item) => total + item.line_total_minor, 0);
   return { ...cart, items, subtotal_minor: subtotal, total_minor: subtotal };
+}
+
+export function addPreviewCartItem(variantId: number, quantity: number) {
+  const item = previewCart.items.find((entry) => entry.variant_id === variantId);
+  if (!item || quantity < 1) return null;
+
+  previewCart = replacePreviewQuantity(previewCart, item.id, item.quantity + quantity);
+  return previewCart;
+}
+
+export function setPreviewCart(cart: Cart) {
+  previewCart = cart;
+  return previewCart;
 }
 
 export function getPreviewCart() {

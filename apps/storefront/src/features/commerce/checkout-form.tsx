@@ -13,6 +13,7 @@ import { createCheckout } from "./checkout-adapter";
 import { isContractMockMode } from "./contract-mock-mode";
 import { writeOrderSuccessSnapshot } from "./order-success-snapshot";
 import { validateCheckoutFields, type CheckoutFormValues } from "./checkout-validation";
+import { PaymentMethods, type PaymentSelection, validatePaymentSelection } from "./payment-methods";
 
 const emptyValues: CheckoutFormValues = {
   name: "",
@@ -27,6 +28,8 @@ const emptyValues: CheckoutFormValues = {
   couponCode: "",
   note: "",
 };
+
+const emptyPayment: PaymentSelection = { method: "" };
 
 function textFromPayload(payload: unknown, keys: string[]) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
@@ -69,19 +72,36 @@ export function CheckoutForm({
   const [formError, setFormError] = useState<string | undefined>();
   const [requestId, setRequestId] = useState<string | undefined>();
   const [pending, setPending] = useState(false);
+  const [payment, setPayment] = useState<PaymentSelection>(emptyPayment);
+  const [reviewing, setReviewing] = useState(false);
 
   function update(key: keyof CheckoutFormValues, value: string) {
     setValues((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: "" }));
     setFormError(undefined);
     setRequestId(undefined);
+    setReviewing(false);
+  }
+
+  function updatePayment(nextPayment: PaymentSelection) {
+    setPayment(nextPayment);
+    setErrors((current) => ({ ...current, method: "", billingName: "", billingAddress: "", purchaseOrder: "" }));
+    setFormError(undefined);
+    setRequestId(undefined);
+    setReviewing(false);
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nextErrors = validateCheckoutFields(values);
+    const nextErrors = { ...validateCheckoutFields(values), ...validatePaymentSelection(payment) };
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
+
+    if (!reviewing) {
+      setReviewing(true);
+      setFormError(undefined);
+      return;
+    }
 
     const input = {
       items: cart.items.map((item) => ({ variant_id: item.variant_id, quantity: item.quantity })),
@@ -157,13 +177,15 @@ export function CheckoutForm({
               <Field id="checkout-country" label="Country" value={values.country} error={errors.country} autoComplete="shipping country" onChange={(value) => update("country", value)} />
             </div>
           </fieldset>
+          <PaymentMethods selection={payment} errors={errors} onChange={updatePayment} />
           <fieldset className="checkout-section">
             <legend>Order notes</legend>
             <Field id="checkout-coupon" label="Coupon code (optional)" value={values.couponCode} error={errors.couponCode} onChange={(value) => update("couponCode", value)} />
             <div className="field"><label htmlFor="checkout-note">Note (optional)</label><textarea id="checkout-note" name="note" rows={4} value={values.note} onChange={(event) => update("note", event.target.value)} /></div>
           </fieldset>
+          {reviewing ? <section className="checkout-review" aria-labelledby="checkout-review-title"><p className="eyebrow">REVIEW</p><h2 id="checkout-review-title">Check your details before submitting.</h2><dl><div><dt>Payment</dt><dd>{payment.method === "card" ? "Card" : payment.method === "bank_transfer" ? "Bank transfer" : "Invoice / PO"}</dd></div><div><dt>Delivery</dt><dd>{values.addressLine1.trim()}, {values.city.trim()}</dd></div></dl><p>The live service confirms stock, shipping, tax, payment, and your final order total after you submit.</p></section> : null}
           {formError ? <p className="checkout-error" role="alert">{formError}{requestId ? <span> Request ID: {requestId}</span> : null}</p> : null}
-          <div className="checkout-actions"><button className="button button-dark" type="submit" disabled={pending}>{pending ? "Placing order..." : "Place order"}<span aria-hidden="true">↗</span></button><Link className="arrow-link" href="/cart">Back to cart <span aria-hidden="true">↗</span></Link></div>
+          <div className="checkout-actions"><button className="button button-dark" type="submit" disabled={pending}>{pending ? "Placing order..." : reviewing ? "Place order" : "Review order"}<span aria-hidden="true">↗</span></button>{reviewing ? <button className="text-button" type="button" disabled={pending} onClick={() => setReviewing(false)}>Edit details</button> : null}<Link className="arrow-link" href="/cart">Back to cart <span aria-hidden="true">↗</span></Link></div>
         </form>
       </div>
       <aside className="checkout-summary" aria-labelledby="checkout-summary-title">
