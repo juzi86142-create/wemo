@@ -53,3 +53,13 @@ DONE
 - Catalog availability, quote actions, order actions, download permissions, and cart feedback are deliberately labeled local demo behavior; no dealer backend request or production success claim was added.
 - The focused test covers the required quick-order validation. Client interaction behavior is manually represented through controlled React state, without a browser component test harness in this task scope.
 - Pre-existing user and automatic changes outside the Task 3 file list were preserved and remain separate from the implementation commit.
+
+## Review Fix Verification
+
+- Filtered quote/order details now always select a visible filtered record; regression coverage is in `dealer-action-panel.test.ts`.
+- The `Demo workspace` label is visible in the mobile workspace header.
+- Permitted download buttons now show local preparing/success feedback through `dealer-download-list.tsx`.
+- `pnpm --filter @wemo/storefront exec vitest run src/features/dealer`: 6 files, 15 tests passed.
+- `pnpm --filter @wemo/storefront typecheck`: passed.
+- `pnpm --filter @wemo/storefront build`: passed; 31 routes generated.
+- All seven dealer routes returned HTTP 200 with an h1 and visible Demo workspace label.

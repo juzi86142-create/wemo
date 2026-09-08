@@ -9,6 +9,7 @@ export const dealerModule = {
 export * from "./dealer-adapter";
 export * from "./dealer-application-form";
 export * from "./dealer-action-panel";
+export * from "./dealer-download-list";
 export * from "./dealer-catalog";
 export * from "./dealer-display";
 export * from "./dealer-draft";

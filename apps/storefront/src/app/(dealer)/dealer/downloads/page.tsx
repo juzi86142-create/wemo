@@ -1,5 +1,5 @@
-import { DealerWorkspace, dealerDownloads } from "../../../../features/dealer";
+import { DealerDownloadList, DealerWorkspace } from "../../../../features/dealer";
 
 export default function DealerDownloadsPage() {
-  return <DealerWorkspace title="Files for the next move." description="See local demo access states for approved product, retail, and policy materials."><section className="dealer-workspace-panel" aria-labelledby="downloads-heading"><p className="eyebrow">DEALER RESOURCES</p><h2 id="downloads-heading">Downloads and access</h2><div className="dealer-download-list">{dealerDownloads.map((file) => <article key={file.title}><div><strong>{file.title}</strong><span>{file.detail}</span></div><b className={file.access === "Permitted" ? "dealer-status dealer-status-in-stock" : "dealer-status dealer-status-unavailable"}>{file.access}</b><button className="text-button" type="button" disabled={file.access !== "Permitted"}>{file.access === "Permitted" ? "Download demo file" : "Request access"}</button></article>)}</div><p className="dealer-panel-copy">Download buttons are visible demo states. Live permissions and files are provided by the dealer backend.</p></section></DealerWorkspace>;
+  return <DealerWorkspace title="Files for the next move." description="See local demo access states for approved product, retail, and policy materials."><DealerDownloadList /></DealerWorkspace>;
 }

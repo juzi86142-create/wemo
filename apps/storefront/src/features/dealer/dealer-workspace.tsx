@@ -32,6 +32,7 @@ export function DealerWorkspace({ title, description, children }: DealerWorkspac
       <header className="dealer-topbar">
         <button className="dealer-menu-button" type="button" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>Menu</button>
         <Link className="brand dealer-mobile-brand" href="/dealer">WEMOVE</Link>
+        <span className="dealer-mobile-demo-label">Demo workspace</span>
         <span className="dealer-mobile-status">{dealerCompany.status}</span>
       </header>
       {menuOpen ? <nav className="dealer-mobile-nav" aria-label="Dealer navigation">

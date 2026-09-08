@@ -589,6 +589,20 @@ summary { cursor: pointer; font-size: 14px; font-weight: 600; }
   .admin-main { padding-top: 40px; }.admin-heading h1 { font-size: 43px; }.admin-metric-grid, .admin-quick-links, .admin-form-grid { grid-template-columns: 1fr; }.admin-metric { min-height: 128px; }.admin-metric strong { margin-top: 18px; }.admin-table-toolbar, .admin-panel-heading { align-items: start; flex-direction: column; }.admin-search, .admin-search input { width: 100%; min-width: 0; }.admin-activity-list > div { grid-template-columns: 70px minmax(0, 1fr); }.admin-activity-list em { display: none; }.admin-settings-actions { grid-column: auto; align-items: stretch; }.admin-settings-actions .button { width: 100%; }
 }
 
+/* Dealer mobile shell and local download feedback. */
+.dealer-mobile-demo-label { display: none; }
+.dealer-download-action { display: grid; justify-items: start; gap: 5px; }
+.dealer-download-action .action-feedback { max-width: 240px; }
+
+@media (max-width: 960px) {
+  .dealer-mobile-demo-label { display: inline-flex; padding: 4px 6px; background: var(--lime); color: var(--ink); font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+}
+
+@media (max-width: 620px) {
+  .dealer-download-list article > div:first-child { grid-column: 1 / -1; }
+  .dealer-download-list .dealer-download-action { grid-column: 1 / -1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; }

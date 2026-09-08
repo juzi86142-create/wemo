@@ -20,6 +20,12 @@ export interface DealerActionRecord {
   updated: string;
 }
 
+export function getDealerActionSelection(rows: DealerActionRecord[], filter: string, selectedId: string) {
+  const filtered = rows.filter((row) => filter === "All" || row.status === filter);
+  const selected = filtered.find((row) => row.id === selectedId) ?? filtered[0];
+  return { filtered, selected };
+}
+
 export interface QuickOrderRow {
   sku: string;
   quantity: number;
