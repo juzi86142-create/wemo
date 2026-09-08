@@ -45,6 +45,12 @@ let previewCart: Cart = {
   created_at: "2026-01-01T00:00:00.000Z",
 };
 
+const previewVariantDetails: Record<number, { name: string; note: string; unitPriceMinor: number }> = {
+  1001: { name: "Roll & Play Bowling Set", note: "7 piece set", unitPriceMinor: 3200 },
+  1002: { name: "Steady Balance Board", note: "Indoor / outdoor", unitPriceMinor: 4400 },
+  1003: { name: "Orbit Target Toss", note: "10 piece set", unitPriceMinor: 3800 },
+};
+
 export interface CartResult {
   cart: Cart | null;
   error: ApiError | undefined;
@@ -123,7 +129,28 @@ export function removePreviewItem(cart: Cart, itemId: number): Cart {
 
 export function addPreviewCartItem(variantId: number, quantity: number) {
   const item = previewCart.items.find((entry) => entry.variant_id === variantId);
-  if (!item || quantity < 1) return null;
+  if (quantity < 1) return null;
+
+  if (!item) {
+    const details = previewVariantDetails[variantId];
+    if (!details) return null;
+    const nextId = Math.max(0, ...previewCart.items.map((entry) => entry.id)) + 1;
+    const newItem: CartItem = {
+      id: nextId,
+      variant_id: variantId,
+      quantity,
+      unit_price_minor: details.unitPriceMinor,
+      line_total_minor: details.unitPriceMinor * quantity,
+      currency: previewCart.currency,
+      snapshot: { name: details.name, note: details.note },
+      added_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const items = [...previewCart.items, newItem];
+    const subtotal = items.reduce((total, entry) => total + entry.line_total_minor, 0);
+    previewCart = { ...previewCart, items, subtotal_minor: subtotal, total_minor: subtotal, updated_at: new Date().toISOString() };
+    return previewCart;
+  }
 
   previewCart = replacePreviewQuantity(previewCart, item.id, item.quantity + quantity);
   return previewCart;

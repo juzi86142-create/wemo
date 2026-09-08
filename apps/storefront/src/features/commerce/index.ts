@@ -4,6 +4,7 @@ export * from "./cart-summary";
 export * from "./cart-view";
 export * from "./checkout-adapter";
 export * from "./checkout-form";
+export * from "./checkout-payload";
 export * from "./checkout-link";
 export * from "./checkout-validation";
 export * from "./order-success-snapshot";

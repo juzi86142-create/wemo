@@ -7,12 +7,12 @@ import { ApiError } from "../platform/api-client";
 import { ActionFeedback, type ActionFeedbackStatus } from "../platform";
 import { CartLineItem } from "./cart-line-item";
 import { CartSummary } from "./cart-summary";
-import { removeCartItem, removePreviewItem, replacePreviewQuantity, setPreviewCart, updateCartItem } from "./cart-adapter";
+import { getPreviewCart, removeCartItem, removePreviewItem, replacePreviewQuantity, setPreviewCart, updateCartItem } from "./cart-adapter";
 import { getCartItemCount, notifyCartChange } from "./cart-count";
 import { isContractMockMode } from "./contract-mock-mode";
 
 export function CartView({ initialCart, preview }: { initialCart: Cart; preview: boolean }) {
-  const [cart, setCart] = useState(initialCart);
+  const [cart, setCart] = useState(() => preview ? getPreviewCart() : initialCart);
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | undefined>();
   const [actionStatus, setActionStatus] = useState<ActionFeedbackStatus>("idle");

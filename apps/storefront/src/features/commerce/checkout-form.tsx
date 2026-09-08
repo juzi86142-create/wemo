@@ -10,6 +10,7 @@ import { ApiError } from "../platform/api-client";
 import { CheckoutCreateSchema } from "@wemo/contracts";
 import { formatMoney } from "./cart-adapter";
 import { createCheckout } from "./checkout-adapter";
+import { buildCheckoutInput } from "./checkout-payload";
 import { isContractMockMode } from "./contract-mock-mode";
 import { writeOrderSuccessSnapshot } from "./order-success-snapshot";
 import { validateCheckoutFields, type CheckoutFormValues } from "./checkout-validation";
@@ -103,24 +104,7 @@ export function CheckoutForm({
       return;
     }
 
-    const input = {
-      items: cart.items.map((item) => ({ variant_id: item.variant_id, quantity: item.quantity })),
-      contact: {
-        name: values.name.trim(),
-        email: values.email.trim(),
-        ...(values.phone.trim() ? { phone: values.phone.trim() } : {}),
-      },
-      shipping_address: {
-        line1: values.addressLine1.trim(),
-        ...(values.addressLine2.trim() ? { line2: values.addressLine2.trim() } : {}),
-        city: values.city.trim(),
-        ...(values.region.trim() ? { region: values.region.trim() } : {}),
-        postal_code: values.postalCode.trim(),
-        country: values.country.trim(),
-      },
-      ...(values.couponCode.trim() ? { coupon_code: values.couponCode.trim() } : {}),
-      ...(values.note.trim() ? { note: values.note.trim() } : {}),
-    };
+    const input = buildCheckoutInput(cart, values, payment);
 
     setPending(true);
     setFormError(undefined);

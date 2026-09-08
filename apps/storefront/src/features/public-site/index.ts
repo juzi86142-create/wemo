@@ -7,6 +7,12 @@ export const publicSiteModule = {
 } satisfies FrontendModuleManifest;
 
 export * from "./catalog-adapter";
+export * from "./contact-form";
+export * from "./contact-validation";
+export * from "./content-card";
+export * from "./content-fixtures";
 export * from "./filter-bar";
+export * from "./newsletter-form";
+export * from "./newsletter-validation";
 export * from "./product-card";
 export * from "./product-gallery";

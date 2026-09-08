@@ -6,10 +6,12 @@ import { useState } from "react";
 
 import { clearSessionToken } from "./api-client";
 import { CartCount } from "../commerce/cart-count";
+import { NewsletterForm } from "../public-site/newsletter-form";
 
 const links = [
   ["Products", "/products"],
   ["Play & Learn", "/support"],
+  ["Stories", "/content"],
   ["Dealers", "/dealers"],
   ["Support", "/support"],
 ] as const;
@@ -80,6 +82,14 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
         <div>
+          <h4>Stories</h4>
+          <nav className="footer-links" aria-label="Content links">
+            <Link href="/content">Play notes</Link>
+            <Link href="/content?category=Product%20care">Product care</Link>
+            <Link href="/content?category=Field%20notes">Field notes</Link>
+          </nav>
+        </div>
+        <div>
           <h4>Company</h4>
           <nav className="footer-links" aria-label="Company links">
             <Link href="/dealers">Dealers</Link>
@@ -90,11 +100,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
         <div className="footer-signup">
           <h4>More ways to move.</h4>
           <p>Quiet dispatches on active family movement, architectural play spaces, and new releases.</p>
-          <div className="footer-signup-row">
-            <label className="sr-only" htmlFor="footer-email">Email address</label>
-            <input id="footer-email" type="email" placeholder="Enter email address" />
-            <button type="button">Join</button>
-          </div>
+          <NewsletterForm />
         </div>
         <small>© 2026 WEMOVE SPORTS Co. All rights reserved. <span>Crafted for indoor &amp; outdoor longevity.</span></small>
       </footer>
