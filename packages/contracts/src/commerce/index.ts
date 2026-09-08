@@ -403,6 +403,34 @@ export const OrderCreateSchema = z
   })
   .strict();
 
+export const CheckoutCreateSchema = z
+  .object({
+    items: z
+      .array(
+        z
+          .object({
+            variant_id: EntityIdSchema,
+            quantity: z.number().int().positive(),
+          })
+          .strict(),
+      )
+      .min(1),
+    contact: z
+      .object({
+        email: z.string().trim().email(),
+        name: z.string().trim().min(1).max(120),
+        phone: z.string().trim().min(1).optional(),
+      })
+      .strict(),
+    shipping_address: JsonValueSchema,
+    billing_address: JsonValueSchema.optional(),
+    shipping_method: z.string().trim().min(1).optional(),
+    coupon_code: z.string().trim().min(1).optional(),
+    payment_method: z.string().trim().min(1).optional(),
+    note: z.string().min(1).optional(),
+  })
+  .strict();
+
 export const OrderListQuerySchema = PageListSchema.extend({
   channel: z.enum(["b2c", "b2b"]).optional(),
   status: OrderStatusSchema.optional(),
@@ -651,6 +679,7 @@ export type InventoryReservationListQuery = z.infer<
 export type Order = z.infer<typeof OrderSchema>;
 export type OrderItem = z.infer<typeof OrderItemSchema>;
 export type OrderCreateInput = z.infer<typeof OrderCreateSchema>;
+export type CheckoutCreateInput = z.infer<typeof CheckoutCreateSchema>;
 export type OrderListQuery = z.infer<typeof OrderListQuerySchema>;
 export type Payment = z.infer<typeof PaymentSchema>;
 export type PaymentCaptureInput = z.infer<typeof PaymentCaptureSchema>;

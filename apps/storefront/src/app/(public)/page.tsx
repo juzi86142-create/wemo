@@ -11,7 +11,7 @@ const categories = [
 const heroImage = "https://lh3.googleusercontent.com/aida-public/AB6AXuBz0iXd7n7vD6Bqov-VrmIC_K9d0IQ8F--_7l_Egop_NLlsaYSSOA_LhoGtv2QuCdGeeVF_TQd9scgHd78LxtVOOd6WyoNpGLt8tIE3pseHn5vSQlxJYVW5dQpWijyE4sr_BKAiqBPJj3vpgl8LUAQ_hLk8F9BUl62CqAGx2Tv7iarMk11x-gjZc8w958EQox2FLRcUN2SF1co4QKkDdtKpuuWhonvLlxTbDUGrK-LG6mkmeLuNZugJ";
 
 export default async function HomePage() {
-  const featured = await getPublicProducts({ page: 1, page_size: 3, sort: "featured" });
+  const featured = await getPublicProducts({ page: 1, page_size: 3 });
 
   return (
     <main>

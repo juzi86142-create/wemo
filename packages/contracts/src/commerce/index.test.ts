@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CartSchema,
+  CheckoutCreateSchema,
   InventoryReservationCreateSchema,
   OrderSchema,
   OrderStatusSchema,
@@ -31,6 +32,27 @@ const lineItem = {
 };
 
 describe("commerce contracts", () => {
+  it("accepts checkout input without client-owned pricing fields", () => {
+    expect(
+      CheckoutCreateSchema.parse({
+        items: [{ variant_id: 4, quantity: 2 }],
+        contact: { name: "Alex", email: "alex@example.com" },
+        shipping_address: { line1: "1 Main Street", city: "London", country: "GB" },
+      }),
+    ).toMatchObject({
+      items: [{ variant_id: 4, quantity: 2 }],
+      contact: { email: "alex@example.com" },
+    });
+
+    expect(() =>
+      CheckoutCreateSchema.parse({
+        items: [{ variant_id: 4, quantity: 2, unit_price_minor: 1 }],
+        contact: { name: "Alex", email: "alex@example.com" },
+        shipping_address: { line1: "1 Main Street", city: "London", country: "GB" },
+      }),
+    ).toThrow();
+  });
+
   it("parses pricing, cart, order, and quote payloads", () => {
     expect(
       PricingPreviewRequestSchema.parse({
