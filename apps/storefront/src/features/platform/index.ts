@@ -7,7 +7,9 @@ export const platformModule = {
 } satisfies FrontendModuleManifest;
 
 export * from "./analytics";
+export * from "./action-feedback";
 export * from "./api-client";
+export * from "./demo-storage";
 export * from "./pagination";
 export * from "./pagination-control";
 export * from "./site-shell";
