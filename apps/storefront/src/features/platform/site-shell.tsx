@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { clearSessionToken } from "./api-client";
+import { clearDemoSession, demoAccountHomePath } from "../account/demo-accounts";
+import { useDemoSession } from "../account/use-demo-session";
 import { CartCount } from "../commerce/cart-count";
 import { NewsletterForm } from "../public-site/newsletter-form";
 
@@ -19,11 +21,15 @@ const links = [
 export function SiteShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const router = useRouter();
+  const { account } = useDemoSession();
+  const accountHref = account ? demoAccountHomePath(account.audience) : "/login";
+  const accountLabel = account?.audience === "dealer" ? "Dealer Portal" : account?.audience === "staff" ? "Admin" : account ? "User Account" : "Account";
 
   function logout() {
+    clearDemoSession();
     clearSessionToken();
     setMenuOpen(false);
-    router.push("/login");
+    router.replace("/login");
   }
 
   return (
@@ -37,8 +43,8 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
         </nav>
         <div className="header-actions">
           <Link href="/search" className="header-link">Search</Link>
-          <Link href="/login" className="header-link">Account</Link>
-          <button className="header-logout" type="button" onClick={logout}>Sign out</button>
+          <Link href={accountHref} className="header-link">{accountLabel}</Link>
+          {account ? <button className="header-logout" type="button" onClick={logout}>Sign out</button> : null}
           <Link href="/cart" className="cart-link" aria-label="Shopping cart">Cart <CartCount /></Link>
           <button
             className="menu-button"
@@ -55,8 +61,8 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
       {menuOpen ? (
         <nav className="mobile-nav" id="mobile-navigation" aria-label="Mobile navigation">
           {links.map(([label, href]) => <Link href={href} key={href + label} onClick={() => setMenuOpen(false)}>{label}</Link>)}
-          <Link href="/login" onClick={() => setMenuOpen(false)}>Account</Link>
-          <button className="mobile-logout" type="button" onClick={logout}>Sign out</button>
+          <Link href={accountHref} onClick={() => setMenuOpen(false)}>{accountLabel}</Link>
+          {account ? <button className="mobile-logout" type="button" onClick={logout}>Sign out</button> : null}
         </nav>
       ) : null}
       {children}

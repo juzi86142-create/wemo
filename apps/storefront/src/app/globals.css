@@ -374,6 +374,16 @@ summary { cursor: pointer; font-size: 14px; font-weight: 600; }
 .auth-card { width: 100%; max-width: 530px; padding: 50px; border-radius: 8px; background: var(--surface); box-shadow: 0 24px 48px -12px rgba(20,37,54,.08); }
 .auth-card h1 { font-size: 48px; font-weight: 800; }
 .auth-description { max-width: 420px; color: var(--muted); font-size: 16px; }
+.demo-account-section { display: grid; gap: 12px; margin-top: 24px; padding: 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-low); }
+.demo-account-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.demo-account-heading h2 { font-size: 15px; }
+.demo-account-heading span { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+.demo-account-list { display: grid; gap: 8px; }
+.demo-account-list button { display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 8px; width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
+.demo-account-list button:hover, .demo-account-list button:focus-visible { border-color: var(--blue); outline: 2px solid transparent; }
+.demo-account-list strong { font-size: 11px; }
+.demo-account-list span, .demo-account-list code { overflow-wrap: anywhere; font-size: 10px; }
+.demo-account-list code { color: var(--blue); }
 .auth-form { display: grid; gap: 17px; margin-top: 30px; }
 .field { display: grid; gap: 7px; }
 .field label { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
@@ -639,6 +649,8 @@ summary { cursor: pointer; font-size: 14px; font-weight: 600; }
   .footer-signup { grid-column: 1 / -1; }
   .auth-card { padding: 34px 24px; }
   .auth-card h1, .account-heading h1 { font-size: 44px; }
+  .demo-account-heading { align-items: start; flex-direction: column; }
+  .demo-account-list button { grid-template-columns: 1fr; }
   .account-page { padding-top: 54px; }
   .detail-panel { grid-template-columns: 1fr; }
   .detail-panel div:nth-child(odd) { margin-right: 0; }

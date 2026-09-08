@@ -4,7 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
-import { ActionFeedback } from "../platform";
+import { ActionFeedback } from "../platform/action-feedback";
+import { StatusPanel } from "../platform/status-panel";
+import { demoAccountHomePath } from "../account/demo-accounts";
+import { useDemoSession } from "../account/use-demo-session";
 import { adminNav } from "./admin-fixtures";
 
 interface AdminWorkspaceProps {
@@ -16,6 +19,20 @@ interface AdminWorkspaceProps {
 export function AdminWorkspace({ title, description, children }: AdminWorkspaceProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { account, ready } = useDemoSession();
+
+  if (!ready) {
+    return <main className="auth-page"><StatusPanel kind="loading" title="Opening the admin demo..." description="Checking the account saved in this browser." /></main>;
+  }
+  if (account?.audience !== "staff") {
+    const description = account
+      ? `This demo is signed in as ${account.roleLabel}. Open the matching workspace or switch accounts.`
+      : "Choose the administrator demo account to view the admin workspace.";
+    const action = account
+      ? <Link className="button button-dark" href={demoAccountHomePath(account.audience)}>Open {account.roleLabel}</Link>
+      : <Link className="button button-dark" href="/login">Sign in</Link>;
+    return <main className="auth-page"><StatusPanel kind="forbidden" title="Administrator account required." description={description} action={action} /></main>;
+  }
 
   return (
     <div className="admin-frame">
@@ -26,6 +43,7 @@ export function AdminWorkspace({ title, description, children }: AdminWorkspaceP
           {adminNav.map((item) => <Link className={pathname === item.href ? "is-active" : undefined} href={item.href} key={item.href}>{item.label}</Link>)}
         </nav>
         <p className="admin-rail-note">Local fixtures only. Live permissions and operations remain server-owned.</p>
+        <Link className="arrow-link" href="/login">Switch demo account <span>↗</span></Link>
         <Link className="arrow-link" href="/">View storefront <span>↗</span></Link>
       </aside>
       <div className="admin-content">
@@ -39,7 +57,7 @@ export function AdminWorkspace({ title, description, children }: AdminWorkspaceP
         </nav> : null}
         <main className="admin-main">
           <header className="admin-heading">
-            <p className="eyebrow">ADMIN / LOCAL DEMO</p>
+            <p className="eyebrow">ADMIN / {account.name.toUpperCase()} / LOCAL DEMO</p>
             <h1>{title}</h1>
             <p>{description}</p>
           </header>

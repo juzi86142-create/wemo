@@ -4,7 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
-import { ActionFeedback } from "../platform";
+import { ActionFeedback } from "../platform/action-feedback";
+import { StatusPanel } from "../platform/status-panel";
+import { demoAccountHomePath } from "../account/demo-accounts";
+import { useDemoSession } from "../account/use-demo-session";
 import { dealerCompany, dealerNav } from "./dealer-fixtures";
 
 interface DealerWorkspaceProps {
@@ -16,16 +19,31 @@ interface DealerWorkspaceProps {
 export function DealerWorkspace({ title, description, children }: DealerWorkspaceProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { account, ready } = useDemoSession();
+
+  if (!ready) {
+    return <main className="auth-page"><StatusPanel kind="loading" title="Opening the dealer demo..." description="Checking the account saved in this browser." /></main>;
+  }
+  if (account?.audience !== "dealer") {
+    const description = account
+      ? `This demo is signed in as ${account.roleLabel}. Open the matching workspace or switch accounts.`
+      : "Choose the dealer demo account to view the dealer workspace.";
+    const action = account
+      ? <Link className="button button-dark" href={demoAccountHomePath(account.audience)}>Open {account.roleLabel}</Link>
+      : <Link className="button button-dark" href="/login">Sign in</Link>;
+    return <main className="auth-page"><StatusPanel kind="forbidden" title="Dealer account required." description={description} action={action} /></main>;
+  }
 
   return <div className="dealer-frame">
     <aside className="dealer-rail">
       <Link className="brand" href="/dealer">WEMOVE</Link>
       <p className="dealer-demo-label">Demo workspace</p>
-      <div className="dealer-company"><strong>{dealerCompany.name}</strong><span>{dealerCompany.status}</span></div>
+      <div className="dealer-company"><strong>{dealerCompany.name}</strong><span>{account.name} · {dealerCompany.status}</span></div>
       <nav className="dealer-nav" aria-label="Dealer navigation">
         {dealerNav.map((item) => <Link className={pathname === item.href ? "is-active" : undefined} href={item.href} key={item.href}>{item.label}</Link>)}
       </nav>
       <p className="dealer-rail-note">Local account context only. Live catalog access and terms remain server-owned.</p>
+      <Link className="arrow-link" href="/login">Switch demo account <span>↗</span></Link>
       <Link className="arrow-link" href="/">View storefront <span>↗</span></Link>
     </aside>
     <div className="dealer-content">

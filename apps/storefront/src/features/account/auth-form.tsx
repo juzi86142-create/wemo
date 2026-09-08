@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { ApiError } from "../platform/api-client";
 import { forgotPassword, login, register } from "./account-adapter";
 import { validateAuthFields, type AuthMode, type AuthValues } from "./account-validation";
+import { DEMO_ACCOUNTS, demoAccountHomePath, type DemoAccount } from "./demo-accounts";
 
 interface AuthFormProps {
   mode: AuthMode;
@@ -28,6 +30,7 @@ const copy: Record<AuthMode, { eyebrow: string; title: string; description: stri
 };
 
 export function AuthForm({ mode, onSuccess }: AuthFormProps) {
+  const router = useRouter();
   const [values, setValues] = useState(initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | undefined>();
@@ -41,6 +44,13 @@ export function AuthForm({ mode, onSuccess }: AuthFormProps) {
     setSuccess(undefined);
   };
 
+  function selectDemoAccount(account: DemoAccount) {
+    setValues((current) => ({ ...current, email: account.email, password: account.password }));
+    setErrors({});
+    setFormError(undefined);
+    setSuccess(undefined);
+  }
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextErrors = validateAuthFields(mode, values);
@@ -51,10 +61,11 @@ export function AuthForm({ mode, onSuccess }: AuthFormProps) {
     setFormError(undefined);
     try {
       if (mode === "login") {
-        await login({ email: values.email, password: values.password, audience: "user" });
+        const session = await login({ email: values.email, password: values.password });
         const message = "You are signed in. Your account is ready.";
         setSuccess(message);
         onSuccess?.(message);
+        router.replace(demoAccountHomePath(session.audience));
       } else if (mode === "register") {
         await register({ email: values.email, password: values.password, name: values.name, audience: "user", agree_terms: values.agreeTerms, agree_marketing: values.agreeMarketing });
         const message = "Account created. Check your inbox to verify your email.";
@@ -80,6 +91,23 @@ export function AuthForm({ mode, onSuccess }: AuthFormProps) {
       <p className="eyebrow">{labels.eyebrow}</p>
       <h1>{labels.title}</h1>
       <p className="auth-description">{labels.description}</p>
+      {mode === "login" ? (
+        <section className="demo-account-section" aria-labelledby="demo-account-title">
+          <div className="demo-account-heading">
+            <h2 id="demo-account-title">Demo accounts</h2>
+            <span>Stored only in this browser</span>
+          </div>
+          <div className="demo-account-list">
+            {DEMO_ACCOUNTS.map((account) => (
+              <button type="button" key={account.email} onClick={() => selectDemoAccount(account)}>
+                <strong>{account.roleLabel}</strong>
+                <span>{account.email}</span>
+                <code>{account.password}</code>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
       <form className="auth-form" onSubmit={submit} noValidate>
         {mode === "register" ? <Field id="name" label="Name" value={values.name} error={errors.name} onChange={(value) => update("name", value)} /> : null}
         <Field id="email" label="Email address" type="email" value={values.email} error={errors.email} onChange={(value) => update("email", value)} />

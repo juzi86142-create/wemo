@@ -8,14 +8,19 @@ import {
   IdentityUserMutationResponseSchema,
   OrderListResponseSchema,
   OrderMutationResponseSchema,
-  SessionActorSchema,
   type AuthLoginInput,
   type AuthRegisterInput,
   type OrderListQuery,
   type SessionActor,
 } from "@wemo/contracts";
 
-import { storeSessionToken } from "../platform/api-client";
+import { ApiError, storeSessionToken } from "../platform/api-client";
+import {
+  authenticateDemoAccount,
+  createDemoSessionActor,
+  readDemoSession,
+  storeDemoSession,
+} from "./demo-accounts";
 
 const DEMO_TIMESTAMP = "2026-09-08T00:00:00.000Z";
 const demoUser = {
@@ -101,24 +106,29 @@ const demoOrder = {
 };
 
 export async function login(input: AuthLoginInput) {
-  AuthLoginSchema.parse(input);
+  const parsed = AuthLoginSchema.parse(input);
+  const account = authenticateDemoAccount(parsed.email, parsed.password, parsed.audience);
+  if (!account) {
+    throw new ApiError("Email or password is incorrect. Try one of the demo accounts below.", 401);
+  }
   const response = AuthSessionMutationResponseSchema.parse(
     {
-      request_id: "demo-login",
+      request_id: `demo-login-${account.audience}`,
       item: {
-        id: 301,
-        token: "frontend-demo-session",
-        user_id: demoUser.id,
-        audience: "user",
-        company_id: null,
-        permissions: [],
-        expires_at: "2027-09-08T00:00:00.000Z",
+        id: 1000 + account.id,
+        token: `frontend-demo-session-${account.id}`,
+        user_id: account.id,
+        audience: account.audience,
+        company_id: account.companyId ?? null,
+        permissions: [...account.permissions],
+        expires_at: "2099-12-31T23:59:59.000Z",
         revoked_at: null,
         last_seen_at: DEMO_TIMESTAMP,
         created_at: DEMO_TIMESTAMP,
       },
     },
   );
+  storeDemoSession(account);
   storeSessionToken(response.item.token);
   return response.item;
 }
@@ -143,11 +153,8 @@ export async function forgotPassword(email: string) {
 }
 
 export async function getSession(): Promise<SessionActor | null> {
-  return SessionActorSchema.parse({
-    user_id: demoUser.id,
-    audience: "user",
-    permissions: [],
-  });
+  const account = readDemoSession();
+  return account ? createDemoSessionActor(account) : null;
 }
 
 export async function getProfile() {
