@@ -48,14 +48,14 @@ export function writeDemoValue<T>(
   scope: string,
   key: string,
   value: T,
-): void;
-export function writeDemoValue<T>(scope: string, key: string, value: T): void;
+): boolean;
+export function writeDemoValue<T>(scope: string, key: string, value: T): boolean;
 export function writeDemoValue<T>(
   storageOrScope: Storage | string | undefined,
   scopeOrKey: string,
   keyOrValue: unknown,
   maybeValue?: unknown,
-): void {
+): boolean {
   const storageMode = typeof storageOrScope !== "string";
   const storage = storageMode ? storageOrScope : undefined;
   const scope = storageMode ? scopeOrKey : storageOrScope;
@@ -63,9 +63,12 @@ export function writeDemoValue<T>(
   const value = storageMode ? maybeValue as T : keyOrValue as T;
 
   try {
-    resolveStorage(storage)?.setItem(demoStorageKey(scope, key), JSON.stringify(value));
+    const target = resolveStorage(storage);
+    if (!target) return false;
+    target.setItem(demoStorageKey(scope, key), JSON.stringify(value));
+    return true;
   } catch {
-    // Demo state must never make an action fail when storage is unavailable.
+    return false;
   }
 }
 

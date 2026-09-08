@@ -27,4 +27,15 @@ describe("demo storage", () => {
     storage.setItem("wemo:demo:account:profile", "bad-json");
     expect(readDemoValue(storage, "account", "profile", null)).toBeNull();
   });
+
+  it("reports when browser storage cannot persist a value", () => {
+    const unavailableStorage = {
+      ...createMemoryStorage(),
+      setItem: () => {
+        throw new Error("storage unavailable");
+      },
+    } as Storage;
+
+    expect(writeDemoValue(unavailableStorage, "account", "profile", { name: "Alex" })).toBe(false);
+  });
 });

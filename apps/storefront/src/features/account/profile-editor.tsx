@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { ActionFeedback, readDemoValue, writeDemoValue } from "../platform";
 import {
   createAccountDemoState,
+  validateAccountDemoState,
   updateDemoProfile,
   type AccountDemoProfile,
   type AccountDemoState,
@@ -33,7 +34,7 @@ export function ProfileEditor({ profile }: { profile: AccountProfile }) {
 
   useEffect(() => {
     const fallback = profileState(profile);
-    const saved = readDemoValue<AccountDemoState>("account", storageKey, fallback);
+    const saved = validateAccountDemoState(readDemoValue<unknown>("account", storageKey, fallback), fallback);
     setState(saved);
     setDraft(saved.profile);
   }, [profile, storageKey]);
@@ -57,9 +58,12 @@ export function ProfileEditor({ profile }: { profile: AccountProfile }) {
         phone: draft.phone.trim(),
         locale: draft.locale,
       });
-      writeDemoValue("account", storageKey, next);
-      setState(next);
-      setFeedback("success");
+      if (writeDemoValue("account", storageKey, next)) {
+        setState(next);
+        setFeedback("success");
+      } else {
+        setFeedback("error");
+      }
     }, 250);
   }
 

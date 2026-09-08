@@ -50,6 +50,40 @@ export function createAccountDemoState(seed: Partial<AccountDemoState> = {}): Ac
   };
 }
 
+function isAccountDemoAddress(value: unknown): value is AccountDemoAddress {
+  if (!value || typeof value !== "object") return false;
+  const address = value as Record<string, unknown>;
+  return (
+    (typeof address.id === "string" || typeof address.id === "number") &&
+    ["kind", "recipient", "line1", "line2", "city", "region", "postalCode", "country"].every(
+      (key) => typeof address[key] === "string",
+    ) &&
+    typeof address.isDefault === "boolean"
+  );
+}
+
+export function validateAccountDemoState(
+  value: unknown,
+  fallback: AccountDemoState,
+): AccountDemoState {
+  if (!value || typeof value !== "object") return fallback;
+  const state = value as Record<string, unknown>;
+  const profile = state.profile;
+  if (!profile || typeof profile !== "object") return fallback;
+  const profileRecord = profile as Record<string, unknown>;
+  if (!["name", "phone", "locale"].every((key) => typeof profileRecord[key] === "string")) return fallback;
+  if (!Array.isArray(state.addresses) || !state.addresses.every(isAccountDemoAddress)) return fallback;
+  return value as AccountDemoState;
+}
+
+export function createDemoAddressId(state: AccountDemoState, base = `address-${Date.now()}`): string {
+  const used = new Set(state.addresses.map((address) => String(address.id)));
+  let candidate = base;
+  let suffix = 2;
+  while (used.has(candidate)) candidate = `${base}-${suffix++}`;
+  return candidate;
+}
+
 export function updateDemoProfile(
   state: AccountDemoState,
   values: Partial<AccountDemoProfile>,

@@ -6,9 +6,11 @@ import { useEffect, useState } from "react";
 import { ActionFeedback, readDemoValue, writeDemoValue } from "../platform";
 import {
   createAccountDemoState,
+  createDemoAddressId,
   removeDemoAddress,
   setDemoDefaultAddress,
   upsertDemoAddress,
+  validateAccountDemoState,
   type AccountDemoAddress,
   type AccountDemoState,
 } from "./account-demo-state";
@@ -72,16 +74,20 @@ export function AddressBook({ addresses, userId }: { addresses: IdentityAddress[
 
   useEffect(() => {
     const fallback = addressState(addresses);
-    const saved = readDemoValue<AccountDemoState>("account", storageKey, fallback);
+    const saved = validateAccountDemoState(readDemoValue<unknown>("account", storageKey, fallback), fallback);
     setState(saved);
   }, [addresses, storageKey]);
 
-  function persist(next: AccountDemoState, message: Feedback = "success") {
+  function persist(next: AccountDemoState, onSuccess?: () => void) {
     setFeedback("pending");
     window.setTimeout(() => {
-      writeDemoValue("account", storageKey, next);
-      setState(next);
-      setFeedback(message);
+      if (writeDemoValue("account", storageKey, next)) {
+        setState(next);
+        setFeedback("success");
+        onSuccess?.();
+      } else {
+        setFeedback("error");
+      }
     }, 180);
   }
 
@@ -102,16 +108,20 @@ export function AddressBook({ addresses, userId }: { addresses: IdentityAddress[
       setFeedback("error");
       return;
     }
-    const id = editingId ?? `address-${Date.now()}`;
+    const id = editingId === "new" ? createDemoAddressId(state) : editingId;
+    if (id === null) return;
     const current = state.addresses.find((item) => item.id === id);
-    persist(upsertDemoAddress(state, { ...draft, id, isDefault: current?.isDefault ?? state.addresses.length === 0 }));
-    setEditingId(null);
-    setDraft(emptyDraft);
+    persist(
+      upsertDemoAddress(state, { ...draft, id, isDefault: current?.isDefault ?? state.addresses.length === 0 }),
+      () => {
+        setEditingId(null);
+        setDraft(emptyDraft);
+      },
+    );
   }
 
   function remove(addressId: AccountDemoAddress["id"]) {
-    persist(removeDemoAddress(state, addressId));
-    setConfirmingId(null);
+    persist(removeDemoAddress(state, addressId), () => setConfirmingId(null));
   }
 
   return (
@@ -121,7 +131,7 @@ export function AddressBook({ addresses, userId }: { addresses: IdentityAddress[
           <p className="eyebrow">SAVED DELIVERY DETAILS</p>
           <h2 id="address-book-heading">Addresses for the next move.</h2>
         </div>
-        <button className="button button-dark" type="button" onClick={() => { setEditingId("new"); setDraft(emptyDraft); setFeedback("idle"); }}>Add address</button>
+        <button className="button button-dark" type="button" disabled={feedback === "pending"} onClick={() => { setEditingId("new"); setDraft(emptyDraft); setFeedback("idle"); }}>Add address</button>
       </div>
       <p className="account-demo-copy">Address changes are saved only in this browser until the address API supports updates.</p>
       {editingId ? (
@@ -134,10 +144,10 @@ export function AddressBook({ addresses, userId }: { addresses: IdentityAddress[
           <div className="field"><label htmlFor="address-region">State / region</label><input id="address-region" value={draft.region} onChange={(event) => update("region", event.target.value)} /></div>
           <div className="field"><label htmlFor="address-postal">Postal code</label><input id="address-postal" value={draft.postalCode} onChange={(event) => update("postalCode", event.target.value)} /></div>
           <div className="field"><label htmlFor="address-country">Country</label><input id="address-country" value={draft.country} onChange={(event) => update("country", event.target.value)} aria-invalid={feedback === "error" && !draft.country.trim()} /></div>
-          <div className="account-editor-actions address-editor-actions"><button className="button button-dark" type="submit" disabled={feedback === "pending"}>{editingId === "new" ? "Save local address" : "Update local address"}</button><button className="button button-secondary" type="button" onClick={() => { setEditingId(null); setFeedback("idle"); }}>Cancel</button><ActionFeedback status={feedback} idleMessage="Required fields are marked when you save." pendingMessage="Saving local address..." successMessage="Local address updated. It was not sent to the delivery service." errorMessage="Add recipient, address line, city, and country. Your input is still here." /></div>
+          <div className="account-editor-actions address-editor-actions"><button className="button button-dark" type="submit" disabled={feedback === "pending"}>{editingId === "new" ? "Save local address" : "Update local address"}</button><button className="button button-secondary" type="button" disabled={feedback === "pending"} onClick={() => { setEditingId(null); setFeedback("idle"); }}>Cancel</button><ActionFeedback status={feedback} idleMessage="Required fields are marked when you save." pendingMessage="Saving local address..." successMessage="Local address updated. It was not sent to the delivery service." errorMessage={feedback === "error" && !draft.recipient.trim() ? "Add recipient, address line, city, and country. Your input is still here." : "The local address could not be updated. Your input is still here."} /></div>
         </form>
       ) : null}
-      {state.addresses.length === 0 ? <div className="account-address-empty"><h3>No saved addresses yet.</h3><p>Add a delivery address when you are ready. It will remain a local browser demo until live address updates are connected.</p></div> : <div className="address-list">{state.addresses.map((address) => <article className="address-card" key={address.id}><div className="address-card-heading"><span>{address.kind}</span>{address.isDefault ? <b>Default</b> : null}</div><p><strong>{address.recipient || "Recipient not set"}</strong><br />{address.line1}{address.line2 ? <><br />{address.line2}</> : null}<br />{[address.city, address.region, address.postalCode].filter(Boolean).join(", ")}<br />{address.country}</p><div className="address-card-actions"><button className="text-button" type="button" onClick={() => edit(address)}>Edit</button>{!address.isDefault ? <button className="text-button" type="button" onClick={() => persist(setDemoDefaultAddress(state, address.id))}>Make default</button> : null}{confirmingId === address.id ? <><button className="text-button address-delete-confirm" type="button" onClick={() => remove(address.id)}>Confirm remove</button><button className="text-button" type="button" onClick={() => setConfirmingId(null)}>Cancel</button></> : <button className="text-button" type="button" onClick={() => setConfirmingId(address.id)}>Remove</button>}</div></article>)}</div>}
+      {state.addresses.length === 0 ? <div className="account-address-empty"><h3>No saved addresses yet.</h3><p>Add a delivery address when you are ready. It will remain a local browser demo until live address updates are connected.</p></div> : <div className="address-list">{state.addresses.map((address) => <article className="address-card" key={address.id}><div className="address-card-heading"><span>{address.kind}</span>{address.isDefault ? <b>Default</b> : null}</div><p><strong>{address.recipient || "Recipient not set"}</strong><br />{address.line1}{address.line2 ? <><br />{address.line2}</> : null}<br />{[address.city, address.region, address.postalCode].filter(Boolean).join(", ")}<br />{address.country}</p><div className="address-card-actions"><button className="text-button" type="button" disabled={feedback === "pending"} onClick={() => edit(address)}>Edit</button>{!address.isDefault ? <button className="text-button" type="button" disabled={feedback === "pending"} onClick={() => persist(setDemoDefaultAddress(state, address.id))}>Make default</button> : null}{confirmingId === address.id ? <><button className="text-button address-delete-confirm" type="button" disabled={feedback === "pending"} onClick={() => remove(address.id)}>Confirm remove</button><button className="text-button" type="button" disabled={feedback === "pending"} onClick={() => setConfirmingId(null)}>Cancel</button></> : <button className="text-button" type="button" disabled={feedback === "pending"} onClick={() => setConfirmingId(address.id)}>Remove</button>}</div></article>)}</div>}
       <ActionFeedback status={feedback} idleMessage={null} pendingMessage="Updating local browser addresses..." successMessage="Local address book updated. No live address change was submitted." errorMessage="The local address could not be updated. Your input is still here." />
     </section>
   );
