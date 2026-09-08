@@ -26,13 +26,9 @@ export default async function CheckoutPage() {
   if (!result.cart) {
     return <main className="page-main"><StatusPanel kind="error" title="Your cart is unavailable." description="Return to your cart and try again." action={<Link className="button button-secondary" href="/cart">Back to cart</Link>} /></main>;
   }
-  if (result.preview) {
-    return <main className="page-main"><StatusPanel kind="error" title="Checkout is not available in preview." description="Connect the live cart service before placing an order." action={<Link className="button button-secondary" href="/cart">Back to cart</Link>} /></main>;
-  }
-
   const session = await getSession();
   const profile = session ? await optionalProfile() : undefined;
   const addresses = session ? await optionalAddresses() : [];
 
-  return <main className="checkout-page"><CheckoutForm cart={result.cart} profile={profile} addresses={addresses} /></main>;
+  return <main className="checkout-page"><CheckoutForm cart={result.cart} preview={result.preview} profile={profile} addresses={addresses} /></main>;
 }

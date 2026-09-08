@@ -1,10 +1,6 @@
-import { CartMutationResponseSchema, type Cart, type CartItem } from "@wemo/contracts";
+import { CartSchema, type Cart, type CartItem } from "@wemo/contracts";
 
-import { ApiError, requestJson } from "../platform/api-client";
-
-const previewAllowed =
-  process.env.NODE_ENV !== "production" ||
-  process.env.NEXT_PUBLIC_STOREFRONT_PREVIEW === "true";
+import { ApiError } from "../platform/api-client";
 
 let previewCart: Cart = {
   id: 501,
@@ -45,6 +41,8 @@ let previewCart: Cart = {
   created_at: "2026-01-01T00:00:00.000Z",
 };
 
+const previewCartStorageKey = "wemo:preview-cart";
+
 const previewVariantDetails: Record<number, { name: string; note: string; unitPriceMinor: number }> = {
   1001: { name: "Roll & Play Bowling Set", note: "7 piece set", unitPriceMinor: 3200 },
   1002: { name: "Steady Balance Board", note: "Indoor / outdoor", unitPriceMinor: 4400 },
@@ -58,38 +56,20 @@ export interface CartResult {
 }
 
 export async function getCart(): Promise<CartResult> {
-  try {
-    const response = CartMutationResponseSchema.parse(
-      await requestJson<unknown>("/cart"),
-    );
-    return { cart: response.item, error: undefined, preview: false };
-  } catch (error) {
-    const apiError =
-      error instanceof ApiError
-        ? error
-        : new ApiError("The cart is unavailable.", 0);
-    return {
-      cart: previewAllowed ? previewCart : null,
-      error: apiError,
-      preview: previewAllowed,
-    };
-  }
+  return { cart: getPreviewCart(), error: undefined, preview: true };
 }
 
 export async function addCartItem(variantId: number, quantity: number) {
   if (quantity < 1) throw new ApiError("Quantity must be at least one.", 400);
-  const response = CartMutationResponseSchema.parse(
-    await requestJson<unknown>("/cart/items", {
-      method: "POST",
-      body: JSON.stringify({ variant_id: variantId, quantity }),
-    }),
-  );
-  return response.item;
+  const cart = addPreviewCartItem(variantId, quantity);
+  if (!cart) throw new ApiError("This demo product is unavailable.", 404);
+  return cart;
 }
 
 export async function updateCartItem(item: CartItem, quantity: number) {
   if (quantity < 1) throw new ApiError("Quantity must be at least one.", 400);
-  return addCartItem(item.variant_id, quantity);
+  previewCart = replacePreviewQuantity(previewCart, item.id, quantity);
+  return previewCart;
 }
 
 export async function removeCartItem(): Promise<never> {
@@ -128,6 +108,7 @@ export function removePreviewItem(cart: Cart, itemId: number): Cart {
 }
 
 export function addPreviewCartItem(variantId: number, quantity: number) {
+  previewCart = getPreviewCart();
   const item = previewCart.items.find((entry) => entry.variant_id === variantId);
   if (quantity < 1) return null;
 
@@ -148,19 +129,35 @@ export function addPreviewCartItem(variantId: number, quantity: number) {
     };
     const items = [...previewCart.items, newItem];
     const subtotal = items.reduce((total, entry) => total + entry.line_total_minor, 0);
-    previewCart = { ...previewCart, items, subtotal_minor: subtotal, total_minor: subtotal, updated_at: new Date().toISOString() };
-    return previewCart;
+    return setPreviewCart({ ...previewCart, items, subtotal_minor: subtotal, total_minor: subtotal, updated_at: new Date().toISOString() });
   }
 
-  previewCart = replacePreviewQuantity(previewCart, item.id, item.quantity + quantity);
-  return previewCart;
+  return setPreviewCart(replacePreviewQuantity(previewCart, item.id, item.quantity + quantity));
 }
 
 export function setPreviewCart(cart: Cart) {
-  previewCart = cart;
+  previewCart = CartSchema.parse(cart);
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(previewCartStorageKey, JSON.stringify(previewCart));
+    } catch {
+      // Keep the in-memory cart usable when browser storage is unavailable.
+    }
+  }
   return previewCart;
 }
 
 export function getPreviewCart() {
+  if (typeof window !== "undefined") {
+    try {
+      const storedCart = window.localStorage.getItem(previewCartStorageKey);
+      if (storedCart) {
+        const parsed = CartSchema.safeParse(JSON.parse(storedCart));
+        if (parsed.success) previewCart = parsed.data;
+      }
+    } catch {
+      // Ignore unavailable or malformed browser storage and keep the demo seed cart.
+    }
+  }
   return previewCart;
 }

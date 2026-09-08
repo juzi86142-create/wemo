@@ -1,11 +1,9 @@
 import {
-  CatalogProductListResponseSchema,
-  CatalogProductResponseSchema,
   type CatalogProduct,
   type CatalogProductListQuery,
 } from "@wemo/contracts";
 
-import { ApiError, requestJson, toQueryString } from "../platform/api-client";
+import { ApiError } from "../platform/api-client";
 
 const previewProducts: CatalogProduct[] = [
   {
@@ -118,10 +116,6 @@ const previewProducts: CatalogProduct[] = [
   },
 ];
 
-const previewAllowed =
-  process.env.NODE_ENV !== "production" ||
-  process.env.NEXT_PUBLIC_STOREFRONT_PREVIEW === "true";
-
 export interface CatalogPageData {
   items: CatalogProduct[];
   page: number;
@@ -150,55 +144,30 @@ function filterPreviewProducts(query: CatalogProductListQuery) {
 export async function getPublicProducts(
   query: CatalogProductListQuery = { page: 1, page_size: 24 },
 ): Promise<CatalogPageData> {
-  try {
-    const response = CatalogProductListResponseSchema.parse(
-      await requestJson<unknown>("/catalog/products?" + toQueryString(query)),
-    );
-    return {
-      items: response.items,
-      page: response.page,
-      pageSize: response.page_size,
-      total: response.total,
-      error: undefined,
-      preview: false,
-    };
-  } catch (error) {
-    const apiError =
-      error instanceof ApiError
-        ? error
-        : new ApiError("The product catalogue is unavailable.", 0);
-    const previewItems = filterPreviewProducts(query);
-
-    return {
-      items: previewAllowed ? previewItems : [],
-      page: query.page ?? 1,
-      pageSize: query.page_size ?? 24,
-      total: previewAllowed ? previewItems.length : 0,
-      error: apiError,
-      preview: previewAllowed,
-    };
-  }
+  const items = filterPreviewProducts(query);
+  const page = query.page ?? 1;
+  const pageSize = query.page_size ?? 24;
+  const start = (page - 1) * pageSize;
+  return {
+    items: items.slice(start, start + pageSize),
+    page,
+    pageSize,
+    total: items.length,
+    error: undefined,
+    preview: true,
+  };
 }
 
-export async function getPublicProduct(slug: string) {
-  try {
-    const response = CatalogProductResponseSchema.parse(
-      await requestJson<unknown>("/catalog/products/" + encodeURIComponent(slug)),
-    );
-    return { product: response.item, error: undefined, preview: false };
-  } catch (error) {
-    const apiError =
-      error instanceof ApiError
-        ? error
-        : new ApiError("The product is unavailable.", 0);
-    return {
-      product: previewAllowed
-        ? previewProducts.find((product) => product.slug === slug) ?? null
-        : null,
-      error: apiError,
-      preview: previewAllowed,
-    };
-  }
+export async function getPublicProduct(slug: string): Promise<{
+  product: CatalogProduct | null;
+  error: ApiError | undefined;
+  preview: boolean;
+}> {
+  return {
+    product: previewProducts.find((product) => product.slug === slug) ?? null,
+    error: undefined,
+    preview: true,
+  };
 }
 
 export function getPreviewProducts() {

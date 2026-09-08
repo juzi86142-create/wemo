@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Cart } from "@wemo/contracts";
 
 import type { AccountAddresses, AccountProfile } from "../account/account-adapter";
 import { ApiError } from "../platform/api-client";
 import { CheckoutCreateSchema } from "@wemo/contracts";
-import { formatMoney } from "./cart-adapter";
+import { formatMoney, getPreviewCart } from "./cart-adapter";
 import { createCheckout } from "./checkout-adapter";
 import { buildCheckoutInput } from "./checkout-payload";
 import { isContractMockMode } from "./contract-mock-mode";
@@ -59,15 +59,18 @@ function initialValues(profile?: AccountProfile, addresses: AccountAddresses = [
 
 export function CheckoutForm({
   cart,
+  preview,
   profile,
   addresses,
 }: {
   cart: Cart;
+  preview: boolean;
   profile?: AccountProfile | undefined;
   addresses: AccountAddresses;
 }) {
   const router = useRouter();
   const contractMock = isContractMockMode(process.env.NEXT_PUBLIC_WEMO_CONTRACT_MOCK);
+  const [activeCart, setActiveCart] = useState(cart);
   const [values, setValues] = useState(() => initialValues(profile, addresses));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | undefined>();
@@ -75,6 +78,10 @@ export function CheckoutForm({
   const [pending, setPending] = useState(false);
   const [payment, setPayment] = useState<PaymentSelection>(emptyPayment);
   const [reviewing, setReviewing] = useState(false);
+
+  useEffect(() => {
+    if (preview) setActiveCart(getPreviewCart());
+  }, [preview]);
 
   function update(key: keyof CheckoutFormValues, value: string) {
     setValues((current) => ({ ...current, [key]: value }));
@@ -104,13 +111,13 @@ export function CheckoutForm({
       return;
     }
 
-    const input = buildCheckoutInput(cart, values, payment);
+    const input = buildCheckoutInput(activeCart, values, payment);
 
     setPending(true);
     setFormError(undefined);
     setRequestId(undefined);
     try {
-      const order = await createCheckout(CheckoutCreateSchema.parse(input));
+      const order = await createCheckout(CheckoutCreateSchema.parse(input), activeCart);
       writeOrderSuccessSnapshot(order);
       router.push("/order/success");
     } catch (error) {
@@ -134,13 +141,24 @@ export function CheckoutForm({
     }
   }
 
+  if (activeCart.items.length === 0) {
+    return (
+      <section className="empty-cart">
+        <p className="eyebrow">CHECKOUT</p>
+        <h1>Your cart is empty.</h1>
+        <p>Add a product before continuing to checkout.</p>
+        <Link className="button button-dark" href="/products">Explore products <span aria-hidden="true">↗</span></Link>
+      </section>
+    );
+  }
+
   return (
     <section className="checkout-layout" aria-labelledby="checkout-title">
       <div className="checkout-form-column">
         <div className="checkout-heading">
           <p className="eyebrow">CHECKOUT</p>
           <h1 id="checkout-title">Make room for the next move.</h1>
-          <p>Tell us where to send your collection. Final price, stock, and order status come from the live service.</p>
+          <p>Tell us where to send your collection. The items, quantities, and totals below come directly from your cart.</p>
           {contractMock ? <p className="contract-mock-banner" role="status">CONTRACT MOCK ONLY. No live order will be created.</p> : null}
         </div>
         <form className="checkout-form" onSubmit={submit} noValidate>
@@ -167,7 +185,7 @@ export function CheckoutForm({
             <Field id="checkout-coupon" label="Coupon code (optional)" value={values.couponCode} error={errors.couponCode} onChange={(value) => update("couponCode", value)} />
             <div className="field"><label htmlFor="checkout-note">Note (optional)</label><textarea id="checkout-note" name="note" rows={4} value={values.note} onChange={(event) => update("note", event.target.value)} /></div>
           </fieldset>
-          {reviewing ? <section className="checkout-review" aria-labelledby="checkout-review-title"><p className="eyebrow">REVIEW</p><h2 id="checkout-review-title">Check your details before submitting.</h2><dl><div><dt>Payment</dt><dd>{payment.method === "card" ? "Card" : payment.method === "bank_transfer" ? "Bank transfer" : "Invoice / PO"}</dd></div><div><dt>Delivery</dt><dd>{values.addressLine1.trim()}, {values.city.trim()}</dd></div></dl><p>The live service confirms stock, shipping, tax, payment, and your final order total after you submit.</p></section> : null}
+          {reviewing ? <section className="checkout-review" aria-labelledby="checkout-review-title"><p className="eyebrow">REVIEW</p><h2 id="checkout-review-title">Check your details before submitting.</h2><dl><div><dt>Payment</dt><dd>{payment.method === "card" ? "Card" : payment.method === "bank_transfer" ? "Bank transfer" : "Invoice / PO"}</dd></div><div><dt>Delivery</dt><dd>{values.addressLine1.trim()}, {values.city.trim()}</dd></div></dl><p>This frontend demo creates an order snapshot from the cart and details shown here.</p></section> : null}
           {formError ? <p className="checkout-error" role="alert">{formError}{requestId ? <span> Request ID: {requestId}</span> : null}</p> : null}
           <div className="checkout-actions"><button className="button button-dark" type="submit" disabled={pending}>{pending ? "Placing order..." : reviewing ? "Place order" : "Review order"}<span aria-hidden="true">↗</span></button>{reviewing ? <button className="text-button" type="button" disabled={pending} onClick={() => setReviewing(false)}>Edit details</button> : null}<Link className="arrow-link" href="/cart">Back to cart <span aria-hidden="true">↗</span></Link></div>
         </form>
@@ -175,9 +193,9 @@ export function CheckoutForm({
       <aside className="checkout-summary" aria-labelledby="checkout-summary-title">
         <p className="eyebrow">YOUR ORDER</p>
         <h2 id="checkout-summary-title">A small collection with a lot to do.</h2>
-        <div className="checkout-items">{cart.items.map((item) => <div className="checkout-item" key={item.id}><span>{cartItemName(item)} × {item.quantity}</span><strong>{formatMoney(item.line_total_minor, item.currency)}</strong></div>)}</div>
-        <div className="summary-total"><span>Cart estimate</span><strong>{formatMoney(cart.total_minor, cart.currency)}</strong></div>
-        <p className="summary-note">The service confirms current stock, shipping, tax, and any discount when you place the order.</p>
+        <div className="checkout-items">{activeCart.items.map((item) => <div className="checkout-item" key={item.id}><span>{cartItemName(item)} × {item.quantity}</span><strong>{formatMoney(item.line_total_minor, item.currency)}</strong></div>)}</div>
+        <div className="summary-total"><span>Cart estimate</span><strong>{formatMoney(activeCart.total_minor, activeCart.currency)}</strong></div>
+        <p className="summary-note">This demo total is calculated from the same cart stored in your browser.</p>
       </aside>
     </section>
   );

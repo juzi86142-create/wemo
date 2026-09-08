@@ -158,6 +158,12 @@
 | Storefront cart boundary | preview cart 明确不可真实结算；contract mock 可显式进入 checkout；`begin_checkout`、`checkout_success`、`checkout_failure` analytics 边界已接入；未新增不存在的删除接口 | `apps/storefront/src/features/commerce/cart-summary.tsx`、`cart-view.tsx`、`checkout-link.tsx`、`contract-mock-mode.ts`、`apps/storefront/src/features/platform/analytics.ts`、`docs/superpowers/verification/2026-09-08-b2c-checkout.md` | `done`：mock/preview 边界、窄屏无横向溢出、完整 storefront 自动化门禁通过 |
 | Storefront contract mock | 本地 loopback HTTP mock、契约校验、服务端 fixture 价格计算、未知 variant/客户端价格字段拒绝、显式 mock 标识和同源 rewrite | `scripts/storefront-contract-mock.ts`、`scripts/storefront-contract-mock.test.ts`、`apps/storefront/next.config.ts`、`apps/storefront/src/features/commerce/contract-mock-mode.ts`、`docs/superpowers/plans/2026-09-08-storefront-contract-mock.md` | `done`：5 个 mock 测试、浏览器 `/cart` → `/checkout` → `/order/success` 已验证；仅供本地联调，不代表真实后端验收 |
 
+### 纯前端演示模式补充（2026-09-08）
+
+| 演示链路 | 本地数据逻辑 | 自动化与浏览器证据 | 状态与边界 |
+| --- | --- | --- | --- |
+| 商品加购 → 购物车 → 结算 → 演示订单 | 购物车经 `localStorage` 在页面间共享；增减、删除均重算行金额与总额；结算明细和订单快照直接使用当前购物车的商品、数量、名称与单价 | storefront typecheck 通过；27 个测试文件、56 个测试通过；production build 通过；真实浏览器将 variant 1001 从 1 件改为 2 件后，购物车与结算页均显示总额 `$108.00` | `demo-done`：不请求后端，可用于前端演示；不代表真实库存、价格、支付或订单持久化已联调 |
+
 ## 本轮前端公开经销商入口证据（2026-09-08）
 
 | 需求 ID | 已实现范围 | 代码与验证入口 | 状态与边界 |

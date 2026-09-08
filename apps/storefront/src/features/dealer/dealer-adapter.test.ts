@@ -1,41 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DealerApplication } from "@wemo/contracts";
+import { describe, expect, it } from "vitest";
 
-import { ApiError, requestJson } from "../platform/api-client";
 import { createDealerApplication, getPublicDealerListings } from "./dealer-adapter";
-
-vi.mock("../platform/api-client", async () => {
-  const actual = await vi.importActual<typeof import("../platform/api-client")>(
-    "../platform/api-client",
-  );
-  return { ...actual, requestJson: vi.fn() };
-});
-
-const requestJsonMock = vi.mocked(requestJson);
-
-const application: DealerApplication = {
-  id: 801,
-  application_no: "APP-1",
-  applicant_user_id: null,
-  company_id: null,
-  legal_name: "Demo Sports Ltd",
-  display_name: "Demo Sports",
-  country: "GB",
-  website: "https://demo.example.com",
-  business_type: "Retail",
-  tax_id: null,
-  contact_name: "Alex Smith",
-  contact_email: "alex@example.com",
-  contact_phone: null,
-  currency: "GBP",
-  payload: {},
-  status: "submitted",
-  submitted_at: "2026-09-08T00:00:00.000Z",
-  reviewed_at: null,
-  review_note: null,
-  created_at: "2026-09-08T00:00:00.000Z",
-  updated_at: "2026-09-08T00:00:00.000Z",
-};
 
 const validInput = {
   legal_name: "Demo Sports Ltd",
@@ -49,50 +14,33 @@ const validInput = {
   payload: {},
 };
 
-beforeEach(() => {
-  requestJsonMock.mockReset();
-});
+describe("dealer demo adapters", () => {
+  it("filters local public listings by country", async () => {
+    await expect(
+      getPublicDealerListings({ page: 1, page_size: 20, country: "US" }),
+    ).resolves.toMatchObject({
+      total: 1,
+      items: [{ company: { display_name: "Northline Play Co.", country: "US" } }],
+      error: undefined,
+    });
+  });
 
-describe("dealer API adapters", () => {
-  it("requests public listings with the country filter", async () => {
-    requestJsonMock.mockResolvedValue({
-      request_id: "req-1",
-      items: [],
-      page: 1,
-      page_size: 20,
-      total: 0,
+  it("creates a contract-valid local application", async () => {
+    await expect(createDealerApplication(validInput)).resolves.toMatchObject({
+      legal_name: validInput.legal_name,
+      contact_email: validInput.contact_email,
+      status: "submitted",
     });
 
     await expect(
-      getPublicDealerListings({ page: 1, page_size: 20, country: "GB" }),
-    ).resolves.toMatchObject({ items: [], total: 0 });
-
-    expect(requestJsonMock).toHaveBeenCalledWith(
-      "/dealer/public-listings?page=1&page_size=20&country=GB",
-    );
+      createDealerApplication({ ...validInput, contact_email: "invalid" }),
+    ).rejects.toThrow();
   });
 
-  it("validates an application response and rejects malformed payloads", async () => {
-    requestJsonMock.mockResolvedValue({ request_id: "req-2", item: application });
-
-    await expect(createDealerApplication(validInput)).resolves.toMatchObject({
-      application_no: "APP-1",
-    });
-
-    requestJsonMock.mockResolvedValue({
-      request_id: "req-3",
-      item: { status: "submitted" },
-    });
-    await expect(createDealerApplication(validInput)).rejects.toThrow();
-  });
-
-  it("returns an unavailable page result without fabricated listings", async () => {
-    requestJsonMock.mockRejectedValue(new ApiError("Offline", 0, "req-4"));
-
+  it("returns the complete local dealer collection", async () => {
     await expect(getPublicDealerListings({ page: 1, page_size: 20 })).resolves.toMatchObject({
-      items: [],
-      total: 0,
-      error: { requestId: "req-4" },
+      total: 2,
+      error: undefined,
     });
   });
 });
