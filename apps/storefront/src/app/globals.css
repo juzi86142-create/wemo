@@ -55,6 +55,11 @@ p { line-height: 1.55; }
 .button-secondary { background: transparent; border-color: var(--ink); color: var(--ink); }
 .button-secondary:hover, .button-secondary:focus-visible { background: var(--ink); color: var(--surface); }
 .arrow-link { display: inline-flex; align-items: center; gap: 8px; width: fit-content; padding-bottom: 3px; border-bottom: 1px solid currentColor; font-size: 13px; font-weight: 600; }
+.action-feedback { display: inline-flex; align-items: center; min-height: 28px; padding: 5px 9px; border: 1px solid transparent; border-radius: 4px; font-size: 12px; font-weight: 600; line-height: 1.2; }
+.action-feedback-idle { background: var(--surface-low); color: var(--muted); }
+.action-feedback-pending { border-color: var(--blue); background: var(--blue-soft); color: var(--ink); }
+.action-feedback-success { border-color: var(--lime); background: var(--lime); color: var(--ink); }
+.action-feedback-error { border-color: var(--coral); background: var(--coral-soft); color: #93000a; }
 
 .hero, .intro-band, .category-section, .featured-section, .support-grid-section, .faq-section, .contact-section, .related-section, .catalog-section { max-width: var(--max); margin: 0 auto; }
 .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(430px, .92fr); min-height: 620px; background: var(--surface); }
