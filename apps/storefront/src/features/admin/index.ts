@@ -7,6 +7,7 @@ export const adminModule = {
 } satisfies FrontendModuleManifest;
 
 export * from "./admin-editor";
+export * from "./admin-editor-state";
 export * from "./admin-fixtures";
 export * from "./admin-table";
 export * from "./admin-workspace";

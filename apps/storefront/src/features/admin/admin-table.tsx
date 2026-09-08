@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { StatusPanel } from "../platform";
 import type { AdminRecord } from "./admin-fixtures";
 import { AdminEditor } from "./admin-editor";
 
@@ -46,10 +47,10 @@ export function AdminTable({ title, rows, editorKind }: AdminTableProps) {
               <td><strong>{row.title}</strong><span>{row.id} · {row.meta}</span></td><td><span className={statusClass(row.status)}>{row.status}</span></td><td>{row.updated}</td><td><button className="text-button" type="button" onClick={() => setSelectedId(row.id)}>Open</button></td>
             </tr>)}</tbody>
           </table>
-          {filteredRows.length === 0 ? <p className="admin-empty">No local records match these filters.</p> : null}
+          {filteredRows.length === 0 ? <StatusPanel kind="empty" title="No records match these filters." description="Try a broader search or choose another status in this local demo." /> : null}
         </div>
         {selected ? <aside className="admin-detail-panel" aria-live="polite">
-          {editorKind ? <AdminEditor kind={editorKind} record={selected} /> : <><p className="eyebrow">{selected.id}</p><h2>{selected.title}</h2><p>{selected.detail}</p><span className={statusClass(selected.status)}>{selected.status}</span><p className="admin-detail-note">This is a controlled local demo. Live changes require the backend workspace API.</p></>}
+          {editorKind ? <AdminEditor key={selected.id} kind={editorKind} record={selected} /> : <><p className="eyebrow">{selected.id}</p><h2>{selected.title}</h2><p>{selected.detail}</p><span className={statusClass(selected.status)}>{selected.status}</span><p className="admin-detail-note">This is a controlled local demo. Live changes require the backend workspace API.</p></>}
         </aside> : null}
       </div>
     </section>

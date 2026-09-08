@@ -49,3 +49,29 @@ DONE
 - The workspace intentionally uses labeled local demo fixtures and feedback only; it does not call or claim success from an admin backend API.
 - The specified fixture test covers route and metric fixture shape. Client table/editor interaction tests are not included because the task brief limited the focused test file to `admin-fixtures.test.ts`.
 - Pre-existing user and automatic modifications outside the Task 2 file scope were preserved.
+
+## Review Follow-up
+
+Implemented the fixes requested in `task-2-review.md`:
+
+- Keyed product/content editors by `record.id` so switching records remounts the editor with the new record's title and summary. The same record keeps its local input while saving or showing an unavailable state.
+- Constrained the admin table layout and scroll region, and positioned the final hidden table header within its cell so narrow screens keep horizontal scrolling inside the table region.
+- Reused the platform `StatusPanel` for the filtered-empty admin table state.
+- Added `admin-editor-state.test.ts` to cover deriving editor values from different selected records.
+
+## Review Follow-up Verification
+
+1. `pnpm --filter @wemo/storefront exec vitest run src/features/admin`
+   - Passed: 2 test files, 2 tests.
+2. `pnpm --filter @wemo/storefront typecheck`
+   - Passed with exit code 0.
+3. `pnpm --filter @wemo/storefront build`
+   - Passed with exit code 0; all six admin routes generated successfully.
+4. Narrow runtime check at 390px on `/admin/products`
+   - Passed: document `scrollWidth=375`, `clientWidth=375`.
+   - Passed: `.admin-table-scroll` retained `overflow-x: auto`, with `scrollWidth=560` and `clientWidth=285`.
+   - Passed: opening the second product changed the editor from `WM-201` to `WM-118` and changed the title input to `Balance Trail Kit`.
+
+## Review Follow-up Commit
+
+- Fix implementation and report update: included in the final Task 2 review follow-up commit.

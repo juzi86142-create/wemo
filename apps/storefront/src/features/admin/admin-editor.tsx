@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { ActionFeedback } from "../platform";
 import type { AdminRecord } from "./admin-fixtures";
+import { getAdminEditorState } from "./admin-editor-state";
 
 interface AdminEditorProps {
   kind: "product" | "content";
@@ -13,8 +14,9 @@ interface AdminEditorProps {
 type EditorStatus = "idle" | "pending" | "success" | "error";
 
 export function AdminEditor({ kind, record }: AdminEditorProps) {
-  const [title, setTitle] = useState(record.title);
-  const [summary, setSummary] = useState(record.detail);
+  const initialState = getAdminEditorState(record);
+  const [title, setTitle] = useState(initialState.title);
+  const [summary, setSummary] = useState(initialState.summary);
   const [status, setStatus] = useState<EditorStatus>("idle");
 
   function save() {
