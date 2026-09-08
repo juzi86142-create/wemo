@@ -6,7 +6,7 @@ DONE
 
 ## Commit
 
-`b052d90 feat: add storefront demo state primitives`
+`06b3e7d feat: add storefront demo state primitives`
 
 ## Changes
 
