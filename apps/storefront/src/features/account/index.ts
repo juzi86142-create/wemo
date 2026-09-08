@@ -9,4 +9,7 @@ export const accountModule = {
 export * from "./account-adapter";
 export * from "./account-shell";
 export * from "./account-validation";
+export * from "./account-demo-state";
+export * from "./address-book";
 export * from "./auth-form";
+export * from "./profile-editor";

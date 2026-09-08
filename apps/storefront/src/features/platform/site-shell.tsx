@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+
+import { clearSessionToken } from "./api-client";
 
 const links = [
   ["Products", "/products"],
@@ -12,6 +15,13 @@ const links = [
 
 export function SiteShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const router = useRouter();
+
+  function logout() {
+    clearSessionToken();
+    setMenuOpen(false);
+    router.push("/login");
+  }
 
   return (
     <div className="site-frame">
@@ -25,6 +35,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
         <div className="header-actions">
           <Link href="/search" className="header-link">Search</Link>
           <Link href="/login" className="header-link">Account</Link>
+          <button className="header-logout" type="button" onClick={logout}>Sign out</button>
           <Link href="/cart" className="cart-link" aria-label="Shopping cart">Cart <span>0</span></Link>
           <button
             className="menu-button"
@@ -42,6 +53,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
         <nav className="mobile-nav" id="mobile-navigation" aria-label="Mobile navigation">
           {links.map(([label, href]) => <Link href={href} key={href + label} onClick={() => setMenuOpen(false)}>{label}</Link>)}
           <Link href="/login" onClick={() => setMenuOpen(false)}>Account</Link>
+          <button className="mobile-logout" type="button" onClick={logout}>Sign out</button>
         </nav>
       ) : null}
       {children}
