@@ -157,3 +157,12 @@
 | Storefront order success | 受校验订单快照、订单号/状态/商品行/后端总额展示、快照缺失/损坏安全空态；Strict Mode 下快照只消费一次 | `apps/storefront/src/app/(public)/order/success/page.tsx`、`apps/storefront/src/features/commerce/order-success-view.tsx`、`apps/storefront/src/features/commerce/order-success-snapshot.ts`、`order-success-snapshot.test.ts`、`docs/superpowers/verification/2026-09-08-b2c-checkout.md` | `in-progress`：contract mock 订单展示和空态已验证；真实后端响应仍待联调 |
 | Storefront cart boundary | preview cart 明确不可真实结算；contract mock 可显式进入 checkout；`begin_checkout`、`checkout_success`、`checkout_failure` analytics 边界已接入；未新增不存在的删除接口 | `apps/storefront/src/features/commerce/cart-summary.tsx`、`cart-view.tsx`、`checkout-link.tsx`、`contract-mock-mode.ts`、`apps/storefront/src/features/platform/analytics.ts`、`docs/superpowers/verification/2026-09-08-b2c-checkout.md` | `done`：mock/preview 边界、窄屏无横向溢出、完整 storefront 自动化门禁通过 |
 | Storefront contract mock | 本地 loopback HTTP mock、契约校验、服务端 fixture 价格计算、未知 variant/客户端价格字段拒绝、显式 mock 标识和同源 rewrite | `scripts/storefront-contract-mock.ts`、`scripts/storefront-contract-mock.test.ts`、`apps/storefront/next.config.ts`、`apps/storefront/src/features/commerce/contract-mock-mode.ts`、`docs/superpowers/plans/2026-09-08-storefront-contract-mock.md` | `done`：5 个 mock 测试、浏览器 `/cart` → `/checkout` → `/order/success` 已验证；仅供本地联调，不代表真实后端验收 |
+
+## 本轮前端公开经销商入口证据（2026-09-08）
+
+| 需求 ID | 已实现范围 | 代码与验证入口 | 状态与边界 |
+| --- | --- | --- | --- |
+| `P-030`, `DLR-001` | 公开经销商查找页、真实列表适配器、国家筛选、无结果/接口不可用状态 | `apps/storefront/src/app/(public)/dealers/page.tsx`、`apps/storefront/src/features/dealer/dealer-adapter.ts`、`dealer-adapter.test.ts`、`docs/superpowers/verification/2026-09-08-public-dealer-entry.md` | `done`：路由 HTTP 200 和浏览器可访问性检查通过；API 未启动时不显示假门店 |
+| `P-031`, `DLR-002`, `DLR-003` | 经销商卡片与公开地址字段白名单 | `apps/storefront/src/features/dealer/dealer-listing-card.tsx`、`dealer-display.ts`、`dealer-display.test.ts` | `done`：响应先经 contracts 校验；未识别 JSON 不进入展示 |
+| `DLR-004`, `DLR-005` | 两步申请表、字段校验、草稿恢复、API 错误映射和成功状态 | `apps/storefront/src/app/(public)/dealers/apply/page.tsx`、`dealer-application-form.tsx`、`dealer-draft.ts`、`dealer-draft.test.ts` | `done`：表单交互和失败保留值已验证；真实 API 成功页待后端启动 |
+| `CT` / analytics boundary | 申请通知说明、儿童数据不收集、`dealer_apply_start` 与 `dealer_apply_submit` 事件名 | `apps/storefront/src/features/platform/analytics.ts`、`analytics.test.ts` | `done`：事件常量和挂载/成功提交边界已实现；不代表服务端投递已联调 |

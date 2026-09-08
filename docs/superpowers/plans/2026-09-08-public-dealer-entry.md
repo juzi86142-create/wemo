@@ -38,7 +38,7 @@
 - `validateDealerApplication(values: DealerApplicationFormValues): Record<string, string>` returns stable field keys and never sends a request.
 - `readPublicAddress(payload: unknown): { line1?: string; city?: string; region?: string; postalCode?: string; country?: string; phone?: string }` returns only known string fields.
 
-- [ ] **Step 1: Write failing adapter and helper tests**
+- [x] **Step 1: Write failing adapter and helper tests**
 
 Use the existing `vi.mock("../platform/api-client")` pattern. Add tests for:
 
@@ -59,7 +59,7 @@ it("validates an application response and does not accept malformed payloads", a
 
 Also test validation for empty legal/display/contact fields, malformed email and website, non-three-letter currency, a valid input, and optional website/tax/phone. Test `readPublicAddress` with known keys, nested/unknown JSON, and non-string values.
 
-- [ ] **Step 2: Run the focused tests and confirm the expected failure**
+- [x] **Step 2: Run the focused tests and confirm the expected failure**
 
 Run:
 
@@ -69,11 +69,11 @@ pnpm --filter @wemo/storefront test -- src/features/dealer/dealer-adapter.test.t
 
 Expected: FAIL because the new dealer modules and exports do not exist.
 
-- [ ] **Step 3: Implement the adapter and pure helpers**
+- [x] **Step 3: Implement the adapter and pure helpers**
 
 Implement `getPublicDealerListings` with `DealerPublicListingListResponseSchema.parse(await requestJson<unknown>("/dealer/public-listings?" + toQueryString(query)))`. Catch `ApiError` and return `{ items: [], page, pageSize, total: 0, error }`; convert non-API failures to `new ApiError("Dealer listings are unavailable.", 0)`. Implement `createDealerApplication` with `DealerApplicationCreateSchema.parse` and `DealerApplicationMutationResponseSchema.parse`. Keep `readPublicAddress` allowlisted and return `{}` for unknown values.
 
-- [ ] **Step 4: Run tests and commit the contract boundary**
+- [x] **Step 4: Run tests and commit the contract boundary**
 
 Run the focused command again and then:
 
@@ -97,19 +97,19 @@ Expected: all focused tests and typecheck pass.
 - `DealersPage` reads `searchParams.country`, calls `getPublicDealerListings`, and renders the route without client state.
 - `DealerListingCard` accepts one validated `DealerPublicListing` and renders company identity plus safe public address details.
 
-- [ ] **Step 1: Add the route-level failing HTML check**
+- [x] **Step 1: Add the route-level failing HTML check**
 
 Add a PowerShell check that requests `/dealers` and asserts the current response is a 404 before the route exists. Keep the check as the red proof for the missing route, then replace it with assertions for `Find a dealer`, `Become a dealer`, and an unavailable state when the API origin is absent.
 
-- [ ] **Step 2: Implement the server-rendered listings route**
+- [x] **Step 2: Implement the server-rendered listings route**
 
 Use `DealerPublicListingListResponseSchema` through the adapter. Render a page hero, a native country `<select>` submitted by GET, a `Become a dealer` link, and listing cards. If `data.error` exists, render `StatusPanel kind="error"` with its request id and retry link. If the validated list is empty without an error, render `StatusPanel kind="empty"` with a clear filter reset. Never render unvalidated companies.
 
-- [ ] **Step 3: Implement listing cards and responsive styling**
+- [x] **Step 3: Implement listing cards and responsive styling**
 
 Display only validated `company.display_name`, `company.business_type`, `company.country`, optional `company.website`, and address values extracted by `readPublicAddress`. Use a two-column discovery layout above 960px and one column below it. Add keyboard-visible controls, readable link text, and no map SDK dependency. Keep the listing region usable when there are zero results.
 
-- [ ] **Step 4: Run route checks and commit**
+- [x] **Step 4: Run route checks and commit**
 
 Run:
 
@@ -142,11 +142,11 @@ git commit -m "feat: add public dealer discovery page"
 - `writeDealerDraft(values): void`, `readDealerDraft(): DealerApplicationFormValues | null`, and `clearDealerDraft(): void` use a namespaced `sessionStorage` key and remain safe when `window` is unavailable.
 - `analyticsEvents.dealerApplyStart` is `dealer_apply_start`; `analyticsEvents.dealerApplySubmit` is `dealer_apply_submit`.
 
-- [ ] **Step 1: Write failing draft and analytics tests**
+- [x] **Step 1: Write failing draft and analytics tests**
 
 Test draft round-trip, malformed JSON returning `null`, schema-invalid draft returning `null`, clearing after a successful submission, and server-side safety. Extend analytics tests to assert the two stable event names.
 
-- [ ] **Step 2: Run tests and confirm the expected failure**
+- [x] **Step 2: Run tests and confirm the expected failure**
 
 Run:
 
@@ -156,17 +156,17 @@ pnpm --filter @wemo/storefront test -- src/features/dealer/dealer-draft.test.ts 
 
 Expected: FAIL because the draft helpers and new event constants do not exist.
 
-- [ ] **Step 3: Implement draft storage, analytics names, and the application form**
+- [x] **Step 3: Implement draft storage, analytics names, and the application form**
 
 Implement the two steps exactly as specified in the design. Save a draft after edits, restore it on mount, and clear it only after `createDealerApplication` returns a schema-validated application. Fire `dealer_apply_start` once from a guarded effect. On submit, create the exact contract input with `currency.toUpperCase()`, map `ApiError.fieldErrors` to stable field names, keep values on failure, and show request id. On success show the returned `application_no` and `status` with links to `/dealers` and `/`.
 
 When the API is unavailable, the form remains complete and editable; no success copy or fabricated application number is shown.
 
-- [ ] **Step 4: Add the application route and styles**
+- [x] **Step 4: Add the application route and styles**
 
 Render the public shell route with the complete form, step indicator, business/contact field groups, privacy/application notice, and no child-data fields. Add styles for `.dealer-page`, `.dealer-discovery`, `.dealer-listings`, `.dealer-application`, `.dealer-stepper`, `.dealer-form-grid`, `.dealer-success`, and `.dealer-draft-note`, including mobile stacking at 960px and 620px.
 
-- [ ] **Step 5: Run focused checks and commit**
+- [x] **Step 5: Run focused checks and commit**
 
 Run:
 
@@ -190,7 +190,7 @@ git commit -m "feat: add dealer application flow"
 - Create: `docs/superpowers/verification/2026-09-08-public-dealer-entry.md`
 - Modify: `docs/superpowers/plans/2026-09-08-public-dealer-entry.md`
 
-- [ ] **Step 1: Run focused and production checks**
+- [x] **Step 1: Run focused and production checks**
 
 Run:
 
@@ -204,15 +204,15 @@ git diff --check
 
 Expected: frontend and contract checks pass. If `pnpm test` or live API checks fail because PostgreSQL/Redis/API are stopped, record the exact failing integration tests as an environment blocker without changing the feature to hide the failure.
 
-- [ ] **Step 2: Verify browser states**
+- [x] **Step 2: Verify browser states**
 
 Use the running storefront at `http://localhost:3000` to inspect `/dealers` and `/dealers/apply` at desktop and narrow widths. Verify navigation no longer 404s, listing unavailable/empty states do not fabricate data, the application form is editable, required validation is visible, and the form preserves values after a simulated API failure. When a controlled API response is unavailable, do not claim the application success screen was live-verified.
 
-- [ ] **Step 3: Record evidence and traceability**
+- [x] **Step 3: Record evidence and traceability**
 
 Record route URLs, accessibility-visible headings, responsive observations, command results, API availability, and any live-integration blocker in the verification document. Add `P-030`, `P-031`, `DLR-001` through `DLR-005`, and `CT`/dealer application evidence only for the implemented slice; keep authenticated dealer center requirements planned.
 
-- [ ] **Step 4: Mark the plan and commit evidence**
+- [x] **Step 4: Mark the plan and commit evidence**
 
 Mark completed steps with `[x]`, leave no false live-backend claim, then run:
 
